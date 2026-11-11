@@ -16,11 +16,10 @@ backend/src/test/java/com/csmatch/<도메인>/
 
 frontend/src/
   pages/         auth, lobby, matching, match, result, profile, practice, admin
-  api, auth, components, hooks, ws, utils, assets
+  api, components, ws   (hooks, utils 등은 필요할 때 추가)
 
-docs/            api(명세), erd, decisions(결정 기록)
-scripts/         보조 스크립트
-.github/         CI, PR 템플릿
+docs/            api(명세), erd, game-rules.md(게임 규칙), conventions.md(협업 규칙)
+.github/         PR 템플릿
 docker-compose.yml   mysql, redis, backend, web(Nginx)
 ```
 
@@ -37,7 +36,7 @@ docker-compose.yml   mysql, redis, backend, web(Nginx)
 | SCRUM-41 문제 오류 신고 | backend `report` |
 | SCRUM-42 관리자 | backend `admin` |
 | SCRUM-82 문제 생성·출제 | backend `question` |
-| SCRUM-81 인프라 | `docker-compose.yml`, `.github`, 각 Dockerfile |
+| SCRUM-81 인프라 | `docker-compose.yml`, 각 Dockerfile |
 | SCRUM-83 프론트 | `frontend/` |
 
 ## 시작하기
@@ -46,7 +45,7 @@ docker-compose.yml   mysql, redis, backend, web(Nginx)
 cp .env.example .env            # 값 채우기
 docker compose up -d mysql redis
 
-cd backend && gradle bootRun    # 또는 IDE에서 CsMatchApplication 실행
+cd backend && ./gradlew bootRun   # 또는 IDE에서 CsMatchApplication 실행 (JDK 25 필요)
 cd frontend && npm install && npm run dev   # http://localhost:5173
 ```
 
@@ -55,12 +54,18 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 
 설정 파일: `application.yml`(공통), `application-local.yml`(로컬, 기본 프로파일), `application-prod.yml`(배포, 환경 변수로만 주입)
 
-Gradle Wrapper는 포함하지 않았습니다. 필요하면 `cd backend && gradle wrapper --gradle-version 8.14` 후 커밋하세요.
+요구 사항: JDK 25, Node 22, Docker. Gradle 은 Wrapper(`backend/gradlew`)를 사용하므로 따로 설치하지 않습니다.
 
 ## 아직 정해지지 않은 것 (Jira 기준)
 
 - 스키마 적용 방식과 `devduel_schema.sql` 반영 (SCRUM-84) — 현재 `ddl-auto: none`
 - DB 테스트 환경 H2 / Testcontainers (SCRUM-88) — 현재 H2 임시
-- 브랜치·커밋 규칙, 패키지 구조, 코드 컨벤션
+- 코드 컨벤션 (브랜치·커밋·PR 규칙은 `docs/conventions.md` 에 확정)
 - 프론트 UI 라이브러리·JS/TS 여부 (SCRUM-98)
-- Spring Boot 버전: 3.5.0 으로 잡아 둠, 빌드 전 최신 3.5.x 확인
+- CI: 담당자 확정 전까지 `.github/workflows` 없음
+
+## 문서
+
+- 협업 규칙(브랜치·커밋·PR·Jira): `docs/conventions.md`
+- 게임 규칙·점수·레이팅: `docs/game-rules.md`
+- AI 도구(Claude Code 등) 사용 시: 루트의 `CLAUDE.md` / `AGENTS.md`
