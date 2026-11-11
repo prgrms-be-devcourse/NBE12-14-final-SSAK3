@@ -3,9 +3,16 @@
 레이팅 기반 1:1 실시간 CS 객관식 퀴즈 대결 서비스 (백엔드 12기 14회차 3팀). 일정: 11/27 MVP 배포, 12/7 최종 발표.
 
 작업 전에 읽을 문서:
-- `docs/game-rules.md`: 게임 규칙·점수·레이팅 (단일 출처, **(미확정)** 항목은 임의로 정하지 말고 질문)
+- `docs/game-rules.md`: 게임 규칙·점수·레이팅
 - `docs/conventions.md`: 브랜치·커밋·PR·Jira 규칙
 - `README.md`: 폴더 구조, 실행 방법
+- ERD: https://dbdiagram.io/d/%EC%8B%B9%EC%93%B0%EB%A6%AC-6af3e06d063ad9ee168b99b8
+- API 명세(REST·WebSocket): https://claude.ai/artifact/VGMk2169cgJ9CYqfTdnmGn
+
+문서끼리 어긋나거나 정해지지 않은 값이 있을 때의 원칙:
+- **ERD 가 최우선**이다. 테이블·컬럼·코드값이 API 명세, 게임 규칙과 다르면 ERD 를 따른다.
+- 명세에 `[미정]` 으로 남은 항목은 **작업하는 개발자가 재량으로 정한다.** AI 는 물어보며 막히지 말고, 가장 단순한 방식으로 구현하고 PR 본문 "리뷰어에게" 에 어떻게 정했는지 적는다.
+- 단, 확정된 값(`docs/game-rules.md`)과 "범위 밖" 기능은 바꾸지 않는다.
 
 ## 기술 스택
 
