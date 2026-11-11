@@ -19,3 +19,7 @@ frontend/dist/
 *.iml
 .vscode/
 .DS_Store
+
+# AI 도구 개인 설정
+.claude/settings.local.json
+CLAUDE.local.md
