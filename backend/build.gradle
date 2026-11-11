@@ -1,7 +1,6 @@
 plugins {
     id 'java'
-    // 빌드 전 start.spring.io 에서 최신 3.5.x 패치 버전을 확인하세요
-    id 'org.springframework.boot' version '3.5.0'
+    id 'org.springframework.boot' version '3.5.16'
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -10,7 +9,7 @@ version = '0.0.1-SNAPSHOT'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
