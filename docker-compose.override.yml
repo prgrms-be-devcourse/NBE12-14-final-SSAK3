@@ -1,0 +1,18 @@
+# 로컬 개발용. `docker compose up` 시 docker-compose.yml 에 자동으로 덧씌워진다.
+# 보통은 인프라만 띄우고 백엔드·프론트는 로컬에서 직접 실행한다:
+#   docker compose up -d mysql redis
+# 포트는 127.0.0.1 에만 열어 같은 네트워크의 다른 사람이 접속하지 못하게 한다.
+services:
+  mysql:
+    ports:
+      - "127.0.0.1:3306:3306"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+    ports:
+      - "127.0.0.1:8080:8080"
