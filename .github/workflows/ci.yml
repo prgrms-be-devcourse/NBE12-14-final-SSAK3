@@ -1,3 +1,4 @@
+
 name: CI
 
 on:
@@ -92,3 +93,34 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # Docker Compose 전체 실행 검증 (SCRUM-88)
+  compose-smoke:
+    name: Docker Compose Smoke Test
+    runs-on: ubuntu-latest
+
+    env:
+      MYSQL_ROOT_PASSWORD: ci-smoke-root
+      MYSQL_DATABASE: csmatch
+      MYSQL_USER: csmatch
+      MYSQL_PASSWORD: ci-smoke-password
+      JWT_SECRET: "0123456789abcdef0123456789abcdef"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Docker Compose
+        run: docker compose up -d --build --wait --wait-timeout 180
+
+      - name: Check Services
+        run: |
+          curl --retry 30 --retry-connrefused --retry-delay 3 -fsS http://localhost:8080/actuator/health | grep -q '"status":"UP"'
+          curl -fsS http://localhost/ -o /dev/null
+
+      - name: Show Logs on Failure
+        if: failure()
+        run: docker compose logs --tail=100
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down
