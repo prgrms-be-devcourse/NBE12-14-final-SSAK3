@@ -24,9 +24,9 @@ class CsMatchApplicationTests {
     }
 
     @Test
-    void authenticationFailsClosedWithoutJwtAdapter() throws Exception {
+    void realJwtAdapterRejectsMalformedToken() throws Exception {
         var session = mock(WebSocketSession.class);
-        when(session.getId()).thenReturn("no-jwt-adapter");
+        when(session.getId()).thenReturn("invalid-jwt");
         when(session.isOpen()).thenReturn(true);
         webSocketHandler.afterConnectionEstablished(session);
         webSocketHandler.handleMessage(session, new TextMessage(

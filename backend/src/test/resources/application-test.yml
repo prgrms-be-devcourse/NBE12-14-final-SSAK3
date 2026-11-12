@@ -1,9 +1,11 @@
 spring:
+  config:
+    import: optional:file:../.env.test[.properties]
   datasource:
-    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: jdbc:mysql://${TEST_MYSQL_HOST:localhost}:${TEST_MYSQL_PORT:3306}/csmatch_test?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: csmatch_test
+    password: ${TEST_MYSQL_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: none

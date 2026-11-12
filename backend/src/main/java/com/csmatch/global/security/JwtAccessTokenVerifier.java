@@ -5,13 +5,11 @@ import com.csmatch.user.entity.User;
 import com.csmatch.user.repository.UserRepository;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.util.OptionalLong;
 
 @Component
-@Profile("!test")
 @RequiredArgsConstructor
 public class JwtAccessTokenVerifier implements AccessTokenVerifier {
 
