@@ -16,6 +16,7 @@ CREATE TABLE `saved_questions` (
   `user_id` bigint NOT NULL COMMENT '회원',
   `question_id` bigint NOT NULL COMMENT '저장한 문제',
   `match_id` bigint COMMENT '저장한 경기',
+  `practice_session_id` bigint COMMENT '저장한 연습 (경기 출처와 둘 중 하나)',
   `saved_at` datetime NOT NULL DEFAULT (CURRENT_TIMESTAMP),
   PRIMARY KEY (`user_id`, `question_id`)
 );
@@ -75,11 +76,43 @@ CREATE TABLE `practice_sessions` (
   `session_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '연습 ID',
   `user_id` bigint NOT NULL COMMENT '회원',
   `category_id` int COMMENT '선택 분야',
-  `question_count` int NOT NULL COMMENT '문제 수 미정',
-  `time_limit_sec` int COMMENT '제한 시간 미정',
+  `learning_cycle` int NOT NULL DEFAULT 1 COMMENT '학습 회차, 초기화해도 이전 이력 보존',
+  `status` varchar(20) NOT NULL DEFAULT 'IN_PROGRESS' COMMENT 'IN_PROGRESS/COMPLETED/ABANDONED',
+  `question_count` int NOT NULL COMMENT '최대 10, 숨긴 미제출 문제는 제외',
   `correct_count` int NOT NULL DEFAULT 0,
   `started_at` datetime NOT NULL DEFAULT (CURRENT_TIMESTAMP),
   `ended_at` datetime
+);
+
+CREATE TABLE `practice_progress` (
+  `user_id` bigint PRIMARY KEY NOT NULL,
+  `learning_cycle` int NOT NULL DEFAULT 1
+);
+
+CREATE TABLE `practice_answers` (
+  `answer_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT,
+  `session_id` bigint NOT NULL,
+  `question_id` bigint NOT NULL,
+  `question_index` int NOT NULL COMMENT '배정 순서, 숨긴 문제도 원래 순서 보존',
+  `category_id` int NOT NULL COMMENT '출제 당시 분야',
+  `difficulty` varchar(10) NOT NULL,
+  `content` text NOT NULL,
+  `explanation` text,
+  `selected_choice_id` bigint COMMENT '출제 당시 보기 ID, 원본 보기 FK 없음',
+  `correct` boolean,
+  `skipped` boolean NOT NULL DEFAULT false,
+  `submitted_at` datetime,
+  CONSTRAINT `uk_practice_question` UNIQUE (`session_id`, `question_id`),
+  CONSTRAINT `uk_practice_position` UNIQUE (`session_id`, `question_index`)
+);
+
+CREATE TABLE `practice_choices` (
+  `answer_id` bigint NOT NULL,
+  `choice_id` bigint NOT NULL COMMENT '출제 당시 보기 ID, 원본 보기 FK 없음',
+  `choice_no` int NOT NULL,
+  `content` varchar(500) NOT NULL,
+  `is_correct` boolean NOT NULL,
+  CONSTRAINT `uk_practice_choice` UNIQUE (`answer_id`, `choice_no`)
 );
 
 CREATE TABLE `question_reports` (
@@ -157,6 +190,20 @@ CREATE UNIQUE INDEX `round_answers_index_4` ON `round_answers` (`round_id`, `rec
 CREATE UNIQUE INDEX `rating_history_index_5` ON `rating_history` (`match_id`, `user_id`, `reason`);
 
 CREATE UNIQUE INDEX `question_choices_index_6` ON `question_choices` (`question_id`, `choice_no`);
+
+CREATE INDEX `ix_practice_user_status` ON `practice_sessions` (`user_id`, `status`);
+
+CREATE INDEX `ix_practice_user_cycle` ON `practice_sessions` (`user_id`, `learning_cycle`);
+
+ALTER TABLE `practice_progress` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`);
+
+ALTER TABLE `practice_answers` ADD FOREIGN KEY (`session_id`) REFERENCES `practice_sessions` (`session_id`);
+
+ALTER TABLE `practice_answers` ADD FOREIGN KEY (`question_id`) REFERENCES `questions` (`question_id`);
+
+ALTER TABLE `practice_choices` ADD FOREIGN KEY (`answer_id`) REFERENCES `practice_answers` (`answer_id`);
+
+ALTER TABLE `saved_questions` ADD FOREIGN KEY (`practice_session_id`) REFERENCES `practice_sessions` (`session_id`);
 
 ALTER TABLE `concepts` ADD FOREIGN KEY (`category_id`) REFERENCES `categories` (`category_id`);
 

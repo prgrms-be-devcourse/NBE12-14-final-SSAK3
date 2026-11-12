@@ -560,7 +560,7 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 
 ## 6. 연습 모드 API
 
-연습 모드는 상대가 없고 실시간 경쟁도 없어서 WebSocket 없이 REST만으로 처리한다. ERD의 `practice_sessions`(분야, 문제 수, 제한 시간, 정답 수, 시작·종료 시각)에 맞췄고, 문제 수와 제한 시간 값은 **[미정]** 이다.
+연습은 JWT 인증된 회원이 REST로 진행한다. 전체 또는 선택 분야의 미풀이 `ACTIVE` 문제를 무작위로 **최대 10개씩** 제공한다. 마지막 묶음은 남은 수만큼이며 시간제한은 없다. 분야 간 진도는 공유하고 답안을 제출하면 정답 여부와 무관하게 푼 문제로 계산한다. 규칙은 `docs/game-rules.md`의 연습 절을 따른다.
 
 | 기능 | Method | Path |
 | --- | --- | --- |
@@ -568,6 +568,15 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 | 다음 문제 받기 | GET | `/practice/sessions/{sessionId}/question` |
 | 답안 제출 | POST | `/practice/sessions/{sessionId}/answers` |
 | 연습 결과 조회 | GET | `/practice/sessions/{sessionId}` |
+| 진행 중 연습 조회 | GET | `/practice/sessions/current` |
+| 중도 종료 | POST | `/practice/sessions/{sessionId}/end` |
+| 연습 이력 목록 | GET | `/practice/sessions?page=0&size=20` |
+| 문제별 이력 | GET | `/practice/sessions/{sessionId}/questions?wrongOnly=false` |
+| 전체/분야 진도 | GET | `/practice/progress?categoryId=1` |
+| 전체 진도 초기화 | POST | `/practice/restart` |
+| 분야 목록 | GET | `/practice/categories` |
+
+모든 경로는 `/api/v1` 아래에 있다. 다른 회원의 세션 조회·제출·종료는 `403 FORBIDDEN`, 없는 세션·분야는 `404 NOT_FOUND`다. 목록의 `page`는 0 이상, `size`는 1~100이다.
 ### 연습 시작 `POST /practice/sessions`
 
 ```jsonc
@@ -575,10 +584,12 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 { "categoryId": 1 }
 
 // 응답 201
-{ "data": { "sessionId": 7, "questionCount": 10, "timeLimitSec": null } }
+{ "data": { "sessionId": 7, "categoryId": 1, "learningCycle": 1, "questionCount": 10,
+  "answeredCount": 0, "correctCount": 0, "status": "IN_PROGRESS",
+  "startedAt": "2026-11-12T12:00:00+09:00", "endedAt": null } }
 ```
 
-`timeLimitSec`이 `null`이면 제한 시간이 없다.
+회원당 진행 중인 연습은 하나다. 같은 분야로 다시 시작을 요청하면 기존 연습을 `200`으로 반환하며, 다른 분야라면 `409 PRACTICE_IN_PROGRESS`를 반환한다. 새 연습은 `201`이다. 출제할 미풀이 문제가 없으면 `404 NO_MORE_QUESTIONS`다. 새 문제가 활성화되면 다음 묶음부터 포함한다. `timeLimitSec` 필드는 제거했다.
 
 ### 다음 문제 받기 `GET /practice/sessions/{sessionId}/question`
 
@@ -594,7 +605,7 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 }
 ```
 
-모든 문제를 풀었으면 `404 NO_MORE_QUESTIONS`를 반환한다. 정답은 포함하지 않는다.
+GET을 반복하거나 새로고침해도 제출 전에는 같은 문제를 반환한다. `index`는 숨김 건너뛰기를 제외한 현재 풀이 순번, `total`은 묶음의 실제 문제 수다. 종료한 연습 또는 남은 문제가 없으면 `404 NO_MORE_QUESTIONS`를 반환한다. 정답·해설·보기의 정답 여부는 포함하지 않는다.
 
 ### 답안 제출 `POST /practice/sessions/{sessionId}/answers`
 
@@ -618,6 +629,10 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 | --- | --- | --- |
 | 409 | `ALREADY_ANSWERED` | 이미 제출한 문제 |
 | 409 | `SESSION_FINISHED` | 이미 끝난 연습 |
+| 409 | `QUESTION_UNAVAILABLE` | 현재 묶음에서 숨김 처리되어 건너뛴 문제 |
+| 400 | `VALIDATION_FAILED` | 현재 문제 이외의 문제, 다른 문제의 보기, 잘못된 ID |
+
+같은 회원의 요청은 직렬 처리한다. 중복 요청은 점수·진도를 다시 반영하지 않으며, 완료한 세션은 `SESSION_FINISHED`가 우선한다. 마지막 제출로 자동 완료된다. 응답 유실 후에는 문제별 이력에서 제출 결과와 해설을 다시 조회할 수 있다.
 ### 연습 결과 조회 `GET /practice/sessions/{sessionId}`
 
 ```jsonc
@@ -625,15 +640,61 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 {
   "data": {
     "sessionId": 7,
+    "categoryId": 1,
+    "learningCycle": 1,
     "questionCount": 10,
+    "answeredCount": 10,
     "correctCount": 8,
+    "status": "COMPLETED",
     "startedAt": "2026-11-06T12:00:00+09:00",
     "endedAt": "2026-11-06T12:04:00+09:00"
   }
 }
 ```
 
-연습 기록은 레이팅에 영향을 주지 않는다. ERD에는 연습에서 어떤 문제를 풀었는지 저장하는 테이블이 없어, 같은 문제 중복 출제 방지와 `ALREADY_ANSWERED` 판정은 서버 임시 저장(Redis)으로 처리하거나 `practice_answers` 테이블을 추가해야 한다 **[미정]**.
+`status`는 `IN_PROGRESS`, `COMPLETED`, `ABANDONED`다. 시작·종료 시각은 `+09:00`으로 제공한다. 중도 종료는 미제출 문제를 오답으로 세지 않는다. 숨긴 미제출 문제는 건너뛰고 `questionCount`를 줄이며, 남은 문제가 없어지면 완료한다. 레이팅은 변경하지 않는다.
+
+### 이어 풀기와 중도 종료
+
+`GET /practice/sessions/current`는 위 세션 요약을 반환한다. 진행 중 연습이 없으면 `200 { "data": null }`이다. 여러 탭은 같은 서버 진도를 조회한다. WebSocket 푸시는 사용하지 않으므로 화면 갱신 시 다시 조회한다.
+
+`POST /practice/sessions/{sessionId}/end`는 미완료 연습을 `ABANDONED`로 종료하고 세션 요약을 `200`으로 반환한다. 이미 종료된 연습은 기존 요약을 그대로 반환한다. 미제출 문제는 다음 연습에 다시 배정될 수 있다.
+
+### 연습 이력
+
+`GET /practice/sessions`는 시작 시각 내림차순(동률은 ID 내림차순)으로 `{data: {items: [세션 요약], page, size, totalElements}}`를 반환한다. 현재 진행 중인 연습도 포함한다.
+
+`GET /practice/sessions/{sessionId}/questions`는 다음 항목의 배열을 `data`로 반환한다. `wrongOnly=true`면 제출한 오답만 반환한다. 기본값은 전체이며 미제출·건너뛴 문제도 포함한다.
+
+```jsonc
+{ "data": [{
+  "index": 1,
+  "question": { "questionId": 12, "categoryId": 1, "difficulty": "EASY", "content": "출제 당시 본문" },
+  "choices": [{ "choiceId": 101, "choiceNo": 1, "content": "출제 당시 보기" }],
+  "status": "ANSWERED", "hidden": false,
+  "selectedChoiceId": 101, "correct": true, "correctChoiceId": 101,
+  "explanation": "출제 당시 해설", "submittedAt": "2026-11-12T12:01:00+09:00"
+}] }
+```
+
+문제별 `status`는 `ANSWERED`, `UNANSWERED`, `SKIPPED`다. 이력의 `index`는 최초 배정 순번이다. 미제출 문제의 `selectedChoiceId`, `correct`, `correctChoiceId`, `explanation`, `submittedAt`은 `null`이다. 이미 제출한 문제는 현재 숨김 여부와 무관하게 당시 내용을 보존한다. 원본 문제와 보기가 수정돼도 출제 당시 사본으로 채점·조회한다.
+
+### 진도와 처음부터 다시 풀기
+
+`GET /practice/progress`는 전체 진도, `categoryId`를 지정하면 해당 분야 진도다.
+
+```jsonc
+{ "data": { "learningCycle": 1, "totalCount": 14, "answeredCount": 10,
+  "remainingCount": 4, "completed": false, "currentSessionId": null } }
+```
+
+진도는 현재 `ACTIVE` 문제 기준이며, 오답도 `answeredCount`에 포함한다. 대상이 0개이면 `completed`는 `false`다. 신규 문제가 활성화되면 완료 상태에서도 남은 문제 수가 늘어난다. `currentSessionId`는 분야 필터와 무관하게 회원의 진행 중 연습 ID다.
+
+`POST /practice/restart`는 전체 분야의 학습 회차를 1 증가시키고 위 전체 진도를 반환한다. 기존 이력과 복습 목록은 보존한다. 진행 중 연습이 있으면 `409 PRACTICE_IN_PROGRESS`다. 이 요청을 재호출하면 새로운 회차로 다시 초기화한다.
+
+`GET /practice/categories`는 `{data: [{categoryId: 1, name: "네트워크"}]}`를 반환한다.
+
+영구 저장은 `practice_progress`, `practice_sessions`, `practice_answers`, `practice_choices`를 사용한다. 기존 DB 적용은 `docs/db/migrations/README.md`를 따른다.
 
 
 ## 7. 결과·복습 API
@@ -703,11 +764,16 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 // 요청
 { "matchId": 101, "questionId": 55 }
 
+// 연습에서 저장할 때 (matchId와 practiceSessionId 중 정확히 하나)
+{ "practiceSessionId": 7, "questionId": 55 }
+
 // 응답 201
 { "data": { "questionId": 55, "savedAt": "2026-11-06T12:06:00+09:00" } }
 ```
 
-`saved_questions`에는 문제 사본이 아니라 문제 ID만 저장한다. 그래서 목록을 조회할 때 원본 문제를 읽어 오며, 숨김(`HIDDEN`) 처리된 문제는 목록에서 제외한다 **[미정]**.
+`saved_questions`에는 문제 사본이 아니라 문제 ID와 출처를 저장한다. 본인이 참가한 경기의 출제 문제 또는 본인 연습에서 제출한 문제만 저장할 수 있다. 출처를 둘 다 지정하거나 생략하면 `400 VALIDATION_FAILED`다. 연습의 미제출 문제는 `403 FORBIDDEN`, 현재 비활성 문제는 `409 QUESTION_UNAVAILABLE`다.
+
+목록은 최신 내용을 반환한다. 숨긴 문제는 제외하지 않고 `available: false`로 표시하며 `content`, `correctChoiceId`, `correctChoiceContent`, `explanation`은 `null`, `choices`는 빈 배열로 반환한다. 회원·문제별로 하나만 저장되므로 다른 연습이나 경기에서 다시 저장해도 `ALREADY_SAVED`다.
 
 | HTTP | 에러 코드 | 상황 |
 | --- | --- | --- |
@@ -726,7 +792,10 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
         "questionId": 55,
         "categoryId": 1,
         "difficulty": "MEDIUM",
+        "available": true,
         "content": "HTTP 상태 코드 401과 403의 차이로 옳은 것은?",
+        "choices": [{ "choiceId": 101, "choiceNo": 1, "content": "401은 인증되지 않음, 403은 인증은 됐지만 권한 없음" }],
+        "correctChoiceId": 101,
         "correctChoiceContent": "401은 인증되지 않음, 403은 인증은 됐지만 권한 없음",
         "explanation": "401은 인증 실패, 403은 인증 후 권한 없음이다.",
         "savedAt": "2026-11-06T12:06:00+09:00"

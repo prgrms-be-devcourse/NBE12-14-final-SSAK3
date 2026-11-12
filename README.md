@@ -66,6 +66,8 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 
 ## 문서
 
+- 연습 백엔드 설계·검증: `docs/practice-design.md`
+- 기존 DB의 연습 스키마 변경 적용: `docs/db/migrations/README.md` (새 서버 실행 전에 적용)
 - 협업 규칙(브랜치·커밋·PR·Jira): `docs/conventions.md`
 - 게임 규칙·점수·레이팅: `docs/game-rules.md`
 - AI 도구(Claude Code 등) 사용 시: 루트의 `CLAUDE.md` / `AGENTS.md`

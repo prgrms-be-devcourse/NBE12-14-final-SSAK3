@@ -43,6 +43,8 @@ public enum ErrorCode {
     NO_MORE_QUESTIONS(HttpStatus.NOT_FOUND, "더 이상 풀 문제가 없습니다."),
     ALREADY_ANSWERED(HttpStatus.CONFLICT, "이미 답안을 제출한 문제입니다."),
     SESSION_FINISHED(HttpStatus.CONFLICT, "이미 종료된 연습 세션입니다."),
+    PRACTICE_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 연습을 먼저 완료하거나 종료해 주세요."),
+    QUESTION_UNAVAILABLE(HttpStatus.CONFLICT, "더 이상 풀 수 없는 문제입니다. 다음 문제를 조회해 주세요."),
 
     // ===== 경기 결과 및 복습 =====
 
