@@ -5,8 +5,6 @@ import com.csmatch.global.websocket.MatchWebSocketHandler;
 import com.csmatch.global.websocket.WebSocketConnections;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
-import java.util.OptionalLong;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
@@ -26,9 +24,8 @@ public class WebSocketConfiguration {
 
     @Bean
     MatchWebSocketHandler matchWebSocketHandler(ObjectMapper mapper,
-            ObjectProvider<AccessTokenVerifier> verifier, WebSocketConnections connections) {
-        // JWT 연동 전에는 모든 토큰을 거절한다. 가짜 검증기는 테스트에서만 제공한다.
-        return new MatchWebSocketHandler(mapper, verifier.getIfAvailable(() -> token -> OptionalLong.empty()),
+            AccessTokenVerifier verifier, WebSocketConnections connections) {
+        return new MatchWebSocketHandler(mapper, verifier,
                 connections, Clock.systemUTC());
     }
 

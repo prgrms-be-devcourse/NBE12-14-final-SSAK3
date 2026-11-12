@@ -51,7 +51,7 @@
 | 코드 | 사유 | 의미 |
 | --- | --- | --- |
 | 1008 | AUTH_REQUIRED | 인증 전 다른 메시지 수신 |
-| 1008 | AUTH_FAILED | 잘못된 토큰·검증기 미연결·인증 제한 시간 경과 등 |
+| 1008 | AUTH_FAILED | 잘못된 토큰·비활성 회원·인증 제한 시간 경과 등 |
 | 1008 | INVALID_MESSAGE / UNSUPPORTED_MESSAGE / TEXT_ONLY | 메시지 형식 또는 타입 위반 |
 | 4000 | AUTH_TIMEOUT | 인증 완료 없이 10초 경과 |
 | 4000 | HEARTBEAT_TIMEOUT | 유효한 PING 없이 15초 경과 |
@@ -61,11 +61,11 @@
 
 인증 실패 상세 사유, 토큰, 메시지 본문은 로그나 응답에 포함하지 않는다.
 
-## 인증 담당 연결 방법 — 미완료
+## JWT 인증 연결
 
-인증 모듈에서 `AccessTokenVerifier` 구현을 Spring Bean으로 제공한다. 정상 액세스 토큰일 때만 양수 사용자 ID를 반환하고, 실패하면 `OptionalLong.empty()`를 반환한다. 서명·만료·발급자·대상·액세스/리프레시 구별·회원 상태 등의 실제 검증 계약은 인증 담당과 맞춘다. JWT를 단순 디코딩한 ID를 반환하면 안 된다.
+인증 모듈의 `JwtAccessTokenVerifier`가 `AccessTokenVerifier`를 구현한다. `JwtTokenService`로 서명·만료·발급자(`csmatch`)·토큰 종류(`access`)·양수 사용자 ID를 검증한 뒤, DB에 해당 회원이 존재하고 상태가 `ACTIVE`인지 확인한다. 성공하면 사용자 ID, 실패하면 `OptionalLong.empty()`를 반환한다.
 
-현재 실제 검증 Bean은 없다. 기본 실행에서는 모든 AUTH가 실패하는 것이 의도한 동작이다. `src/test`의 가짜 검증기로만 연결 성공 흐름을 검증한다. REST 로그인 구현 시 `WebSocketSecurityConfiguration`의 임시 HTTP 보안 체인을 인증 담당 체인과 통합한다. `/ws`의 GET만 인증 없이 핸드셰이크를 허용하며 그 외 HTTP 경로 보호를 유지한다.
+실행 및 통합 테스트 모두 실제 검증 Bean을 사용한다. 가짜 검증 Bean과 기본 거절용 대체 구현은 제거했으며, 검증 Bean이 없으면 시작이 실패한다. 실제 실행의 `JWT_SECRET`은 32바이트 이상이어야 한다. `/ws` GET은 인증 없이 핸드셰이크하고 AUTH 메시지로 인증한다. REST 보안 체인은 회원가입·로그인을 허용하고 보호된 API에 JWT 인증을 적용한다.
 
 브라우저 Origin은 기본적으로 동일 Origin만 허용한다. Vite 개발 서버 등 별도 Origin이 필요하면 `app.websocket.allowed-origins`에 허용할 정확한 Origin을 지정한다(예: `http://localhost:5173`). 와일드카드로 전체 허용하지 않는다.
 
@@ -75,7 +75,7 @@
 
 이벤트는 접속 상태의 사실을 알리는 연결 지점이며 `OPPONENT_STATUS` 메시지를 직접 보내지 않는다. 경기 모듈에서 서버의 경기 참여자 정보를 조회한 뒤 실제 상대에게 `WebSocketConnections.sendToUser`로 보낸다. 클라이언트가 제출한 상대 ID를 신뢰하지 않는다. 이벤트 처리와 재접속이 경합할 수 있으므로 경기 모듈은 sessionId와 최신 연결 상태를 함께 고려해야 한다. 비동기 이벤트 소비 시 특히 과거 종료를 새 연결 종료로 적용하지 않아야 한다.
 
-경기 상태 조회·상대 알림·RESUME·무효 경기 처리·점수 및 레이팅 정산은 구현하지 않았다. SCRUM-55의 실제 JWT 인증 및 상대 알림 완료 조건은 아직 미완료다.
+경기 상태 조회·상대 알림·RESUME·무효 경기 처리·점수 및 레이팅 정산은 구현하지 않았다. JWT 인증 연결은 구현했으며, 상대 알림은 후속 연결이 필요하다.
 
 ## 검증
 
@@ -84,6 +84,8 @@ cd backend
 ./gradlew.bat build --no-daemon
 ```
 
-단위 테스트는 실제 대기 대신 제어 가능한 시간을 사용한다. 인증 제한 시간, 마지막 PING 기준 만료, 토큰 거절, 검증기 예외, 연결 교체, 늦은 종료 콜백, 전송 오류, 동시 전송을 검증한다. 통합 테스트는 임베디드 서버에 실제 WebSocket 연결을 열어 AUTH/PING, 인증 전 거절, 외부 Origin 거절과 HTTP 경로 보호를 확인한다. 기본 컨텍스트 테스트는 실제 JWT 검증기가 없을 때 인증이 거절되는지 확인한다.
+테스트 DB 설정은 [MySQL 테스트 실행 안내](../testing.md)를 따른다. 로컬 MySQL의 테스트 전용 DB를 사용하며 개발 DB와 계정을 분리한다.
 
-Mockito는 `mock-maker-subclass`를 사용한다. Windows 한글 경로에서 inline mock maker의 동적 Java agent 로딩이 실패했고, 현재 테스트는 인터페이스 모킹만 필요하기 때문이다. 이 설정은 final 클래스·static 메서드 모킹을 지원하지 않는다. Java 25 환경에서 빌드 및 테스트 27개 통과를 확인했다. 실행 중 의존성의 Unsafe 및 agent 관련 경고는 남아 있으나 테스트 실패는 없다.
+단위 테스트는 실제 대기 대신 제어 가능한 시간과 Mockito 검증기 모킹을 사용한다. 인증 제한 시간, 마지막 PING 기준 만료, 검증기 예외, 연결 교체, 늦은 종료 콜백, 전송 오류, 동시 전송을 검증한다. 통합 테스트에서는 실제 HTTP 회원가입·로그인 → JWT 발급 → WebSocket AUTH → PING/PONG을 검증한다. 변조·만료 토큰, 탈퇴·삭제된 회원, 인증 전 요청, 외부 Origin과 HTTP 경로 보호도 확인한다. 기본 컨텍스트 테스트는 실제 JWT 검증기의 잘못된 토큰 거절을 확인한다.
+
+Mockito는 `mock-maker-subclass`를 사용한다. Windows 한글 경로에서 inline mock maker의 동적 Java agent 로딩이 실패했고, 현재 테스트는 인터페이스 모킹만 필요하기 때문이다. 이 설정은 final 클래스·static 메서드 모킹을 지원하지 않는다.

@@ -18,6 +18,23 @@ jobs:
   backend:
     name: Backend Build & Test
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-only
+          MYSQL_DATABASE: csmatch_test
+          MYSQL_USER: csmatch_test
+          MYSQL_PASSWORD: ci-test-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -pci-root-only"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      TEST_MYSQL_PASSWORD: ci-test-only
 
     defaults:
       run:
@@ -35,6 +52,9 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Initialize test databases
+        run: docker exec -i -e MYSQL_PWD=ci-root-only ${{ job.services.mysql.id }} mysql -uroot < ../docs/db/init-test-databases.sql
 
       - name: Build and Test
         run: ./gradlew build --no-daemon
