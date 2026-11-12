@@ -1,5 +1,5 @@
 CREATE TABLE `users` (
-  `user_id` bigint PRIMARY KEY NOT NULL COMMENT '회원 ID',
+  `user_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '회원 ID',
   `email` varchar(255) UNIQUE NOT NULL COMMENT '로그인 이메일',
   `password_hash` varchar(255) COMMENT '비밀번호 해시 (소셜 로그인 시 NULL) 소셜 로그인 미정',
   `nickname` varchar(30) UNIQUE NOT NULL COMMENT '닉네임',
@@ -39,7 +39,7 @@ CREATE TABLE `rating_tiers` (
 );
 
 CREATE TABLE `questions` (
-  `question_id` bigint PRIMARY KEY NOT NULL COMMENT '문제 ID',
+  `question_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '문제 ID',
   `category_id` int NOT NULL COMMENT '분야',
   `difficulty` varchar(10) NOT NULL COMMENT '쉬움/보통/어려움',
   `content` text NOT NULL COMMENT '문제 본문',
@@ -58,7 +58,7 @@ CREATE TABLE `categories` (
 );
 
 CREATE TABLE `match_rounds` (
-  `round_id` bigint PRIMARY KEY NOT NULL COMMENT '라운드 ID',
+  `round_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '라운드 ID',
   `match_id` bigint NOT NULL COMMENT '경기',
   `round_no` int NOT NULL COMMENT '라운드 번호',
   `question_id` bigint NOT NULL COMMENT '출제 문제 (출제된 문제는 수정 금지)',
@@ -72,7 +72,7 @@ CREATE TABLE `match_rounds` (
 );
 
 CREATE TABLE `practice_sessions` (
-  `session_id` bigint PRIMARY KEY NOT NULL COMMENT '연습 ID',
+  `session_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '연습 ID',
   `user_id` bigint NOT NULL COMMENT '회원',
   `category_id` int COMMENT '선택 분야',
   `question_count` int NOT NULL COMMENT '문제 수 미정',
@@ -83,7 +83,7 @@ CREATE TABLE `practice_sessions` (
 );
 
 CREATE TABLE `question_reports` (
-  `report_id` bigint PRIMARY KEY NOT NULL COMMENT '신고 ID',
+  `report_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '신고 ID',
   `question_id` bigint NOT NULL COMMENT '신고 대상 문제',
   `reporter_id` bigint NOT NULL COMMENT '신고자',
   `match_id` bigint NOT NULL COMMENT '신고가 발생한 경기',
@@ -95,7 +95,7 @@ CREATE TABLE `question_reports` (
 );
 
 CREATE TABLE `round_answers` (
-  `answer_id` bigint PRIMARY KEY NOT NULL COMMENT '제출 ID',
+  `answer_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '제출 ID',
   `round_id` bigint NOT NULL COMMENT '라운드',
   `user_id` bigint NOT NULL COMMENT '제출자',
   `choice_id` bigint NOT NULL COMMENT '선택한 보기',
@@ -107,7 +107,7 @@ CREATE TABLE `round_answers` (
 );
 
 CREATE TABLE `matches` (
-  `match_id` bigint PRIMARY KEY NOT NULL COMMENT '경기 ID',
+  `match_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '경기 ID',
   `match_type` varchar(10) NOT NULL COMMENT 'RATED(레이팅) / UNRATED(비레이팅)',
   `status` varchar(20) NOT NULL DEFAULT 'PREPARING' COMMENT 'PREPARING(입장·준비 대기)/PLAYING/FINISHED/CANCELED. 매칭 대기열은 DB 밖에서 관리',
   `total_rounds` int NOT NULL DEFAULT 10 COMMENT '총 라운드 수',
@@ -118,7 +118,7 @@ CREATE TABLE `matches` (
 );
 
 CREATE TABLE `rating_history` (
-  `history_id` bigint PRIMARY KEY NOT NULL COMMENT '이력 ID',
+  `history_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '이력 ID',
   `user_id` bigint NOT NULL COMMENT '회원',
   `match_id` bigint NOT NULL COMMENT '관련 경기',
   `delta` int NOT NULL COMMENT '변동값',
@@ -129,7 +129,7 @@ CREATE TABLE `rating_history` (
 );
 
 CREATE TABLE `question_choices` (
-  `choice_id` bigint PRIMARY KEY NOT NULL COMMENT '보기 ID',
+  `choice_id` bigint PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '보기 ID',
   `question_id` bigint NOT NULL COMMENT '문제',
   `choice_no` tinyint NOT NULL COMMENT '보기 번호 1~4',
   `content` varchar(500) NOT NULL COMMENT '보기 내용',
@@ -137,7 +137,7 @@ CREATE TABLE `question_choices` (
 );
 
 CREATE TABLE `concepts` (
-  `concept_id` int PRIMARY KEY NOT NULL COMMENT '개념 ID',
+  `concept_id` int PRIMARY KEY NOT NULL AUTO_INCREMENT COMMENT '개념 ID',
   `category_id` int NOT NULL COMMENT '분야',
   `name` varchar(100) UNIQUE NOT NULL COMMENT '개념명',
   `description` text NOT NULL COMMENT 'LLM 문제 생성의 근거가 되는 개념 설명',
