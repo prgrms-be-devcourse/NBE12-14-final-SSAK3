@@ -6,13 +6,18 @@
 - `docs/game-rules.md`: 게임 규칙·점수·레이팅
 - `docs/conventions.md`: 브랜치·커밋·PR·Jira 규칙
 - `README.md`: 폴더 구조, 실행 방법
+- DB 스키마: `docs/db/schema.sql` (ERD 기반 SQL)
+- API 명세(REST·WebSocket): `docs/api-spec.md`
 - ERD: https://dbdiagram.io/d/%EC%8B%B9%EC%93%B0%EB%A6%AC-6af3e06d063ad9ee168b99b8
-- API 명세(REST·WebSocket): https://claude.ai/artifact/VGMk2169cgJ9CYqfTdnmGn
+- API 명세 원본(REST·WebSocket): https://claude.ai/artifact/VGMk2169cgJ9CYqfTdnmGn
 
 문서끼리 어긋나거나 정해지지 않은 값이 있을 때의 원칙:
-- **ERD 가 최우선**이다. 테이블·컬럼·코드값이 API 명세, 게임 규칙과 다르면 ERD 를 따른다.
-- 명세에 `[미정]` 으로 남은 항목은 **작업하는 개발자가 재량으로 정한다.** AI 는 물어보며 막히지 말고, 가장 단순한 방식으로 구현하고 PR 본문 "리뷰어에게" 에 어떻게 정했는지 적는다.
-- 단, 확정된 값(`docs/game-rules.md`)과 "범위 밖" 기능은 바꾸지 않는다.
+- DB 테이블·컬럼·제약조건은 `docs/db/schema.sql`을 따른다.
+- 게임 규칙·점수·레이팅은 `docs/game-rules.md`를 따른다.
+- REST API 및 WebSocket 메시지 형식은 `docs/api-spec.md`를 따른다.
+- 문서 간 실제 충돌은 PR에서 공유하고 팀원과 조율한다.
+- `[미정]` 항목은 기존 팀 규칙에 따라 개발자가 결정하고 PR 본문 "리뷰어에게"에 기록한다.
+- 확정된 게임 규칙과 범위 밖 기능은 임의로 변경하지 않는다.
 
 ## 기술 스택
 
@@ -36,7 +41,12 @@ cd frontend && npm install && npm run dev
   - 도메인: auth, user, rating, matchmaking, match, question, review, report, practice, admin
   - 공통: `com.csmatch.global.{config,exception,response,security,websocket,util}`
 - 테스트는 `backend/src/test/java/com/csmatch/<도메인>/` 에 같은 구조로 둔다.
-- 설정: `application.yml`(공통), `-local`, `-prod`(환경 변수로만 주입). 스키마는 `ddl-auto: none`.
+- 설정: `application.yml`(공통), `application-local.yml`(로컬), `application-prod.yml`(배포).
+- JPA 스키마 관리:
+  - 공통: `ddl-auto: validate`
+  - 로컬: `ddl-auto: update`
+  - 배포: `ddl-auto: validate`
+- DB 스키마의 기준은 `docs/db/schema.sql`이며, 배포 환경에서는 Hibernate가 테이블을 자동 수정하지 않는다.
 
 ## 지켜야 할 것
 
