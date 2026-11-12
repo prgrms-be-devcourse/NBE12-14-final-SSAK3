@@ -6,7 +6,6 @@ spring:
     default: local
   jpa:
     hibernate:
-      # SCRUM-84에서 스키마 적용 방식 결정 전까지 none (Flyway 미사용)
       ddl-auto: none
     open-in-view: false
     properties:

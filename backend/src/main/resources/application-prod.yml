@@ -10,6 +10,9 @@ spring:
       port: ${REDIS_PORT:6379}
   jpa:
     show-sql: false
+    hibernate:
+      # 테이블은 ERD 내보내기 SQL 로 직접 만들고, 엔티티와 일치하는지만 검사한다
+      ddl-auto: validate
 
 logging:
   level:
