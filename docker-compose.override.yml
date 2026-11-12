@@ -7,6 +7,8 @@ services:
     volumes:
       # 빈 DB 볼륨을 처음 초기화할 때 ERD 내보내기 SQL 실행
       - ./docs/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # 스키마 다음에 초기 데이터(categories, concepts) 입력
+      - ./docs/db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
     ports:
       - "127.0.0.1:3306:3306"
 
