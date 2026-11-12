@@ -114,7 +114,7 @@ jobs:
 
       - name: Check Services
         run: |
-          curl --retry 30 --retry-connrefused --retry-delay 3 -fsS http://localhost:8080/actuator/health | grep -q '"status":"UP"'
+          curl --retry 30 --retry-all-errors --retry-delay 3 -fsS http://localhost:8080/actuator/health | grep -q '"status":"UP"'
           curl -fsS http://localhost/ -o /dev/null
 
       - name: Show Logs on Failure
