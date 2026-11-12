@@ -1,6 +1,6 @@
 -- 초기 데이터: categories, concepts (SCRUM-92)
 -- docs/concepts.md 에서 생성했다. 개념을 고칠 때는 concepts.md 를 고친 뒤 다시 생성한다.
--- schema.sql 의 PK 에 AUTO_INCREMENT 가 없어서 id 를 직접 지정한다. concept_id = (category_id - 1) * 10 + 분야 안 순번
+-- id 를 직접 지정한다 (AUTO_INCREMENT 컬럼이어도 값을 지정할 수 있다). concept_id = (category_id - 1) * 10 + 분야 안 순번
 -- 빈 DB 볼륨의 최초 초기화 때만 실행된다 (docker-entrypoint-initdb.d).
 SET NAMES utf8mb4;
 
