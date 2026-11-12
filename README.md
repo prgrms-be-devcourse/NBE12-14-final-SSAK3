@@ -62,7 +62,7 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 - DB 테스트 환경 H2 / Testcontainers (SCRUM-88) — 현재 H2 임시
 - 코드 컨벤션 (브랜치·커밋·PR 규칙은 `docs/conventions.md` 에 확정)
 - 프론트 UI 라이브러리·JS/TS 여부 (SCRUM-98)
-- CI: 담당자 확정 전까지 `.github/workflows` 없음
+- CI: `.github/workflows/ci.yml` (PR·push 때 백엔드 빌드·테스트, 프론트 빌드)
 
 ## 문서
 

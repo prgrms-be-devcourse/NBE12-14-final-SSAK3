@@ -56,5 +56,5 @@ cd frontend && npm install && npm run dev
 - **LLM 호출은 배치에서만.** 대결 중에는 호출하지 않는다.
 - **시크릿:** `.env`, API 키, JWT 비밀값은 커밋·로그·응답에 남기지 않는다. 비밀번호는 `PasswordEncoder`(BCrypt) 로만 저장한다.
 - **리뷰:** PR 은 최소 1명 승인 후 머지한다.
-- **CI 없음:** `.github/workflows` 는 담당자 확정 전까지 만들지 않는다. 머지 전 `./gradlew build` 를 직접 돌린다.
+- **CI:** `.github/workflows/ci.yml` 이 PR·push 때 백엔드 빌드·테스트와 프론트 빌드를 돌린다. 머지 전 `./gradlew build` 를 먼저 돌려 둔다.
 - 새 코드는 주변 코드의 이름·구조·주석 스타일을 따른다. 요청받지 않은 리팩터링·기능 추가는 하지 않는다.
