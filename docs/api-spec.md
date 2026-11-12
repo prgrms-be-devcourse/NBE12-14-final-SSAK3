@@ -48,7 +48,7 @@ ERD의 컬럼 값과 API 값은 아래로 통일한다.
 
 | 대상 | 값 |
 | --- | --- |
-| 난이도 `difficulty` | `쉬움`, `보통`, `어려움` |
+| 난이도 `difficulty` | `EASY`(쉬움), `MEDIUM`(보통), `HARD`(어려움) |
 | 경기 유형 `matchType` | `RATED`(레이팅), `UNRATED`(비레이팅) |
 | 경기 상태 | `PREPARING`, `PLAYING`, `FINISHED`, `CANCELED` |
 | 경기 결과 `result` | `WIN`, `LOSE`, `DRAW`, `FORFEIT` |
@@ -349,8 +349,8 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 | --- | --- |
 | 총 라운드 | 10 (`matches.total_rounds`) |
 | 라운드 제한 시간 | 20초 (`matches.round_time_limit_sec`) |
-| 정답 점수 | 쉬움 +20, 보통 +30, 어려움 +40. 출제 시점의 값이 `match_rounds.correct_score`에 저장된다 |
-| 오답 감점 | 쉬움 −10, 보통 −15, 어려움 −20 (`wrong_score_delta`). 제출마다 감점하고 점수는 음수가 될 수 있다 |
+| 정답 점수 | `EASY` +20, `MEDIUM` +30, `HARD` +40. 출제 시점의 값이 `match_rounds.correct_score`에 저장된다 |
+| 오답 감점 | `EASY` −10, `MEDIUM` −15, `HARD` −20 (`wrong_score_delta`). 제출마다 감점하고 점수는 음수가 될 수 있다 |
 | 오답 후 | 오답 판정 시 난이도에 따른 점수를 감점하고, 판정이 확정된 시각부터 3초간 신규 답안 제출을 제한한다. 3초가 지나고 라운드가 아직 진행 중이면 다시 제출할 수 있다. |
 | 득점 | 라운드에서 가장 먼저 처리된 정답 1건만 득점(`CORRECT`)하고, 이후 정답은 `LATE`로 점수가 없다 |
 | 처리 순서 | 서버가 라운드 안에서 처리 순번(`received_sequence`)을 매기고 그 순서로 판정한다 |
@@ -418,7 +418,7 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
   "payload": {
     "matchId": 101,
     "roundNo": 3,
-    "question": { "questionId": 55, "categoryId": 3, "difficulty": "보통", "content": "교착 상태 발생의 4가지 필요 조건에 해당하지 않는 것은?" },
+    "question": { "questionId": 55, "categoryId": 3, "difficulty": "MEDIUM", "content": "교착 상태 발생의 4가지 필요 조건에 해당하지 않는 것은?" },
     "choices": [ { "choiceId": 5521, "choiceNo": 1, "content": "상호 배제" }, { "choiceId": 5523, "choiceNo": 2, "content": "선점" } ],
     "correctScore": 30,
     "wrongScoreDelta": -15,
@@ -588,7 +588,7 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
   "data": {
     "index": 4,
     "total": 10,
-    "question": { "questionId": 12, "categoryId": 1, "difficulty": "쉬움", "content": "HTTP의 기본 포트 번호는?" },
+    "question": { "questionId": 12, "categoryId": 1, "difficulty": "EASY", "content": "HTTP의 기본 포트 번호는?" },
     "choices": [ { "choiceId": 101, "choiceNo": 1, "content": "80" }, { "choiceId": 102, "choiceNo": 2, "content": "443" } ]
   }
 }
@@ -684,7 +684,7 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
     {
       "questionId": 55,
       "categoryId": 1,
-      "difficulty": "보통",
+      "difficulty": "MEDIUM",
       "content": "HTTP 상태 코드 401과 403의 차이로 옳은 것은?",
       "myChoiceContent": "401은 서버 오류이고 403은 클라이언트 오류이다",
       "correctChoiceContent": "401은 인증되지 않음, 403은 인증은 됐지만 권한 없음",
@@ -725,7 +725,7 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
       {
         "questionId": 55,
         "categoryId": 1,
-        "difficulty": "보통",
+        "difficulty": "MEDIUM",
         "content": "HTTP 상태 코드 401과 403의 차이로 옳은 것은?",
         "correctChoiceContent": "401은 인증되지 않음, 403은 인증은 됐지만 권한 없음",
         "explanation": "401은 인증 실패, 403은 인증 후 권한 없음이다.",
@@ -801,7 +801,7 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
 {
   "data": {
     "items": [
-      { "questionId": 102, "categoryId": 5, "difficulty": "어려움", "content": "복합 인덱스 (a, b, c)가 있을 때...", "status": "ACTIVE", "source": "AI", "reportCount": 1 }
+      { "questionId": 102, "categoryId": 5, "difficulty": "HARD", "content": "복합 인덱스 (a, b, c)가 있을 때...", "status": "ACTIVE", "source": "AI", "reportCount": 1 }
     ],
     "page": 0, "size": 20, "totalElements": 1
   }
@@ -818,7 +818,7 @@ WebSocket 연결 끊김 등으로 `MATCH_FOUND` 메시지를 수신하지 못한
   "data": {
     "questionId": 103,
     "categoryId": 3,
-    "difficulty": "보통",
+    "difficulty": "MEDIUM",
     "content": "교착 상태 발생의 4가지 필요 조건에 해당하지 않는 것은?",
     "choices": [
       { "choiceId": 1, "choiceNo": 1, "content": "선점", "isCorrect": true },
@@ -841,7 +841,7 @@ AI 생성 문제의 근거 개념은 이미 `concepts`와 `questions.concept_id`
 // 요청
 {
   "categoryId": 1,
-  "difficulty": "쉬움",
+  "difficulty": "EASY",
   "content": "HTTP 상태 코드 404가 의미하는 것은?",
   "choices": [
     { "choiceNo": 1, "content": "요청한 리소스를 찾을 수 없음", "isCorrect": true },
