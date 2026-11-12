@@ -1,5 +1,7 @@
 package com.csmatch.global.websocket;
 
+import com.csmatch.global.exception.ErrorCode;
+import com.csmatch.global.response.ErrorResponse;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -92,6 +94,13 @@ public class MatchWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void reject(WebSocketSession session, String code) {
+        ErrorResponse.ErrorDetail error = switch (code) {
+            case "AUTH_REQUIRED", "AUTH_FAILED" -> ErrorResponse.of(ErrorCode.AUTH_REQUIRED).error();
+            case "HEARTBEAT_TIMEOUT" -> new ErrorResponse.ErrorDetail(code, "연결 유지 시간이 초과되었습니다.");
+            default -> ErrorResponse.of(ErrorCode.VALIDATION_FAILED).error();
+        };
+        // REST의 error 래퍼 대신 WebSocket의 type/payload 계약을 유지한다.
+        connections.send(session.getId(), "ERROR", error);
         connections.disconnect(session.getId(), new CloseStatus(1008, code));
     }
 

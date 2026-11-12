@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -72,9 +73,18 @@ class MatchWebSocketHandlerTests {
             "{\"type\":\"AUTH\",\"payload\":{\"accessToken\":\"valid\"}} {}"})
     void invalidOrUnauthenticatedMessagesAreClosed(String input) throws Exception {
         var session = session("one");
+        var sent = capture(session);
         message(session, input);
-        verify(session).close(any(CloseStatus.class));
-        verify(session, never()).sendMessage(any());
+        var order = inOrder(session);
+        order.verify(session).sendMessage(any(TextMessage.class));
+        order.verify(session).close(any(CloseStatus.class));
+        assertThat(sent).hasSize(1);
+        var error = mapper.readTree(sent.getFirst());
+        assertThat(error.path("type").asText()).isEqualTo("ERROR");
+        assertThat(error.path("payload").path("code").asText()).isIn("AUTH_REQUIRED", "VALIDATION_FAILED");
+        assertThat(error.path("payload").path("message").asText()).isNotBlank();
+        assertThat(error.has("error")).isFalse();
+        assertThat(error.path("payload").has("error")).isFalse();
         assertThat(connections.isAuthenticated("one")).isFalse();
         assertThat(events).isEmpty();
     }
@@ -82,13 +92,19 @@ class MatchWebSocketHandlerTests {
     @Test
     void invalidTokenAndVerifierFailureDoNotLeakDetails() throws Exception {
         var invalid = session("invalid");
+        var invalidSent = capture(invalid);
         auth(invalid, "invalid");
         verify(invalid).close(new CloseStatus(1008, "AUTH_FAILED"));
         var broken = session("broken");
+        var brokenSent = capture(broken);
         when(verifier.verify("secret")).thenThrow(new IllegalArgumentException("secret"));
         auth(broken, "secret");
         verify(broken).close(new CloseStatus(1008, "AUTH_FAILED"));
-        verify(broken, never()).sendMessage(any());
+        assertThat(invalidSent).hasSize(1);
+        assertThat(brokenSent).containsExactlyElementsOf(invalidSent);
+        assertThat(brokenSent.getFirst()).doesNotContain("secret", "invalid", "IllegalArgumentException");
+        assertThat(mapper.readTree(brokenSent.getFirst()).path("payload").path("code").asText())
+                .isEqualTo("AUTH_REQUIRED");
     }
 
     @Test
@@ -145,7 +161,10 @@ class MatchWebSocketHandlerTests {
         auth(session, "valid");
         nanos.set(Duration.ofSeconds(15).toNanos());
         message(session, "{\"type\":\"PING\",\"payload\":{}}");
-        assertThat(sent).hasSize(1);
+        assertThat(sent).hasSize(2);
+        assertThat(mapper.readTree(sent.getLast()).path("type").asText()).isEqualTo("ERROR");
+        assertThat(mapper.readTree(sent.getLast()).path("payload").path("code").asText())
+                .isEqualTo("HEARTBEAT_TIMEOUT");
         assertThat(connections.isAuthenticated("one")).isFalse();
     }
 
@@ -191,6 +210,17 @@ class MatchWebSocketHandlerTests {
         auth(session, "valid");
         auth(session, "valid");
         verify(session).close(new CloseStatus(1008, "UNSUPPORTED_MESSAGE"));
+    }
+
+    @Test
+    void errorSendFailureStillCleansUpConnection() throws Exception {
+        var session = session("one");
+        auth(session, "valid");
+        doThrow(new IOException()).when(session).sendMessage(any());
+        message(session, "{\"type\":\"UNKNOWN\",\"payload\":{}}");
+        assertThat(connections.isAuthenticated("one")).isFalse();
+        verify(session).close(CloseStatus.SERVER_ERROR);
+        assertThat(events).hasSize(1);
     }
 
     @Test
