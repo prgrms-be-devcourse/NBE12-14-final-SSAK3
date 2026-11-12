@@ -6,7 +6,8 @@ spring:
     default: local
   jpa:
     hibernate:
-      ddl-auto: none
+      # 테이블은 ERD 내보내기 SQL로 직접 만들고, 엔티티와 일치하는지만 검사한다.
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate.jdbc.time_zone: Asia/Seoul
