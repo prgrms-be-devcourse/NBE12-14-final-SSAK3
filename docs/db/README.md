@@ -18,7 +18,7 @@ MySQL은 `127.0.0.1:3306`, Redis는 `127.0.0.1:6379`로 연결한다. DB명·계
 
 최초 테이블은 ERD SQL로 생성한다. 로컬 프로파일은 팀 설정인 `ddl-auto: update`를 유지하므로 이후 엔티티에 따라 테이블이 자동 생성·변경될 수 있다. 운영 프로파일은 `ddl-auto: validate`로 매핑만 검사한다. 현재 엔티티가 없으므로 앱 실행 성공만으로 전체 스키마를 검증했다고 볼 수 없다. 인덱스·외래키 등의 검증도 별도로 필요하다. 기존 H2 테스트 프로파일은 MySQL 매핑 검증을 대체하지 않는다.
 
-SQL에는 14개 테이블과 외래키·유일성 제약이 있고 초기 데이터는 없다. 단일 PK에 `AUTO_INCREMENT`가 없으므로 엔티티 ID 생성 전략을 임의로 `IDENTITY`로 정하지 않는다.
+`schema.sql`에는 14개 테이블과 외래키·유일성 제약이 있고 초기 데이터는 없다. 초기 데이터(`categories` 5건, `concepts` 50건)는 `seed.sql`에 있으며 `docs/concepts.md`에서 생성한 파일이다. 로컬 override가 `schema.sql` 다음(`02-seed.sql`)에 실행한다. 배포 서버는 SQL이 자동 실행되지 않으므로 첫 배포 때 `schema.sql`, `seed.sql` 순서로 한 번 직접 실행한다. 단일 PK에 `AUTO_INCREMENT`가 없으므로 엔티티 ID 생성 전략을 임의로 `IDENTITY`로 정하지 않는다.
 
 ## 변경 또는 기존 DB 사용
 
