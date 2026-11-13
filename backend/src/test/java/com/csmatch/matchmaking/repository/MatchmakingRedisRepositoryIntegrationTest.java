@@ -4,33 +4,37 @@ import com.csmatch.matchmaking.entity.MatchType;
 import com.csmatch.matchmaking.entity.MatchmakingStatus;
 import com.csmatch.matchmaking.entity.QueueRegistrationResult;
 import com.csmatch.matchmaking.entity.QueueRemovalResult;
+import com.csmatch.matchmaking.dto.MatchCandidate;
+import com.csmatch.matchmaking.dto.ReservedMatchPair;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
-@ActiveProfiles("test")
 class MatchmakingRedisRepositoryIntegrationTest {
     private static final String KEY_PREFIX = "test:csmatch:matchmaking";
     private static final Instant JOINED_AT = Instant.parse("2026-11-12T00:00:00Z");
 
-    @Autowired
     private StringRedisTemplate redisTemplate;
+    private LettuceConnectionFactory connectionFactory;
 
     private MatchmakingRedisRepository repository;
 
     @BeforeEach
     void setUp() {
+        connectionFactory = new LettuceConnectionFactory(System.getenv().getOrDefault("REDIS_HOST", "localhost"), 6379);
+        connectionFactory.afterPropertiesSet();
+        redisTemplate = new StringRedisTemplate(connectionFactory);
+        redisTemplate.afterPropertiesSet();
         repository = new MatchmakingRedisRepository(redisTemplate, KEY_PREFIX);
         clearTestKeys();
     }
@@ -38,6 +42,7 @@ class MatchmakingRedisRepositoryIntegrationTest {
     @AfterEach
     void tearDown() {
         clearTestKeys();
+        connectionFactory.destroy();
     }
 
     @Test
@@ -166,6 +171,220 @@ class MatchmakingRedisRepositoryIntegrationTest {
                     QueueRegistrationResult.ALREADY_WAITING);
             assertThat(redisTemplate.opsForZSet().zCard(KEY_PREFIX + ":queue:rated")).isEqualTo(1L);
         }
+    }
+
+    @Test
+    void findsRatedCandidatesOnlyWhenBothUsersAcceptTheRatingDifference() {
+        Instant now = JOINED_AT.plusSeconds(20);
+        repository.registerWaiting(201L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(202L, MatchType.RATED, 1_300, JOINED_AT);
+        repository.registerWaiting(203L, MatchType.RATED, 1_301, JOINED_AT);
+        repository.registerWaiting(204L, MatchType.RATED, 1_200, now);
+
+        List<MatchCandidate> candidates = repository.findRatedCandidates(201L, now);
+
+        assertThat(candidates).extracting(MatchCandidate::userId).containsExactly(202L);
+    }
+
+    @Test
+    void findsOnlyValidUnratedCandidateAndExcludesRequester() {
+        repository.registerWaiting(211L, MatchType.UNRATED, 1_000, JOINED_AT);
+        repository.registerWaiting(212L, MatchType.UNRATED, 2_000, JOINED_AT);
+        repository.registerWaiting(213L, MatchType.UNRATED, 1_500, JOINED_AT);
+        repository.registerWaiting(214L, MatchType.RATED, 1_000, JOINED_AT);
+        redisTemplate.delete(KEY_PREFIX + ":state:213");
+
+        Optional<MatchCandidate> candidate = repository.findUnratedCandidate(211L);
+
+        assertThat(candidate).isPresent();
+        assertThat(candidate.orElseThrow().userId()).isEqualTo(212L);
+    }
+
+    @Test
+    void reservesBothWaitingUsersAtomicallyAndCanReleaseTheReservation() {
+        repository.registerWaiting(221L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(222L, MatchType.RATED, 1_000, JOINED_AT);
+
+        ReservedMatchPair reservation = repository.reservePair(221L, 222L, MatchType.RATED).orElseThrow();
+
+        assertThat(repository.findState(221L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(repository.findState(222L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "221")).isNull();
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "222")).isNull();
+        assertThat(repository.removeWaiting(221L)).isEqualTo(QueueRemovalResult.RESERVED);
+
+        assertThat(repository.releaseReservation(reservation)).isTrue();
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "221")).isEqualTo(1_000D);
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "222")).isEqualTo(1_000D);
+    }
+
+    @Test
+    void confirmsReservationAsMatchedAndStoresTheSameMatchIdForBothUsers() {
+        repository.registerWaiting(225L, MatchType.UNRATED, 1_000, JOINED_AT);
+        repository.registerWaiting(226L, MatchType.UNRATED, 1_500, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(225L, 226L, MatchType.UNRATED).orElseThrow();
+
+        assertThat(repository.confirmMatch(reservation, 901L)).isTrue();
+        assertThat(repository.findState(225L))
+                .extracting(state -> state.status(), state -> state.matchType(), state -> state.matchId())
+                .containsExactly(MatchmakingStatus.MATCHED, MatchType.UNRATED, 901L);
+        assertThat(repository.findState(226L))
+                .extracting(state -> state.status(), state -> state.matchType(), state -> state.matchId())
+                .containsExactly(MatchmakingStatus.MATCHED, MatchType.UNRATED, 901L);
+        assertThat(redisTemplate.opsForSet().isMember(KEY_PREFIX + ":queue:unrated", "225")).isFalse();
+        assertThat(redisTemplate.opsForSet().isMember(KEY_PREFIX + ":queue:unrated", "226")).isFalse();
+        assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:225")).isFalse();
+        assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:226")).isFalse();
+    }
+
+    @Test
+    void doesNotConfirmReservationWithWrongToken() {
+        repository.registerWaiting(227L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(228L, MatchType.RATED, 1_000, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(227L, 228L, MatchType.RATED).orElseThrow();
+        ReservedMatchPair wrongToken = new ReservedMatchPair(227L, 228L, MatchType.RATED, "wrong-token");
+
+        assertThat(repository.confirmMatch(wrongToken, 902L)).isFalse();
+        assertThat(repository.findState(227L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(repository.findState(228L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:227")).isTrue();
+        assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:228")).isTrue();
+        assertThat(repository.confirmMatch(reservation, 902L)).isTrue();
+    }
+
+    @Test
+    void confirmsTheSameMatchIdIdempotentlyButRejectsAnotherMatchId() {
+        repository.registerWaiting(229L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(230L, MatchType.RATED, 1_000, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(229L, 230L, MatchType.RATED).orElseThrow();
+
+        assertThat(repository.confirmMatch(reservation, 903L)).isTrue();
+        assertThat(repository.confirmMatch(reservation, 903L)).isTrue();
+        assertThat(repository.confirmMatch(reservation, 904L)).isFalse();
+        assertThat(repository.findState(229L).matchId()).isEqualTo(903L);
+        assertThat(repository.findState(230L).matchId()).isEqualTo(903L);
+    }
+
+    @Test
+    void doesNotConfirmAnAlreadyMatchedPairWithAnotherReservationToken() {
+        repository.registerWaiting(237L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(238L, MatchType.RATED, 1_000, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(237L, 238L, MatchType.RATED).orElseThrow();
+
+        assertThat(repository.confirmMatch(reservation, 907L)).isTrue();
+        assertThat(repository.confirmMatch(
+                new ReservedMatchPair(237L, 238L, MatchType.RATED, "wrong-token"), 907L)).isFalse();
+        assertThat(repository.findState(237L).matchId()).isEqualTo(907L);
+        assertThat(repository.findState(238L).matchId()).isEqualTo(907L);
+    }
+
+    @Test
+    void doesNotConfirmAReleasedReservation() {
+        repository.registerWaiting(233L, MatchType.UNRATED, 1_000, JOINED_AT);
+        repository.registerWaiting(234L, MatchType.UNRATED, 1_000, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(233L, 234L, MatchType.UNRATED).orElseThrow();
+
+        assertThat(repository.releaseReservation(reservation)).isTrue();
+        assertThat(repository.confirmMatch(reservation, 905L)).isFalse();
+        assertThat(repository.findState(233L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(repository.findState(234L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(redisTemplate.opsForSet().isMember(KEY_PREFIX + ":queue:unrated", "233")).isTrue();
+        assertThat(redisTemplate.opsForSet().isMember(KEY_PREFIX + ":queue:unrated", "234")).isTrue();
+    }
+
+    @Test
+    void resolvesOnlyTheUserWithAnExistingActiveMatchAndRestoresTheOtherUser() {
+        repository.registerWaiting(235L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(236L, MatchType.RATED, 1_100, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(235L, 236L, MatchType.RATED).orElseThrow();
+
+        assertThat(repository.resolveReservationAfterActiveMatches(
+                reservation, 906L, MatchType.UNRATED, null, null)).isTrue();
+        assertThat(repository.findState(235L))
+                .extracting(state -> state.status(), state -> state.matchType(), state -> state.matchId())
+                .containsExactly(MatchmakingStatus.MATCHED, MatchType.UNRATED, 906L);
+        assertThat(repository.findState(236L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "235")).isNull();
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "236")).isEqualTo(1_100D);
+        assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:235")).isFalse();
+        assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:236")).isFalse();
+    }
+
+    @Test
+    void reservationFailureKeepsBothUsersInTheirOriginalWaitingQueues() {
+        repository.registerWaiting(231L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(232L, MatchType.UNRATED, 1_000, JOINED_AT);
+
+        Optional<ReservedMatchPair> reservation = repository.reservePair(231L, 232L, MatchType.RATED);
+
+        assertThat(reservation).isEmpty();
+        assertThat(repository.findState(231L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(repository.findState(232L).status()).isEqualTo(MatchmakingStatus.WAITING);
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "231")).isEqualTo(1_000D);
+        assertThat(redisTemplate.opsForSet().isMember(KEY_PREFIX + ":queue:unrated", "232")).isTrue();
+    }
+
+    @Test
+    void concurrentReservationsCannotReserveTheSameUserTwice() throws Exception {
+        repository.registerWaiting(241L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(242L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(243L, MatchType.RATED, 1_000, JOINED_AT);
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            List<Callable<Optional<ReservedMatchPair>>> tasks = List.of(
+                    () -> reserveAfterBarrier(barrier, 241L, 242L),
+                    () -> reserveAfterBarrier(barrier, 243L, 242L));
+
+            List<Optional<ReservedMatchPair>> reservations = executor.invokeAll(tasks).stream()
+                    .map(future -> {
+                        try {
+                            return future.get();
+                        } catch (Exception exception) {
+                            throw new IllegalStateException(exception);
+                        }
+                    })
+                    .toList();
+
+            assertThat(reservations).filteredOn(Optional::isPresent).hasSize(1);
+            assertThat(repository.removeWaiting(242L)).isEqualTo(QueueRemovalResult.RESERVED);
+            assertThat(redisTemplate.opsForZSet().zCard(KEY_PREFIX + ":queue:rated")).isEqualTo(1L);
+        }
+    }
+
+    @Test
+    void cancellationAndReservationLeaveEitherAReservationOrOneCancelledUser() throws Exception {
+        repository.registerWaiting(251L, MatchType.UNRATED, 1_000, JOINED_AT);
+        repository.registerWaiting(252L, MatchType.UNRATED, 1_000, JOINED_AT);
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var reservationFuture = executor.submit(() -> {
+                barrier.await();
+                return repository.reservePair(251L, 252L, MatchType.UNRATED);
+            });
+            var cancellationFuture = executor.submit(() -> {
+                barrier.await();
+                return repository.removeWaiting(252L);
+            });
+
+            Optional<ReservedMatchPair> reservation = reservationFuture.get();
+            QueueRemovalResult cancellation = cancellationFuture.get();
+            if (reservation.isPresent()) {
+                assertThat(cancellation).isEqualTo(QueueRemovalResult.RESERVED);
+                assertThat(redisTemplate.opsForSet().members(KEY_PREFIX + ":queue:unrated")).isEmpty();
+            } else {
+                assertThat(cancellation).isEqualTo(QueueRemovalResult.REMOVED);
+                assertThat(repository.findState(251L).status()).isEqualTo(MatchmakingStatus.WAITING);
+                assertThat(redisTemplate.opsForSet().isMember(KEY_PREFIX + ":queue:unrated", "251")).isTrue();
+            }
+        }
+    }
+
+    private Optional<ReservedMatchPair> reserveAfterBarrier(CyclicBarrier barrier, long firstUserId, long secondUserId)
+            throws Exception {
+        barrier.await();
+        return repository.reservePair(firstUserId, secondUserId, MatchType.RATED);
     }
 
     private void clearTestKeys() {

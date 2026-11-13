@@ -13,6 +13,7 @@ class RatingRangeCalculatorTest {
         assertThat(RatingRangeCalculator.calculate(JOINED_AT, JOINED_AT)).isEqualTo(100);
         assertThat(RatingRangeCalculator.calculate(JOINED_AT, JOINED_AT.plusSeconds(9))).isEqualTo(100);
         assertThat(RatingRangeCalculator.calculate(JOINED_AT, JOINED_AT.plusSeconds(10))).isEqualTo(200);
+        assertThat(RatingRangeCalculator.calculate(JOINED_AT, JOINED_AT.plusSeconds(20))).isEqualTo(300);
         assertThat(RatingRangeCalculator.calculate(JOINED_AT, JOINED_AT.plusSeconds(39))).isEqualTo(400);
     }
 

@@ -21,7 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 @ActiveProfiles("test")
-class MatchCreationServiceIntegrationTest {
+class
+MatchCreationServiceIntegrationTest {
     @Autowired
     private MatchCreationService service;
     @Autowired
