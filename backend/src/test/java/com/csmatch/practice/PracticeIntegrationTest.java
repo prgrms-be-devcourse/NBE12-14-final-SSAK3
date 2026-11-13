@@ -256,6 +256,33 @@ class PracticeIntegrationTest {
         assertError(post("/api/v1/practice/sessions").content("{\"categoryId\":99}"), 404, "NOT_FOUND");
     }
 
+    @Test
+    void choiceOrderSurvivesDatabaseReloadResumeAndHistory() throws Exception {
+        addQuestions(1, 1);
+        long session = start(null, 201);
+        var first = service.next(userId, session).orElseThrow();
+        long questionId = first.question().questionId();
+        var originalIds = jdbc.queryForList(
+                "SELECT choice_id FROM question_choices WHERE question_id = ? ORDER BY choice_no", Long.class, questionId);
+        assertThat(first.choices()).extracting(PracticeDto.Choice::choiceId).containsExactlyInAnyOrderElementsOf(originalIds);
+        assertThat(first.choices()).extracting(PracticeDto.Choice::choiceNo).containsExactly(1, 2, 3, 4);
+        var storedIds = jdbc.queryForList("""
+                SELECT c.choice_id FROM practice_choices c
+                JOIN practice_answers a ON a.answer_id = c.answer_id
+                WHERE a.session_id = ? AND a.question_id = ? ORDER BY c.choice_no
+                """, Long.class, session, questionId);
+        assertThat(first.choices()).extracting(PracticeDto.Choice::choiceId).containsExactlyElementsOf(storedIds);
+        assertThat(start(null, 200)).isEqualTo(session);
+        assertThat(service.next(userId, session)).contains(first);
+        assertThat(service.history(userId, session, false).getFirst().choices()).isEqualTo(first.choices());
+        var result = data(answerRequest(session, questionId, correctChoice(questionId)), 200);
+        assertThat(result.path("correct").asBoolean()).isTrue();
+        assertThat(result.path("correctChoiceId").asLong()).isEqualTo(correctChoice(questionId));
+        assertThat(service.history(userId, session, false).getFirst().choices()).isEqualTo(first.choices());
+        assertThat(jdbc.queryForList("SELECT choice_id FROM question_choices WHERE question_id = ? ORDER BY choice_no",
+                Long.class, questionId)).isEqualTo(originalIds);
+    }
+
     private void addQuestions(int categoryId, int count) {
         var category = categories.findById(categoryId).orElseThrow();
         for (int i = 0; i < count; i++) {
