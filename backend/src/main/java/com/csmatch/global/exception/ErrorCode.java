@@ -59,6 +59,8 @@ public enum ErrorCode {
     // ===== 관리자 =====
 
     QUESTION_IN_USE(HttpStatus.CONFLICT, "이미 경기에 출제된 문제는 수정할 수 없습니다."),
+    GENERATION_IN_PROGRESS(HttpStatus.CONFLICT, "이미 문제 생성이 진행 중입니다."),
+    LLM_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "문제 생성용 LLM API 키가 설정되지 않았습니다."),
     ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 신고입니다."),
     ALREADY_ROLLED_BACK(HttpStatus.CONFLICT, "이미 레이팅 롤백이 완료된 경기입니다."),
     NOT_RATED_MATCH(HttpStatus.CONFLICT, "레이팅이 반영된 경기가 아닙니다.");
