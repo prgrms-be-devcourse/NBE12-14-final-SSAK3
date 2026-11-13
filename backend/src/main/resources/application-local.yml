@@ -1,5 +1,10 @@
 # 로컬 개발용: docker compose up -d mysql redis 로 띄운 DB·Redis(127.0.0.1)에 접속
 spring:
+  config:
+    # IDE/Gradle 실행 위치가 저장소 루트 또는 backend여도 로컬 .env를 읽는다.
+    import:
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
   datasource:
     url: jdbc:mysql://localhost:3306/${MYSQL_DATABASE:csmatch}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: ${MYSQL_USER:csmatch}
