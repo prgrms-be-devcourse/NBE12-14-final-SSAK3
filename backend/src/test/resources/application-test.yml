@@ -6,6 +6,9 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: csmatch_test
     password: ${TEST_MYSQL_PASSWORD}
+  flyway:
+    # 통합 테스트는 create-drop 으로 테이블을 만들고 지우므로 Flyway 이력과 어긋나지 않게 끈다
+    enabled: false
   jpa:
     hibernate:
       ddl-auto: none

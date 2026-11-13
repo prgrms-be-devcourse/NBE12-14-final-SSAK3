@@ -58,7 +58,7 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 
 ## 아직 정해지지 않은 것 (Jira 기준)
 
-- 스키마 적용 방식과 `devduel_schema.sql` 반영 (SCRUM-84) — 현재 `ddl-auto: none`
+- 스키마 적용 방식은 Flyway 로 확정 (SCRUM-112) — `backend/src/main/resources/db/migration`, 자세한 건 `docs/db/README.md`
 - DB 테스트 환경 H2 / Testcontainers (SCRUM-88) — 현재 H2 임시
 - 코드 컨벤션 (브랜치·커밋·PR 규칙은 `docs/conventions.md` 에 확정)
 - 프론트 UI 라이브러리·JS/TS 여부 (SCRUM-98)

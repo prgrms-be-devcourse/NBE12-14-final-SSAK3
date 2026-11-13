@@ -3,7 +3,7 @@
 -- id 를 직접 지정한다 (AUTO_INCREMENT 컬럼이어도 값을 지정할 수 있다).
 --   concept_id 1~50: (category_id - 1) * 10 + 분야 안 순번 (1~10번)
 --   concept_id 51~100: 50 + (category_id - 1) * 10 + (분야 안 순번 - 10) (11~20번)
--- 빈 DB 볼륨의 최초 초기화 때만 실행된다 (docker-entrypoint-initdb.d).
+-- Flyway V2 로 적용된다. 적용된 파일은 수정하지 않고, 개념을 바꾸려면 새 V 파일을 추가한다.
 SET NAMES utf8mb4;
 
 INSERT INTO `categories` (`category_id`, `name`) VALUES
