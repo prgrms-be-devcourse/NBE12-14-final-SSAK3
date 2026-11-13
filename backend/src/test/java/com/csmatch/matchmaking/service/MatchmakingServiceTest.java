@@ -69,6 +69,17 @@ class MatchmakingServiceTest {
     }
 
     @Test
+    void doesNotCreateMatchWhenRecoveryHasInvalidatedTheReservation() {
+        ReservedMatchPair reservation = reserveRatedCandidate();
+        when(matchmakingRedisRepository.beginMatchCreation(reservation)).thenReturn(false);
+
+        assertThat(matchmakingService.tryCreateAndConfirmMatch(REQUESTER_ID, NOW)).isEmpty();
+
+        verify(matchCreationService, never()).createPreparingMatch(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void doesNotReleaseOrCreateAnotherMatchWhenConfirmationIsRejected() {
         ReservedMatchPair reservation = reserveRatedCandidate();
         Match match = org.mockito.Mockito.mock(Match.class);
@@ -92,6 +103,22 @@ class MatchmakingServiceTest {
         when(matchmakingRedisRepository.confirmMatch(reservation, 77L)).thenThrow(failure).thenReturn(true);
 
         assertThat(matchmakingService.tryCreateAndConfirmMatch(REQUESTER_ID, NOW)).isPresent();
+        verify(matchCreationService, times(1)).createPreparingMatch(MatchType.RATED, REQUESTER_ID, CANDIDATE_ID);
+        verify(matchmakingRedisRepository, times(2)).confirmMatch(reservation, 77L);
+        verify(matchmakingRedisRepository, never()).releaseReservation(reservation);
+    }
+
+    @Test
+    void retainsReservationAfterAllRedisConfirmationRetriesFail() {
+        ReservedMatchPair reservation = reserveRatedCandidate();
+        Match match = org.mockito.Mockito.mock(Match.class);
+        RedisConnectionFailureException failure = new RedisConnectionFailureException("Redis unavailable");
+        when(matchCreationService.createPreparingMatch(MatchType.RATED, REQUESTER_ID, CANDIDATE_ID)).thenReturn(match);
+        when(match.getMatchId()).thenReturn(77L);
+        when(matchmakingRedisRepository.confirmMatch(reservation, 77L)).thenThrow(failure);
+
+        assertThatThrownBy(() -> matchmakingService.tryCreateAndConfirmMatch(REQUESTER_ID, NOW)).isSameAs(failure);
+
         verify(matchCreationService, times(1)).createPreparingMatch(MatchType.RATED, REQUESTER_ID, CANDIDATE_ID);
         verify(matchmakingRedisRepository, times(2)).confirmMatch(reservation, 77L);
         verify(matchmakingRedisRepository, never()).releaseReservation(reservation);
@@ -148,6 +175,7 @@ class MatchmakingServiceTest {
         when(matchmakingRedisRepository.findRatedCandidates(REQUESTER_ID, NOW)).thenReturn(List.of(candidate));
         when(matchmakingRedisRepository.reservePair(REQUESTER_ID, CANDIDATE_ID, MatchType.RATED))
                 .thenReturn(Optional.of(reservation));
+        when(matchmakingRedisRepository.beginMatchCreation(reservation)).thenReturn(true);
         return reservation;
     }
 
