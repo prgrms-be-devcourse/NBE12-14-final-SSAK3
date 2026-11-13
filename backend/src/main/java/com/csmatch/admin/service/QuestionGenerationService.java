@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 관리자가 시작한 AI 문제 생성을 백그라운드에서 한 번에 하나만 실행한다.
- * 진행 상태는 메모리에만 두므로 서버를 재시작하면 초기화된다(docs/adr/0003-llm-question-generation.md).
+ * 진행 상태는 메모리에만 두므로 서버를 재시작하면 초기화된다.
  */
 @Slf4j
 @Service

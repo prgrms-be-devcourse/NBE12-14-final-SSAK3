@@ -19,12 +19,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminQuestionGenerationController {
     private final QuestionGenerationService service;
 
+    //start호출 후 작업 종료 기다리지 않음
     @PostMapping
     public ResponseEntity<ApiResponse<QuestionGenerationDto.Status>> start(
             @Valid @RequestBody QuestionGenerationDto.StartRequest request) {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.of(service.start(request)));
     }
 
+    // 마지막 실행의 진행 상태 확인
     @GetMapping("/status")
     public ApiResponse<QuestionGenerationDto.Status> status() {
         return ApiResponse.of(service.status());
