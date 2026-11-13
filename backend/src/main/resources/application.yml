@@ -29,6 +29,15 @@ management:
         include: health,info
 
 app:
+  llm:
+    # 비어 있어도 서버는 기동한다. 문제 생성 API 만 503 LLM_NOT_CONFIGURED 를 돌려준다.
+    api-key: ${LLM_API_KEY:}
+    model: ${LLM_MODEL:claude-sonnet-5-5}
+    # 생성 요청이 고를 수 있는 모델(쉼표로 구분). 여기에 없는 모델은 호출 전에 400 으로 막는다. 기본 모델은 목록에 없어도 허용한다.
+    models: ${LLM_MODELS:claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5}
+    # 한 번에 만들 수 있는 문제 수 상한과 문제 하나당 최대 시도 횟수 (비용 상한)
+    max-count: 30
+    max-attempts: 3
   jwt:
     secret: ${JWT_SECRET}
   cors:

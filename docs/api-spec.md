@@ -863,6 +863,8 @@ GET을 반복하거나 새로고침해도 제출 전에는 같은 문제를 반�
 | 신고 상세 조회 | GET | `/admin/reports/{reportId}` |
 | 신고 처리 | PATCH | `/admin/reports/{reportId}/status` |
 | 경기 레이팅 롤백 | POST | `/admin/matches/{matchId}/rating-rollback` |
+| AI 문제 생성 실행 | POST | `/admin/questions/generate` |
+| AI 문제 생성 상태 조회 | GET | `/admin/questions/generate/status` |
 ### 문제 목록 조회 `GET /admin/questions`
 
 쿼리: `status`, `categoryId`, `difficulty`, `source`, `page`, `size`. AI 생성 문제의 검수 대기 목록은 `status=DRAFT&source=AI`로 조회한다.
@@ -1024,6 +1026,61 @@ AI 생성 문제의 근거 개념은 이미 `concepts`와 `questions.concept_id`
 롤백 규칙: `rating_history`의 해당 경기 `MATCH` 이력을 반대로 적용하고, 새 `ROLLBACK` 이력(`reversed_history_id`가 원본을 가리킴)을 남긴다. 원본 이력과 `match_players`의 `rating_before`, `rating_after`는 경기 당시 기록이라 바꾸지 않는다. 경기마다 한 번만 롤백할 수 있다.
 
 
-### 개념 등록과 문제 생성 실행
+### AI 문제 생성 실행 `POST /admin/questions/generate`
 
-`concepts` 테이블과 `questions.concept_id`는 ERD에 존재한다. 개념 등록 및 LLM 생성 실행의 별도 REST API는 현재 명세에 정의되어 있지 않다. LLM 호출은 게임 중이 아닌 배치에서만 수행한다(`docs/game-rules.md`).
+관리자가 요청하면 `concepts`를 근거로 LLM 이 문제를 만들어 `DRAFT`, `source=AI` 로 저장한다. 생성은 서버 백그라운드에서 진행하고 요청은 바로 202 를 돌려준다. LLM 호출은 이 API 로 시작한 생성 작업에서만 일어나며 대결 중에는 호출하지 않는다(`docs/game-rules.md`).
+
+```jsonc
+// 요청
+{ "count": 10, "categoryId": 3, "model": "claude-haiku-5-5" }
+
+// 응답 202
+{ "data": { "status": "RUNNING", "model": "claude-haiku-5-5", "requested": 10 } }
+```
+
+| 필드 | 설명 |
+| --- | --- |
+| `count` | 만들 문제 수. 1 이상 30 이하 |
+| `categoryId` | 선택. 있으면 해당 분야의 개념만 사용하고, 없으면 전체 분야를 쓴다 |
+| `model` | 선택. 문제를 만들 모델. 생략하면 서버의 기본 모델(`LLM_MODEL`, 기본 `claude-sonnet-5-5`)을 쓴다. 서버 설정의 허용 목록(`LLM_MODELS`, 기본 `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`)과 기본 모델만 고를 수 있다 |
+
+모델마다 문제당 비용이 다르다. 실측으로 `claude-haiku-5-5` 는 약 $0.0008, `claude-sonnet-5-5` 는 약 $0.013 이었다(`claude-opus-5-5` 는 단가 기준 추정). 어떤 모델로 만들었는지는 문제에 저장하지 않고 서버 로그와 상태 조회의 `model` 에만 남는다.
+
+| HTTP | 에러 코드 | 상황 |
+| --- | --- | --- |
+| 400 | `VALIDATION_FAILED` | `count` 가 범위 밖이거나 없는 분야, 허용 목록에 없는 `model` (빈 문자열 포함, 호출 전에 막는다) |
+| 409 | `GENERATION_IN_PROGRESS` | 이미 생성이 진행 중 (중복 실행·중복 비용 방지) |
+| 503 | `LLM_NOT_CONFIGURED` | 서버에 LLM API 키가 설정되지 않음 |
+
+생성 규칙:
+
+- 개념은 연결된 문제가 가장 적은 것부터 고른다(같으면 무작위). `count` 가 개념 수보다 많으면 개념을 돌려 쓴다.
+- 난이도는 `EASY`, `MEDIUM`, `HARD` 를 균등하게 나눈다(나머지는 `MEDIUM`). 기준은 `docs/game-rules.md` 의 "난이도 기준"을 따른다.
+- 문제마다 보기 4개(정답 1개)를 만들고 보기 순서는 서버가 섞는다. 같은 개념에 이미 있는 문제와 겹치지 않게 만든다.
+- 형식이 맞지 않거나 호출이 실패한 문제는 문제당 최대 3번까지 다시 시도하고, 그래도 실패하면 건너뛴다. 전체 호출 횟수는 `count × 3` 을 넘지 않는다. 형식이 맞지 않는 경우는 보기가 4개·정답이 1개가 아님, 보기 중복·금지 표현, 해설이 보기 번호를 말함, 정답이 오답보다 눈에 띄게 김, `HARD` 문제의 풀이 단계가 2개 미만인 경우 등이다(`docs/game-rules.md`).
+- 문제 하나를 만들 때마다 따로 저장한다. 서버가 종료되면 만들던 문제 하나까지만 마무리하고 멈춘다.
+
+### AI 문제 생성 상태 조회 `GET /admin/questions/generate/status`
+
+```jsonc
+// 응답 200
+{
+  "data": {
+    "status": "RUNNING",
+    "model": "claude-haiku-5-5",
+    "requested": 10,
+    "succeeded": 4,
+    "failed": 1,
+    "startedAt": "2026-11-16T10:00:00+09:00",
+    "finishedAt": null
+  }
+}
+```
+
+- `status` 는 `IDLE`(실행 이력 없음 또는 서버 재시작 직후), `RUNNING`, `FINISHED` 중 하나다. `IDLE` 일 때 `model` 은 `null` 이다.
+- 진행 정보는 서버 메모리에만 있어서 재시작하면 `IDLE` 로 초기화된다. 저장된 문제는 `GET /admin/questions?status=DRAFT&source=AI` 로 확인한다.
+- 생성이 끊겨도 자동으로 이어서 실행하지 않는다. 관리자가 다시 실행하면 문제가 가장 적은 개념부터 채운다.
+
+### 개념 등록
+
+`concepts` 테이블과 `questions.concept_id`는 ERD에 존재한다. 개념 등록의 REST API는 현재 명세에 정의되어 있지 않다(개념은 Flyway 시드로 넣는다).

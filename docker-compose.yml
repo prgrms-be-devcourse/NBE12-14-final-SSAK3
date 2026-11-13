@@ -37,6 +37,8 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # AI 문제 생성 중 종료하면 만들던 문제 하나까지 마무리하고 멈춘다(최대 55초). 기본 10초면 그 전에 강제 종료된다.
+    stop_grace_period: 60s
     depends_on:
       mysql:
         condition: service_healthy
@@ -53,6 +55,8 @@ services:
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-5-5}
+      LLM_MODELS: ${LLM_MODELS:-claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5}
       TZ: Asia/Seoul
     expose:
       - "8080"

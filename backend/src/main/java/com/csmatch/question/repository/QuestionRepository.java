@@ -9,6 +9,10 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface QuestionRepository extends JpaRepository<Question, Long> {
+    /** 같은 개념에 이미 있는 문제 본문. 새 문제가 겹치지 않게 프롬프트에 넘긴다. */
+    @Query("select q.content from Question q where q.concept.id = :conceptId order by q.id desc")
+    List<String> findContentsByConceptId(@Param("conceptId") Integer conceptId, Pageable pageable);
+
     @Query("""
             select q from Question q
             where q.status = com.csmatch.question.Enum.QuestionStatus.ACTIVE
