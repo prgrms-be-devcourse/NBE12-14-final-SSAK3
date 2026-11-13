@@ -35,6 +35,8 @@ app:
     model: ${LLM_MODEL:claude-sonnet-5-5}
     # 생성 요청이 고를 수 있는 모델(쉼표로 구분). 여기에 없는 모델은 호출 전에 400 으로 막는다. 기본 모델은 목록에 없어도 허용한다.
     models: ${LLM_MODELS:claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5}
+    # 생성한 문제를 검증하는 모델. 생성 모델과 다른 모델이 오류를 더 잘 잡는다. 요청으로는 고르지 않고 설정으로만 바꾼다.
+    verify-model: ${LLM_VERIFY_MODEL:claude-opus-5-5}
     # 한 번에 만들 수 있는 문제 수 상한과 문제 하나당 최대 시도 횟수 (비용 상한)
     max-count: 30
     max-attempts: 3
