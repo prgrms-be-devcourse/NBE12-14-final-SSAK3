@@ -6,13 +6,13 @@
 - `docs/game-rules.md`: 게임 규칙·점수·레이팅
 - `docs/conventions.md`: 브랜치·커밋·PR·Jira 규칙
 - `README.md`: 폴더 구조, 실행 방법
-- DB 스키마: `docs/db/schema.sql` (ERD 기반 SQL)
+- DB 스키마: `backend/src/main/resources/db/migration` (Flyway), `docs/db/schema.sql`은 ERD 내보내기 참고본
 - API 명세(REST·WebSocket): `docs/api-spec.md`
 - ERD: https://dbdiagram.io/d/%EC%8B%B9%EC%93%B0%EB%A6%AC-6af3e06d063ad9ee168b99b8
 - API 명세 원본(REST·WebSocket): https://claude.ai/artifact/VGMk2169cgJ9CYqfTdnmGn
 
 문서끼리 어긋나거나 정해지지 않은 값이 있을 때의 원칙:
-- DB 테이블·컬럼·제약조건은 `docs/db/schema.sql`을 따른다.
+- DB 테이블·컬럼·제약조건은 Flyway 마이그레이션(`db/migration`)을 따른다. ERD를 고치면 새 `V` 파일로 반영하고 `docs/db/schema.sql`도 함께 갱신한다.
 - 게임 규칙·점수·레이팅은 `docs/game-rules.md`를 따른다.
 - REST API 및 WebSocket 메시지 형식은 `docs/api-spec.md`를 따른다.
 - 문서 간 실제 충돌은 PR에서 공유하고 팀원과 조율한다.
@@ -44,9 +44,9 @@ cd frontend && npm install && npm run dev
 - 설정: `application.yml`(공통), `application-local.yml`(로컬), `application-prod.yml`(배포).
 - JPA 스키마 관리:
   - 공통: `ddl-auto: validate`
-  - 로컬: `ddl-auto: update`
+  - 로컬: `ddl-auto: validate`
   - 배포: `ddl-auto: validate`
-- DB 스키마의 기준은 `docs/db/schema.sql`이며, 배포 환경에서는 Hibernate가 테이블을 자동 수정하지 않는다.
+- DB 스키마의 기준은 Flyway 마이그레이션(`backend/src/main/resources/db/migration`)이며 Hibernate는 테이블을 자동 수정하지 않는다. 적용된 `V` 파일은 수정하지 않고 새 버전을 추가한다. 통합 테스트(`test` 프로파일)는 Flyway를 끄고 `create-drop`을 쓴다.
 
 ## 지켜야 할 것
 
