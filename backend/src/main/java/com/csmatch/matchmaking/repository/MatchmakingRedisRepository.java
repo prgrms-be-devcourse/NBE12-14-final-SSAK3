@@ -4,10 +4,12 @@ import com.csmatch.matchmaking.entity.MatchType;
 import com.csmatch.matchmaking.dto.MatchCandidate;
 import com.csmatch.matchmaking.dto.MatchmakingState;
 import com.csmatch.matchmaking.dto.ReservedMatchPair;
+import com.csmatch.matchmaking.dto.ReservationRecoveryData;
 import com.csmatch.matchmaking.entity.MatchmakingStatus;
 import com.csmatch.matchmaking.entity.QueueRegistrationResult;
 import com.csmatch.matchmaking.entity.QueueRemovalResult;
 import com.csmatch.matchmaking.service.RatingRangeCalculator;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,6 +28,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class MatchmakingRedisRepository {
     private static final String DEFAULT_KEY_PREFIX = "csmatch:matchmaking";
+    private static final Duration RESERVATION_RECOVERY_DELAY = Duration.ofSeconds(60);
+    private static final Duration RECOVERY_LOCK_TTL = Duration.ofSeconds(30);
+    private static final Duration MATCH_CREATION_LEASE_TTL = Duration.ofMinutes(2);
     private static final DefaultRedisScript<Long> REGISTER_WAITING_SCRIPT = new DefaultRedisScript<>("""
             local existingStatus = redis.call('HGET', KEYS[1], 'status')
             if existingStatus then
@@ -88,6 +93,14 @@ public class MatchmakingRedisRepository {
                 return 0
             end
 
+            local firstRating = redis.call('HGET', KEYS[1], 'rating')
+            local secondRating = redis.call('HGET', KEYS[2], 'rating')
+            local firstJoinedAt = redis.call('HGET', KEYS[1], 'joinedAtEpochMillis')
+            local secondJoinedAt = redis.call('HGET', KEYS[2], 'joinedAtEpochMillis')
+            if not firstRating or not secondRating or not firstJoinedAt or not secondJoinedAt then
+                return 0
+            end
+
             if ARGV[1] == 'RATED' then
                 if not redis.call('ZSCORE', KEYS[3], ARGV[2])
                         or not redis.call('ZSCORE', KEYS[3], ARGV[3]) then
@@ -106,6 +119,17 @@ public class MatchmakingRedisRepository {
 
             redis.call('SET', KEYS[5], ARGV[4])
             redis.call('SET', KEYS[6], ARGV[4])
+            redis.call('HSET', KEYS[7],
+                'token', ARGV[4],
+                'firstUserId', ARGV[2],
+                'secondUserId', ARGV[3],
+                'matchType', ARGV[1],
+                'firstRating', firstRating,
+                'secondRating', secondRating,
+                'firstJoinedAtEpochMillis', firstJoinedAt,
+                'secondJoinedAtEpochMillis', secondJoinedAt,
+                'expiresAtEpochMillis', ARGV[5])
+            redis.call('ZADD', KEYS[8], ARGV[5], ARGV[4])
             return 1
             """, Long.class);
     private static final DefaultRedisScript<Long> RELEASE_RESERVATION_SCRIPT = new DefaultRedisScript<>("""
@@ -130,7 +154,8 @@ public class MatchmakingRedisRepository {
             else
                 return 0
             end
-            redis.call('DEL', KEYS[5], KEYS[6])
+            redis.call('DEL', KEYS[5], KEYS[6], KEYS[7], KEYS[9], KEYS[10])
+            redis.call('ZREM', KEYS[8], ARGV[4])
             return 1
             """, Long.class);
     private static final DefaultRedisScript<Long> CONFIRM_MATCH_SCRIPT = new DefaultRedisScript<>("""
@@ -177,7 +202,8 @@ public class MatchmakingRedisRepository {
                 'reservationToken', ARGV[4])
             redis.call('HDEL', KEYS[1], 'rating', 'joinedAtEpochMillis')
             redis.call('HDEL', KEYS[2], 'rating', 'joinedAtEpochMillis')
-            redis.call('DEL', KEYS[5], KEYS[6])
+            redis.call('DEL', KEYS[5], KEYS[6], KEYS[7], KEYS[9], KEYS[10])
+            redis.call('ZREM', KEYS[8], ARGV[4])
             return 1
             """, Long.class);
     private static final DefaultRedisScript<Long> RESOLVE_ACTIVE_MATCHES_SCRIPT = new DefaultRedisScript<>("""
@@ -217,7 +243,8 @@ public class MatchmakingRedisRepository {
                     redis.call('HSET', stateKey,
                         'status', 'MATCHED',
                         'matchType', activeMatchType,
-                        'matchId', activeMatchId)
+                        'matchId', activeMatchId,
+                        'reservationToken', ARGV[4])
                     redis.call('HDEL', stateKey, 'rating', 'joinedAtEpochMillis')
                 elseif ARGV[1] == 'RATED' then
                     local rating = redis.call('HGET', stateKey, 'rating')
@@ -229,7 +256,131 @@ public class MatchmakingRedisRepository {
 
             resolveUser(KEYS[1], ARGV[2], ARGV[5], ARGV[6])
             resolveUser(KEYS[2], ARGV[3], ARGV[7], ARGV[8])
-            redis.call('DEL', KEYS[5], KEYS[6])
+            redis.call('DEL', KEYS[5], KEYS[6], KEYS[7], KEYS[9], KEYS[10])
+            redis.call('ZREM', KEYS[8], ARGV[4])
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> CLAIM_EXPIRED_RESERVATION_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then
+                return 0
+            end
+            local expiresAt = redis.call('ZSCORE', KEYS[2], ARGV[1])
+            if not expiresAt or tonumber(expiresAt) > tonumber(ARGV[2]) then
+                return 0
+            end
+            if redis.call('EXISTS', KEYS[4]) == 1 then
+                return 0
+            end
+            if not redis.call('SET', KEYS[3], ARGV[3], 'NX', 'PX', ARGV[4]) then
+                return 0
+            end
+            redis.call('HSET', KEYS[1], 'recoveryExecutionId', ARGV[3])
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> RELEASE_RECOVERY_CLAIM_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[2]) == ARGV[2] then
+                redis.call('DEL', KEYS[2])
+            end
+            if redis.call('HGET', KEYS[1], 'recoveryExecutionId') == ARGV[2] then
+                redis.call('HDEL', KEYS[1], 'recoveryExecutionId')
+            end
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> RESOLVE_EXPIRED_RESERVATION_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('HGET', KEYS[7], 'token') ~= ARGV[1]
+                    or redis.call('HGET', KEYS[7], 'recoveryExecutionId') ~= ARGV[2]
+                    or redis.call('GET', KEYS[9]) ~= ARGV[2] then
+                return 0
+            end
+            if redis.call('GET', KEYS[5]) ~= ARGV[1] or redis.call('GET', KEYS[6]) ~= ARGV[1] then
+                return 0
+            end
+
+            local matchType = redis.call('HGET', KEYS[7], 'matchType')
+            local firstUserId = redis.call('HGET', KEYS[7], 'firstUserId')
+            local secondUserId = redis.call('HGET', KEYS[7], 'secondUserId')
+            if not matchType or not firstUserId or not secondUserId then
+                return 0
+            end
+            if redis.call('HGET', KEYS[1], 'status') ~= 'WAITING'
+                    or redis.call('HGET', KEYS[2], 'status') ~= 'WAITING'
+                    or redis.call('HGET', KEYS[1], 'matchType') ~= matchType
+                    or redis.call('HGET', KEYS[2], 'matchType') ~= matchType then
+                return 0
+            end
+
+            local firstRating = redis.call('HGET', KEYS[7], 'firstRating')
+            local secondRating = redis.call('HGET', KEYS[7], 'secondRating')
+            local firstJoinedAt = redis.call('HGET', KEYS[7], 'firstJoinedAtEpochMillis')
+            local secondJoinedAt = redis.call('HGET', KEYS[7], 'secondJoinedAtEpochMillis')
+            if not firstRating or not secondRating or not firstJoinedAt or not secondJoinedAt then
+                return 0
+            end
+
+            local function resolveUser(stateKey, userId, rating, joinedAt, activeMatchId, activeMatchType)
+                if activeMatchId ~= '' then
+                    redis.call('HSET', stateKey,
+                        'status', 'MATCHED',
+                        'matchType', activeMatchType,
+                        'matchId', activeMatchId,
+                        'reservationToken', ARGV[1])
+                    redis.call('HDEL', stateKey, 'rating', 'joinedAtEpochMillis')
+                else
+                    redis.call('HSET', stateKey,
+                        'status', 'WAITING',
+                        'matchType', matchType,
+                        'rating', rating,
+                        'joinedAtEpochMillis', joinedAt)
+                    if matchType == 'RATED' then
+                        redis.call('ZADD', KEYS[3], rating, userId)
+                    elseif matchType == 'UNRATED' then
+                        redis.call('SADD', KEYS[4], userId)
+                    else
+                        return false
+                    end
+                end
+                return true
+            end
+
+            if not resolveUser(KEYS[1], firstUserId, firstRating, firstJoinedAt, ARGV[3], ARGV[4])
+                    or not resolveUser(KEYS[2], secondUserId, secondRating, secondJoinedAt, ARGV[5], ARGV[6]) then
+                return 0
+            end
+            if matchType == 'RATED' then
+                redis.call('ZREM', KEYS[3], firstUserId, secondUserId)
+                if ARGV[3] == '' then redis.call('ZADD', KEYS[3], firstRating, firstUserId) end
+                if ARGV[5] == '' then redis.call('ZADD', KEYS[3], secondRating, secondUserId) end
+            elseif matchType == 'UNRATED' then
+                redis.call('SREM', KEYS[4], firstUserId, secondUserId)
+                if ARGV[3] == '' then redis.call('SADD', KEYS[4], firstUserId) end
+                if ARGV[5] == '' then redis.call('SADD', KEYS[4], secondUserId) end
+            end
+            redis.call('DEL', KEYS[5], KEYS[6], KEYS[7], KEYS[9], KEYS[10])
+            redis.call('ZREM', KEYS[8], ARGV[1])
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> BEGIN_MATCH_CREATION_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= ARGV[1] or redis.call('GET', KEYS[2]) ~= ARGV[1]
+                    or redis.call('HGET', KEYS[3], 'token') ~= ARGV[1] then
+                return 0
+            end
+            if redis.call('EXISTS', KEYS[5]) == 1 then
+                return 0
+            end
+            if not redis.call('SET', KEYS[4], ARGV[1], 'NX', 'PX', ARGV[2]) then
+                return 0
+            end
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> QUARANTINE_RESERVATION_SCRIPT = new DefaultRedisScript<>("""
+            if not redis.call('ZSCORE', KEYS[1], ARGV[1]) then
+                return 0
+            end
+            if redis.call('EXISTS', KEYS[3]) == 1 or redis.call('EXISTS', KEYS[4]) == 1 then
+                return 0
+            end
+            redis.call('ZREM', KEYS[1], ARGV[1])
+            redis.call('ZADD', KEYS[2], ARGV[2], ARGV[1])
             return 1
             """, Long.class);
 
@@ -241,7 +392,7 @@ public class MatchmakingRedisRepository {
         this(redisTemplate, DEFAULT_KEY_PREFIX);
     }
 
-    MatchmakingRedisRepository(StringRedisTemplate redisTemplate, String keyPrefix) {
+    public MatchmakingRedisRepository(StringRedisTemplate redisTemplate, String keyPrefix) {
         this.redisTemplate = redisTemplate;
         this.keyPrefix = keyPrefix;
     }
@@ -361,10 +512,13 @@ public class MatchmakingRedisRepository {
     public Optional<ReservedMatchPair> reservePair(long firstUserId, long secondUserId, MatchType matchType) {
         validatePair(firstUserId, secondUserId, matchType);
         String reservationToken = UUID.randomUUID().toString();
+        long expiresAtEpochMillis = Instant.now().plus(RESERVATION_RECOVERY_DELAY).toEpochMilli();
         Long result = redisTemplate.execute(RESERVE_PAIR_SCRIPT,
                 List.of(stateKey(firstUserId), stateKey(secondUserId), ratedQueueKey(), unratedQueueKey(),
-                        reservationKey(firstUserId), reservationKey(secondUserId)),
-                matchType.name(), Long.toString(firstUserId), Long.toString(secondUserId), reservationToken);
+                        reservationKey(firstUserId), reservationKey(secondUserId), reservationDataKey(reservationToken),
+                        reservationExpirationKey()),
+                matchType.name(), Long.toString(firstUserId), Long.toString(secondUserId), reservationToken,
+                Long.toString(expiresAtEpochMillis));
         int resultCode = requireResultCode(result);
         if (resultCode == 0) {
             return Optional.empty();
@@ -391,7 +545,9 @@ public class MatchmakingRedisRepository {
         Long result = redisTemplate.execute(RELEASE_RESERVATION_SCRIPT,
                 List.of(stateKey(reservation.firstUserId()), stateKey(reservation.secondUserId()),
                         ratedQueueKey(), unratedQueueKey(), reservationKey(reservation.firstUserId()),
-                        reservationKey(reservation.secondUserId())),
+                        reservationKey(reservation.secondUserId()), reservationDataKey(reservation.reservationToken()),
+                        reservationExpirationKey(), matchCreationLeaseKey(reservation.reservationToken()),
+                        recoveryLockKey(reservation.reservationToken())),
                 reservation.matchType().name(), Long.toString(reservation.firstUserId()),
                 Long.toString(reservation.secondUserId()), reservation.reservationToken(),
                 Integer.toString(first.rating()), Integer.toString(second.rating()));
@@ -410,7 +566,9 @@ public class MatchmakingRedisRepository {
         Long result = redisTemplate.execute(CONFIRM_MATCH_SCRIPT,
                 List.of(stateKey(reservation.firstUserId()), stateKey(reservation.secondUserId()),
                         ratedQueueKey(), unratedQueueKey(), reservationKey(reservation.firstUserId()),
-                        reservationKey(reservation.secondUserId())),
+                        reservationKey(reservation.secondUserId()), reservationDataKey(reservation.reservationToken()),
+                        reservationExpirationKey(), matchCreationLeaseKey(reservation.reservationToken()),
+                        recoveryLockKey(reservation.reservationToken())),
                 reservation.matchType().name(), Long.toString(reservation.firstUserId()),
                 Long.toString(reservation.secondUserId()), reservation.reservationToken(), Long.toString(matchId));
         return requireResultCode(result) == 1;
@@ -433,11 +591,127 @@ public class MatchmakingRedisRepository {
         Long result = redisTemplate.execute(RESOLVE_ACTIVE_MATCHES_SCRIPT,
                 List.of(stateKey(reservation.firstUserId()), stateKey(reservation.secondUserId()),
                         ratedQueueKey(), unratedQueueKey(), reservationKey(reservation.firstUserId()),
-                        reservationKey(reservation.secondUserId())),
+                        reservationKey(reservation.secondUserId()), reservationDataKey(reservation.reservationToken()),
+                        reservationExpirationKey(), matchCreationLeaseKey(reservation.reservationToken()),
+                        recoveryLockKey(reservation.reservationToken())),
                 reservation.matchType().name(), Long.toString(reservation.firstUserId()),
                 Long.toString(reservation.secondUserId()), reservation.reservationToken(),
                 nullableMatchId(firstMatchId), nullableMatchType(firstMatchType),
                 nullableMatchId(secondMatchId), nullableMatchType(secondMatchType));
+        return requireResultCode(result) == 1;
+    }
+
+    public boolean claimExpiredReservation(String reservationToken, String recoveryExecutionId, Instant now) {
+        validateRecoveryArguments(reservationToken, recoveryExecutionId, now);
+        Long result = redisTemplate.execute(CLAIM_EXPIRED_RESERVATION_SCRIPT,
+                List.of(reservationDataKey(reservationToken), reservationExpirationKey(), recoveryLockKey(reservationToken),
+                        matchCreationLeaseKey(reservationToken)),
+                reservationToken, Long.toString(now.toEpochMilli()), recoveryExecutionId,
+                Long.toString(RECOVERY_LOCK_TTL.toMillis()));
+        return requireResultCode(result) == 1;
+    }
+
+    public List<String> findExpiredReservationTokens(Instant now, int limit) {
+        if (now == null || limit <= 0) {
+            throw new IllegalArgumentException("Current time and a positive limit are required");
+        }
+        Set<String> tokens = redisTemplate.opsForZSet().rangeByScore(
+                reservationExpirationKey(), Double.NEGATIVE_INFINITY, now.toEpochMilli(), 0, limit);
+        return tokens == null ? List.of() : List.copyOf(tokens);
+    }
+
+    public boolean hasReservationRecoveryData(String reservationToken) {
+        if (reservationToken == null || reservationToken.isBlank()) {
+            throw new IllegalArgumentException("Reservation token is required");
+        }
+        return Boolean.TRUE.equals(redisTemplate.hasKey(reservationDataKey(reservationToken)));
+    }
+
+    public boolean quarantineReservation(String reservationToken, Instant now) {
+        if (reservationToken == null || reservationToken.isBlank() || now == null) {
+            throw new IllegalArgumentException("Reservation token and current time are required");
+        }
+        Long result = redisTemplate.execute(QUARANTINE_RESERVATION_SCRIPT,
+                List.of(reservationExpirationKey(), invalidReservationKey(), matchCreationLeaseKey(reservationToken),
+                        recoveryLockKey(reservationToken)),
+                reservationToken, Long.toString(now.toEpochMilli()));
+        return requireResultCode(result) == 1;
+    }
+
+    public Optional<ReservationRecoveryData> findReservationRecoveryData(String reservationToken) {
+        if (reservationToken == null || reservationToken.isBlank()) {
+            throw new IllegalArgumentException("Reservation token is required");
+        }
+        Map<Object, Object> values = redisTemplate.opsForHash().entries(reservationDataKey(reservationToken));
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            String storedToken = valueOf(values, "token");
+            if (!reservationToken.equals(storedToken)) {
+                throw new IllegalStateException("Reservation token does not match metadata");
+            }
+            return Optional.of(new ReservationRecoveryData(
+                    storedToken,
+                    Long.parseLong(valueOf(values, "firstUserId")),
+                    Long.parseLong(valueOf(values, "secondUserId")),
+                    MatchType.valueOf(valueOf(values, "matchType")),
+                    Integer.parseInt(valueOf(values, "firstRating")),
+                    Integer.parseInt(valueOf(values, "secondRating")),
+                    Instant.ofEpochMilli(Long.parseLong(valueOf(values, "firstJoinedAtEpochMillis"))),
+                    Instant.ofEpochMilli(Long.parseLong(valueOf(values, "secondJoinedAtEpochMillis"))),
+                    Instant.ofEpochMilli(Long.parseLong(valueOf(values, "expiresAtEpochMillis")))
+            ));
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw new IllegalArgumentException("Reservation recovery metadata is invalid", exception);
+        }
+    }
+
+    public boolean resolveExpiredReservation(
+            ReservationRecoveryData reservation,
+            String recoveryExecutionId,
+            Long firstMatchId,
+            MatchType firstMatchType,
+            Long secondMatchId,
+            MatchType secondMatchType
+    ) {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation recovery data is required");
+        }
+        validateRecoveryExecution(reservation.reservationToken(), recoveryExecutionId);
+        validatePair(reservation.firstUserId(), reservation.secondUserId(), reservation.matchType());
+        validateActiveMatch(firstMatchId, firstMatchType);
+        validateActiveMatch(secondMatchId, secondMatchType);
+
+        Long result = redisTemplate.execute(RESOLVE_EXPIRED_RESERVATION_SCRIPT,
+                List.of(stateKey(reservation.firstUserId()), stateKey(reservation.secondUserId()),
+                        ratedQueueKey(), unratedQueueKey(), reservationKey(reservation.firstUserId()),
+                        reservationKey(reservation.secondUserId()), reservationDataKey(reservation.reservationToken()),
+                        reservationExpirationKey(), recoveryLockKey(reservation.reservationToken()),
+                        matchCreationLeaseKey(reservation.reservationToken())),
+                reservation.reservationToken(), recoveryExecutionId,
+                nullableMatchId(firstMatchId), nullableMatchType(firstMatchType),
+                nullableMatchId(secondMatchId), nullableMatchType(secondMatchType));
+        return requireResultCode(result) == 1;
+    }
+
+    public void releaseRecoveryClaim(String reservationToken, String recoveryExecutionId) {
+        if (reservationToken == null || reservationToken.isBlank()
+                || recoveryExecutionId == null || recoveryExecutionId.isBlank()) {
+            return;
+        }
+        redisTemplate.execute(RELEASE_RECOVERY_CLAIM_SCRIPT,
+                List.of(reservationDataKey(reservationToken), recoveryLockKey(reservationToken)),
+                reservationToken, recoveryExecutionId);
+    }
+
+    public boolean beginMatchCreation(ReservedMatchPair reservation) {
+        validateReservation(reservation);
+        Long result = redisTemplate.execute(BEGIN_MATCH_CREATION_SCRIPT,
+                List.of(reservationKey(reservation.firstUserId()), reservationKey(reservation.secondUserId()),
+                        reservationDataKey(reservation.reservationToken()), matchCreationLeaseKey(reservation.reservationToken()),
+                        recoveryLockKey(reservation.reservationToken())),
+                reservation.reservationToken(), Long.toString(MATCH_CREATION_LEASE_TTL.toMillis()));
         return requireResultCode(result) == 1;
     }
 
@@ -481,6 +755,26 @@ public class MatchmakingRedisRepository {
 
     private String reservationKey(long userId) {
         return keyPrefix + ":reservation:" + userId;
+    }
+
+    private String reservationDataKey(String reservationToken) {
+        return keyPrefix + ":reservation:data:" + reservationToken;
+    }
+
+    private String reservationExpirationKey() {
+        return keyPrefix + ":reservation:expires";
+    }
+
+    private String recoveryLockKey(String reservationToken) {
+        return keyPrefix + ":reservation:recovery:" + reservationToken;
+    }
+
+    private String matchCreationLeaseKey(String reservationToken) {
+        return keyPrefix + ":reservation:creation:" + reservationToken;
+    }
+
+    private String invalidReservationKey() {
+        return keyPrefix + ":reservation:invalid";
     }
 
     private Optional<MatchmakingState> waitingState(long userId, MatchType matchType) {
@@ -554,6 +848,20 @@ public class MatchmakingRedisRepository {
     private void validateActiveMatch(Long matchId, MatchType matchType) {
         if ((matchId == null) != (matchType == null) || (matchId != null && matchId <= 0)) {
             throw new IllegalArgumentException("Active match ID and match type must be provided together");
+        }
+    }
+
+    private void validateRecoveryArguments(String reservationToken, String recoveryExecutionId, Instant now) {
+        validateRecoveryExecution(reservationToken, recoveryExecutionId);
+        if (now == null) {
+            throw new IllegalArgumentException("Reservation token, recovery execution ID, and current time are required");
+        }
+    }
+
+    private void validateRecoveryExecution(String reservationToken, String recoveryExecutionId) {
+        if (reservationToken == null || reservationToken.isBlank()
+                || recoveryExecutionId == null || recoveryExecutionId.isBlank()) {
+            throw new IllegalArgumentException("Reservation token and recovery execution ID are required");
         }
     }
 

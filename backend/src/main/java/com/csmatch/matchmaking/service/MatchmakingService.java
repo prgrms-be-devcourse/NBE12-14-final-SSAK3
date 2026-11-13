@@ -69,6 +69,11 @@ public class MatchmakingService {
         }
 
         ReservedMatchPair reservedPair = reservation.get();
+        if (!matchmakingRedisRepository.beginMatchCreation(reservedPair)) {
+            log.warn("Matchmaking reservation was no longer valid before MySQL match creation. "
+                    + "firstUserId={}, secondUserId={}", reservedPair.firstUserId(), reservedPair.secondUserId());
+            return Optional.empty();
+        }
         try {
             var match = matchCreationService.createPreparingMatch(
                     reservedPair.matchType(), reservedPair.firstUserId(), reservedPair.secondUserId());

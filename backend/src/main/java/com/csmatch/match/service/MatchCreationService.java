@@ -3,6 +3,7 @@ package com.csmatch.match.service;
 import com.csmatch.global.exception.BusinessException;
 import com.csmatch.global.exception.ErrorCode;
 import com.csmatch.match.dto.ActiveMatch;
+import com.csmatch.match.dto.ActiveMatchPair;
 import com.csmatch.match.entity.Match;
 import com.csmatch.match.entity.MatchPlayer;
 import com.csmatch.match.entity.MatchStatus;
@@ -66,13 +67,33 @@ public class MatchCreationService {
         return matchPlayers.findActiveMatchByUserIdAndMatchStatusIn(userId, ACTIVE_STATUSES);
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public ActiveMatchPair findActiveMatchesWithUserLocks(Long firstUserId, Long secondUserId) {
+        validateDistinctUserIds(firstUserId, secondUserId);
+
+        Long lowerUserId = Math.min(firstUserId, secondUserId);
+        Long higherUserId = Math.max(firstUserId, secondUserId);
+        lockUser(lowerUserId);
+        lockUser(higherUserId);
+        return new ActiveMatchPair(
+                matchPlayers.findActiveMatchByUserIdAndMatchStatusIn(firstUserId, ACTIVE_STATUSES),
+                matchPlayers.findActiveMatchByUserIdAndMatchStatusIn(secondUserId, ACTIVE_STATUSES));
+    }
+
     private User lockUser(Long userId) {
         return users.findByIdForUpdate(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
     }
 
     private void validatePlayers(MatchType matchType, Long firstUserId, Long secondUserId) {
-        if (matchType == null || firstUserId == null || secondUserId == null
+        if (matchType == null) {
+            throw new IllegalArgumentException("Match type and two distinct positive user IDs are required");
+        }
+        validateDistinctUserIds(firstUserId, secondUserId);
+    }
+
+    private void validateDistinctUserIds(Long firstUserId, Long secondUserId) {
+        if (firstUserId == null || secondUserId == null
                 || firstUserId <= 0 || secondUserId <= 0 || firstUserId.equals(secondUserId)) {
             throw new IllegalArgumentException("Match type and two distinct positive user IDs are required");
         }

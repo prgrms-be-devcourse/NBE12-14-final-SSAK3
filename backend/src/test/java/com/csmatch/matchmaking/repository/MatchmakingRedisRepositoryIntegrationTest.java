@@ -213,9 +213,37 @@ class MatchmakingRedisRepositoryIntegrationTest {
         assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "222")).isNull();
         assertThat(repository.removeWaiting(221L)).isEqualTo(QueueRemovalResult.RESERVED);
 
+        assertThat(repository.beginMatchCreation(reservation)).isTrue();
         assertThat(repository.releaseReservation(reservation)).isTrue();
         assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "221")).isEqualTo(1_000D);
         assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "222")).isEqualTo(1_000D);
+        assertReservationMetadataIsRemoved(reservation);
+    }
+
+    @Test
+    void storesRecoveryMetadataAndExpirationIndexWhenReservingPair() {
+        repository.registerWaiting(219L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(220L, MatchType.RATED, 1_250, JOINED_AT.plusSeconds(5));
+        long beforeReservation = Instant.now().toEpochMilli();
+
+        ReservedMatchPair reservation = repository.reservePair(219L, 220L, MatchType.RATED).orElseThrow();
+
+        String dataKey = reservationDataKey(reservation);
+        assertThat(redisTemplate.opsForHash().entries(dataKey)).containsEntry("token", reservation.reservationToken())
+                .containsEntry("firstUserId", "219")
+                .containsEntry("secondUserId", "220")
+                .containsEntry("matchType", "RATED")
+                .containsEntry("firstRating", "1000")
+                .containsEntry("secondRating", "1250")
+                .containsEntry("firstJoinedAtEpochMillis", Long.toString(JOINED_AT.toEpochMilli()))
+                .containsEntry("secondJoinedAtEpochMillis", Long.toString(JOINED_AT.plusSeconds(5).toEpochMilli()));
+        Double expiresAt = redisTemplate.opsForZSet().score(reservationExpirationKey(), reservation.reservationToken());
+        assertThat(expiresAt).isNotNull();
+        assertThat(expiresAt.longValue()).isBetween(beforeReservation + 59_000L, beforeReservation + 61_000L);
+        assertThat(redisTemplate.opsForHash().entries(dataKey)).containsEntry("expiresAtEpochMillis",
+                Long.toString(expiresAt.longValue()));
+        assertThat(redisTemplate.getExpire(reservationKey(219L))).isNegative();
+        assertThat(redisTemplate.getExpire(reservationKey(220L))).isNegative();
     }
 
     @Test
@@ -224,6 +252,7 @@ class MatchmakingRedisRepositoryIntegrationTest {
         repository.registerWaiting(226L, MatchType.UNRATED, 1_500, JOINED_AT);
         ReservedMatchPair reservation = repository.reservePair(225L, 226L, MatchType.UNRATED).orElseThrow();
 
+        assertThat(repository.beginMatchCreation(reservation)).isTrue();
         assertThat(repository.confirmMatch(reservation, 901L)).isTrue();
         assertThat(repository.findState(225L))
                 .extracting(state -> state.status(), state -> state.matchType(), state -> state.matchId())
@@ -235,6 +264,7 @@ class MatchmakingRedisRepositoryIntegrationTest {
         assertThat(redisTemplate.opsForSet().isMember(KEY_PREFIX + ":queue:unrated", "226")).isFalse();
         assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:225")).isFalse();
         assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:226")).isFalse();
+        assertReservationMetadataIsRemoved(reservation);
     }
 
     @Test
@@ -308,6 +338,91 @@ class MatchmakingRedisRepositoryIntegrationTest {
         assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "236")).isEqualTo(1_100D);
         assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:235")).isFalse();
         assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:236")).isFalse();
+        assertReservationMetadataIsRemoved(reservation);
+    }
+
+    @Test
+    void staleRecoveryExecutionCannotResolveAReservationClaimedByNewerExecution() {
+        repository.registerWaiting(239L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(240L, MatchType.RATED, 1_100, JOINED_AT.plusSeconds(5));
+        ReservedMatchPair reservation = repository.reservePair(239L, 240L, MatchType.RATED).orElseThrow();
+        redisTemplate.opsForZSet().add(reservationExpirationKey(), reservation.reservationToken(),
+                JOINED_AT.minusSeconds(1).toEpochMilli());
+
+        assertThat(repository.claimExpiredReservation(reservation.reservationToken(), "first-execution", JOINED_AT)).isTrue();
+        redisTemplate.delete(KEY_PREFIX + ":reservation:recovery:" + reservation.reservationToken());
+        assertThat(repository.claimExpiredReservation(reservation.reservationToken(), "second-execution", JOINED_AT)).isTrue();
+
+        var data = repository.findReservationRecoveryData(reservation.reservationToken()).orElseThrow();
+        assertThat(repository.resolveExpiredReservation(data, "first-execution", null, null, null, null)).isFalse();
+        assertThat(repository.resolveExpiredReservation(data, "second-execution", null, null, null, null)).isTrue();
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "239")).isEqualTo(1_000D);
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":queue:rated", "240")).isEqualTo(1_100D);
+    }
+
+    @Test
+    void recoveryClaimPreventsStaleMatchCreationFromStarting() {
+        repository.registerWaiting(244L, MatchType.UNRATED, 1_000, JOINED_AT);
+        repository.registerWaiting(245L, MatchType.UNRATED, 1_100, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(244L, 245L, MatchType.UNRATED).orElseThrow();
+        redisTemplate.opsForZSet().add(reservationExpirationKey(), reservation.reservationToken(),
+                JOINED_AT.minusSeconds(1).toEpochMilli());
+
+        assertThat(repository.claimExpiredReservation(reservation.reservationToken(), "recovery-execution", JOINED_AT)).isTrue();
+        assertThat(repository.beginMatchCreation(reservation)).isFalse();
+    }
+
+    @Test
+    void quarantinesOnlyReservationStillPresentInExpirationIndex() {
+        repository.registerWaiting(246L, MatchType.UNRATED, 1_000, JOINED_AT);
+        repository.registerWaiting(247L, MatchType.UNRATED, 1_100, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(246L, 247L, MatchType.UNRATED).orElseThrow();
+        redisTemplate.opsForZSet().add(reservationExpirationKey(), reservation.reservationToken(),
+                JOINED_AT.minusSeconds(1).toEpochMilli());
+
+        assertThat(repository.quarantineReservation(reservation.reservationToken(), JOINED_AT)).isTrue();
+        assertThat(redisTemplate.opsForZSet().score(reservationExpirationKey(), reservation.reservationToken())).isNull();
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":reservation:invalid", reservation.reservationToken()))
+                .isNotNull();
+        assertThat(repository.quarantineReservation(reservation.reservationToken(), JOINED_AT)).isFalse();
+    }
+
+    @Test
+    void doesNotQuarantineTokenAlreadyCompletedByConfirmation() {
+        repository.registerWaiting(252L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(253L, MatchType.RATED, 1_100, JOINED_AT);
+        ReservedMatchPair reservation = repository.reservePair(252L, 253L, MatchType.RATED).orElseThrow();
+
+        assertThat(repository.confirmMatch(reservation, 1001L)).isTrue();
+        assertThat(repository.quarantineReservation(reservation.reservationToken(), JOINED_AT)).isFalse();
+        assertThat(redisTemplate.opsForZSet().score(KEY_PREFIX + ":reservation:invalid", reservation.reservationToken()))
+                .isNull();
+    }
+
+    @Test
+    void doesNotQuarantineReservationWhileCreationOrRecoveryLeaseIsActive() {
+        repository.registerWaiting(248L, MatchType.RATED, 1_000, JOINED_AT);
+        repository.registerWaiting(249L, MatchType.RATED, 1_100, JOINED_AT);
+        ReservedMatchPair creationReservation = repository.reservePair(248L, 249L, MatchType.RATED).orElseThrow();
+        redisTemplate.opsForZSet().add(reservationExpirationKey(), creationReservation.reservationToken(),
+                JOINED_AT.minusSeconds(1).toEpochMilli());
+        assertThat(repository.beginMatchCreation(creationReservation)).isTrue();
+
+        assertThat(repository.quarantineReservation(creationReservation.reservationToken(), JOINED_AT)).isFalse();
+        assertThat(redisTemplate.opsForZSet().score(reservationExpirationKey(), creationReservation.reservationToken()))
+                .isNotNull();
+
+        assertThat(repository.releaseReservation(creationReservation)).isTrue();
+        repository.registerWaiting(250L, MatchType.UNRATED, 1_000, JOINED_AT);
+        repository.registerWaiting(251L, MatchType.UNRATED, 1_100, JOINED_AT);
+        ReservedMatchPair recoveryReservation = repository.reservePair(250L, 251L, MatchType.UNRATED).orElseThrow();
+        redisTemplate.opsForZSet().add(reservationExpirationKey(), recoveryReservation.reservationToken(),
+                JOINED_AT.minusSeconds(1).toEpochMilli());
+        assertThat(repository.claimExpiredReservation(recoveryReservation.reservationToken(), "recovery", JOINED_AT)).isTrue();
+
+        assertThat(repository.quarantineReservation(recoveryReservation.reservationToken(), JOINED_AT)).isFalse();
+        assertThat(redisTemplate.opsForZSet().score(reservationExpirationKey(), recoveryReservation.reservationToken()))
+                .isNotNull();
     }
 
     @Test
@@ -385,6 +500,24 @@ class MatchmakingRedisRepositoryIntegrationTest {
             throws Exception {
         barrier.await();
         return repository.reservePair(firstUserId, secondUserId, MatchType.RATED);
+    }
+
+    private void assertReservationMetadataIsRemoved(ReservedMatchPair reservation) {
+        assertThat(redisTemplate.hasKey(reservationDataKey(reservation))).isFalse();
+        assertThat(redisTemplate.opsForZSet().score(reservationExpirationKey(), reservation.reservationToken())).isNull();
+        assertThat(redisTemplate.hasKey(KEY_PREFIX + ":reservation:creation:" + reservation.reservationToken())).isFalse();
+    }
+
+    private String reservationDataKey(ReservedMatchPair reservation) {
+        return KEY_PREFIX + ":reservation:data:" + reservation.reservationToken();
+    }
+
+    private String reservationExpirationKey() {
+        return KEY_PREFIX + ":reservation:expires";
+    }
+
+    private String reservationKey(long userId) {
+        return KEY_PREFIX + ":reservation:" + userId;
     }
 
     private void clearTestKeys() {
