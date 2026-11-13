@@ -66,6 +66,7 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 
 ## 문서
 
+- React 연습 데모 실행: `docs/practice-demo.md` (기존 DB와 분리된 예시 문제 1개)
 - 연습 백엔드 설계·검증: `docs/practice-design.md`
 - 기존 DB의 연습 스키마 변경 적용: `docs/db/migrations/README.md` (새 서버 실행 전에 적용)
 - 협업 규칙(브랜치·커밋·PR·Jira): `docs/conventions.md`
