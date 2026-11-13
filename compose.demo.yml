@@ -1,0 +1,28 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: csmatch_demo
+      MYSQL_USER: csmatch_demo
+      MYSQL_PASSWORD: ${DEMO_MYSQL_PASSWORD:?Run scripts/start-demo-infra.ps1 first}
+      MYSQL_ROOT_PASSWORD: ${DEMO_MYSQL_ROOT_PASSWORD:?Run scripts/start-demo-infra.ps1 first}
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - demo-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql -ucsmatch_demo -e "SELECT 1" csmatch_demo']
+      interval: 3s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+volumes:
+  demo-mysql:
