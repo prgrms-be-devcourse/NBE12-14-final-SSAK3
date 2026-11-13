@@ -35,6 +35,11 @@ public class ClaudeQuestionGenerator implements QuestionGenerator {
     }
 
     @Override
+    public String defaultModel() {
+        return model;
+    }
+
+    @Override
     public boolean isConfigured() {
         return !apiKey.isEmpty();
     }
@@ -45,7 +50,7 @@ public class ClaudeQuestionGenerator implements QuestionGenerator {
             throw new LlmException("LLM API 키가 설정되지 않았습니다.", true, null);
         }
         StructuredMessageCreateParams<GeneratedQuestion> params = MessageCreateParams.builder()
-                .model(model)
+                .model(request.model())
                 .maxTokens(MAX_TOKENS)
                 .systemOfTextBlockParams(List.of(TextBlockParam.builder()
                         .text(QuestionPrompt.SYSTEM)
@@ -66,7 +71,7 @@ public class ClaudeQuestionGenerator implements QuestionGenerator {
         }
 
         log.info("LLM 호출 완료 model={} concept={} difficulty={} inputTokens={} outputTokens={}",
-                model, request.conceptName(), request.difficulty(),
+                request.model(), request.conceptName(), request.difficulty(),
                 response.usage().inputTokens(), response.usage().outputTokens());
 
         if (response.stopReason().filter(reason -> reason.equals(StopReason.REFUSAL)).isPresent()) {

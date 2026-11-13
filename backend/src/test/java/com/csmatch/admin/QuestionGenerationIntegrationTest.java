@@ -89,6 +89,7 @@ class QuestionGenerationIntegrationTest {
         userId = users.saveAndFlush(User.create("user@example.com", "test-hash", "회원")).getUserId();
 
         when(generator.isConfigured()).thenReturn(true);
+        when(generator.defaultModel()).thenReturn("claude-sonnet-5-5");
         when(generator.generate(any())).thenReturn(valid());
     }
 
@@ -179,7 +180,7 @@ class QuestionGenerationIntegrationTest {
 
     @Test
     void 쓸_수_없는_문제는_최대_시도_횟수까지만_다시_하고_저장하지_않는다() throws Exception {
-        when(generator.generate(any())).thenReturn(new GeneratedQuestion("문제",
+        when(generator.generate(any())).thenReturn(new GeneratedQuestion(List.of("풀이"), "문제",
                 List.of(new GeneratedQuestion.Choice("a", true), new GeneratedQuestion.Choice("b", false)), "해설"));
 
         start(1, 1);
@@ -189,6 +190,38 @@ class QuestionGenerationIntegrationTest {
         assertThat(service.status().failed()).isEqualTo(1);
         verify(generator, times(3)).generate(any());
         assertThat(questions.count()).isZero();
+    }
+
+    @Test
+    void 어려움_문제의_풀이_단계가_부족하면_다시_시도하고_끝내_실패하면_건너뛴다() throws Exception {
+        when(generator.generate(any())).thenReturn(new GeneratedQuestion(List.of("정의를 떠올린다"), "문제 본문",
+                List.of(new GeneratedQuestion.Choice("정답 보기", true), new GeneratedQuestion.Choice("오답 1", false),
+                        new GeneratedQuestion.Choice("오답 2", false), new GeneratedQuestion.Choice("오답 3", false)),
+                "해설"));
+
+        start(3, 1);
+        awaitFinished();
+
+        // 쉬움·보통은 1번에 저장, 어려움은 3번 시도 후 실패
+        assertThat(service.status().succeeded()).isEqualTo(2);
+        assertThat(service.status().failed()).isEqualTo(1);
+        verify(generator, times(5)).generate(any());
+        assertThat(countByDifficulty("HARD")).isZero();
+    }
+
+    @Test
+    void 정답이_눈에_띄게_길면_다시_생성한다() throws Exception {
+        GeneratedQuestion longCorrect = new GeneratedQuestion(List.of("조건 A", "조건 B"), "문제 본문",
+                List.of(new GeneratedQuestion.Choice("가".repeat(60), true), new GeneratedQuestion.Choice("나".repeat(20), false),
+                        new GeneratedQuestion.Choice("다".repeat(20), false), new GeneratedQuestion.Choice("라".repeat(20), false)),
+                "해설");
+        when(generator.generate(any())).thenReturn(longCorrect).thenReturn(valid());
+
+        start(1, 1);
+        awaitFinished();
+
+        assertThat(service.status().succeeded()).isEqualTo(1);
+        verify(generator, times(2)).generate(any());
     }
 
     @Test
@@ -250,6 +283,67 @@ class QuestionGenerationIntegrationTest {
         start(1, 1);
         awaitFinished();
         assertThat(questions.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 모델을_생략하면_기본_모델로_생성하고_상태에_모델이_나온다() throws Exception {
+        mvc.perform(post(URL).with(admin()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1,\"categoryId\":1}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.model").value("claude-sonnet-5-5"));
+        awaitFinished();
+
+        ArgumentCaptor<QuestionRequest> captor = ArgumentCaptor.forClass(QuestionRequest.class);
+        verify(generator).generate(captor.capture());
+        assertThat(captor.getValue().model()).isEqualTo("claude-sonnet-5-5");
+        mvc.perform(get(URL + "/status").with(admin()))
+                .andExpect(jsonPath("$.data.model").value("claude-sonnet-5-5"));
+    }
+
+    @Test
+    void 허용된_모델을_고르면_그_모델로_호출한다() throws Exception {
+        mvc.perform(post(URL).with(admin()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":3,\"categoryId\":1,\"model\":\"claude-haiku-5-5\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.model").value("claude-haiku-5-5"));
+        awaitFinished();
+
+        ArgumentCaptor<QuestionRequest> captor = ArgumentCaptor.forClass(QuestionRequest.class);
+        verify(generator, times(3)).generate(captor.capture());
+        assertThat(captor.getAllValues()).extracting(QuestionRequest::model).containsOnly("claude-haiku-5-5");
+        assertThat(service.status().model()).isEqualTo("claude-haiku-5-5");
+    }
+
+    @Test
+    void 모델_앞뒤_공백은_무시한다() throws Exception {
+        mvc.perform(post(URL).with(admin()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1,\"categoryId\":1,\"model\":\" claude-opus-5-5 \"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.model").value("claude-opus-5-5"));
+        awaitFinished();
+    }
+
+    @Test
+    void 허용되지_않은_모델이면_400이고_호출하지_않으며_실행_중_상태도_남기지_않는다() throws Exception {
+        for (String model : List.of("claude-fable-5-1", "gpt-4o", "", " ", "claude-haiku-5-5; drop")) {
+            mvc.perform(post(URL).with(admin()).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"count\":1,\"model\":\"" + model + "\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+        }
+
+        verify(generator, times(0)).generate(any());
+        start(1, 1);
+        awaitFinished();
+        assertThat(questions.count()).isEqualTo(1);
+    }
+
+    @Test
+    void 모델_이름이_너무_길면_400이다() throws Exception {
+        mvc.perform(post(URL).with(admin()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1,\"model\":\"" + "a".repeat(101) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -348,7 +442,7 @@ class QuestionGenerationIntegrationTest {
     }
 
     private static GeneratedQuestion valid() {
-        return new GeneratedQuestion("문제 본문",
+        return new GeneratedQuestion(List.of("조건 A를 적용한다", "그 결과에 조건 B를 적용한다"), "문제 본문",
                 List.of(new GeneratedQuestion.Choice("정답 보기", true), new GeneratedQuestion.Choice("오답 1", false),
                         new GeneratedQuestion.Choice("오답 2", false), new GeneratedQuestion.Choice("오답 3", false)),
                 "정답이 맞는 이유");

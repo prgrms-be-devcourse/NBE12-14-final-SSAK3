@@ -56,6 +56,7 @@ services:
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-claude-sonnet-5-5}
+      LLM_MODELS: ${LLM_MODELS:-claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5}
       TZ: Asia/Seoul
     expose:
       - "8080"

@@ -22,8 +22,10 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -46,6 +48,7 @@ public class QuestionGenerationService {
     private final CategoryRepository categories;
     private final QuestionRepository questions;
     private final GeneratedQuestionSaver saver;
+    private final Set<String> allowedModels;
     private final int maxCount;
     private final int maxAttempts;
 
@@ -61,6 +64,7 @@ public class QuestionGenerationService {
     public QuestionGenerationService(QuestionGenerator generator, ConceptRepository concepts,
                                      CategoryRepository categories, QuestionRepository questions,
                                      GeneratedQuestionSaver saver,
+                                     @Value("${app.llm.models:}") List<String> models,
                                      @Value("${app.llm.max-count:30}") int maxCount,
                                      @Value("${app.llm.max-attempts:3}") int maxAttempts) {
         this.generator = generator;
@@ -68,6 +72,9 @@ public class QuestionGenerationService {
         this.categories = categories;
         this.questions = questions;
         this.saver = saver;
+        Set<String> allowed = new LinkedHashSet<>();
+        models.stream().map(String::trim).filter(model -> !model.isEmpty()).forEach(allowed::add);
+        this.allowedModels = Set.copyOf(allowed);
         this.maxCount = maxCount;
         this.maxAttempts = maxAttempts;
     }
@@ -82,6 +89,11 @@ public class QuestionGenerationService {
         if (categoryId != null && !categories.existsById(categoryId)) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
+        // 생략하면 기본 모델. 지정했는데 허용 목록에도 기본 모델에도 없으면(빈 문자열 포함) 호출 전에 막는다.
+        String model = request.model() == null ? generator.defaultModel() : request.model().trim();
+        if (!model.equals(generator.defaultModel()) && !allowedModels.contains(model)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
         if (!generator.isConfigured()) {
             throw new BusinessException(ErrorCode.LLM_NOT_CONFIGURED);
         }
@@ -93,7 +105,7 @@ public class QuestionGenerationService {
             if (plan.isEmpty()) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED);
             }
-            Run run = new Run(count);
+            Run run = new Run(model, count);
             lastRun = run;
             executor.execute(() -> execute(run, plan));
             return run.snapshot();
@@ -106,7 +118,7 @@ public class QuestionGenerationService {
     public QuestionGenerationDto.Status status() {
         Run run = lastRun;
         return run == null
-                ? new QuestionGenerationDto.Status("IDLE", 0, 0, 0, null, null)
+                ? new QuestionGenerationDto.Status("IDLE", null, 0, 0, 0, null, null)
                 : run.snapshot();
     }
 
@@ -150,7 +162,7 @@ public class QuestionGenerationService {
     }
 
     private void execute(Run run, List<Target> plan) {
-        log.info("문제 생성 시작 requested={}", plan.size());
+        log.info("문제 생성 시작 model={} requested={}", run.model, plan.size());
         try {
             for (Target target : plan) {
                 if (stopRequested) {
@@ -158,7 +170,7 @@ public class QuestionGenerationService {
                     break;
                 }
                 try {
-                    if (generateOne(target)) {
+                    if (generateOne(run.model, target)) {
                         run.succeeded.incrementAndGet();
                     } else {
                         run.failed.incrementAndGet();
@@ -175,12 +187,12 @@ public class QuestionGenerationService {
         } finally {
             run.finish();
             running.set(false);
-            log.info("문제 생성 종료 succeeded={} failed={}", run.succeeded.get(), run.failed.get());
+            log.info("문제 생성 종료 model={} succeeded={} failed={}", run.model, run.succeeded.get(), run.failed.get());
         }
     }
 
     /** 문제 하나를 최대 maxAttempts 번 시도한다. 저장하면 true, 모두 실패하면 false. */
-    private boolean generateOne(Target target) {
+    private boolean generateOne(String model, Target target) {
         ConceptSource concept = target.concept();
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             if (stopRequested) {
@@ -189,10 +201,10 @@ public class QuestionGenerationService {
             try {
                 List<String> existing = questions.findContentsByConceptId(
                         concept.conceptId(), PageRequest.of(0, EXISTING_QUESTION_LIMIT));
-                GeneratedQuestion generated = generator.generate(new QuestionRequest(
+                GeneratedQuestion generated = generator.generate(new QuestionRequest(model,
                         concept.categoryName(), concept.name(), concept.description(),
                         target.difficulty(), existing));
-                Optional<String> problem = generated.validate();
+                Optional<String> problem = generated.validate(target.difficulty());
                 if (problem.isPresent()) {
                     log.warn("생성한 문제를 쓸 수 없습니다 concept={} attempt={} reason={}",
                             concept.name(), attempt, problem.get());
@@ -218,13 +230,15 @@ public class QuestionGenerationService {
     private record Target(ConceptSource concept, Difficulty difficulty) { }
 
     private static final class Run {
+        private final String model;
         private final int requested;
         private final OffsetDateTime startedAt = OffsetDateTime.now(SEOUL);
         private final AtomicInteger succeeded = new AtomicInteger();
         private final AtomicInteger failed = new AtomicInteger();
         private volatile OffsetDateTime finishedAt;
 
-        private Run(int requested) {
+        private Run(String model, int requested) {
+            this.model = model;
             this.requested = requested;
         }
 
@@ -233,7 +247,7 @@ public class QuestionGenerationService {
         }
 
         private QuestionGenerationDto.Status snapshot() {
-            return new QuestionGenerationDto.Status(finishedAt == null ? "RUNNING" : "FINISHED",
+            return new QuestionGenerationDto.Status(finishedAt == null ? "RUNNING" : "FINISHED", model,
                     requested, succeeded.get(), failed.get(), startedAt, finishedAt);
         }
     }

@@ -6,6 +6,9 @@ package com.csmatch.question.llm;
  */
 public interface QuestionGenerator {
 
+    /** 요청이 모델을 지정하지 않을 때 쓰는 모델. */
+    String defaultModel();
+
     /** API 키 등 호출에 필요한 설정이 있는지. 없으면 생성 API 는 503 을 돌려준다. */
     boolean isConfigured();
 
