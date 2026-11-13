@@ -20,9 +20,9 @@ public class PracticeChoice {
     @Column(name = "is_correct", nullable = false)
     private boolean correct;
 
-    public PracticeChoice(QuestionChoice choice) {
+    public PracticeChoice(QuestionChoice choice, int choiceNo) {
         choiceId = choice.getId();
-        choiceNo = choice.getChoiceNo();
+        this.choiceNo = choiceNo;
         content = choice.getContent();
         correct = choice.isCorrect();
     }

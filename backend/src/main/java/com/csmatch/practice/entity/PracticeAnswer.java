@@ -8,7 +8,10 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Entity
 @Table(name = "practice_answers", uniqueConstraints = {
@@ -52,6 +55,10 @@ public class PracticeAnswer {
     private LocalDateTime submittedAt;
 
     public PracticeAnswer(PracticeSession session, Question question, int index) {
+        this(session, question, index, ThreadLocalRandom.current());
+    }
+
+    PracticeAnswer(PracticeSession session, Question question, int index, Random random) {
         this.session = session;
         this.question = question;
         questionIndex = index;
@@ -59,7 +66,12 @@ public class PracticeAnswer {
         difficulty = question.getDifficulty().name();
         content = question.getContent();
         explanation = question.getExplanation();
-        choices = new ArrayList<>(question.getChoices().stream().map(PracticeChoice::new).toList());
+        // 원본 순서는 보존하고, 연습에 배정할 때만 섞어 표시 순서를 저장한다.
+        var shuffled = new ArrayList<>(question.getChoices());
+        Collections.shuffle(shuffled, random);
+        for (int i = 0; i < shuffled.size(); i++) {
+            choices.add(new PracticeChoice(shuffled.get(i), i + 1));
+        }
     }
 
     public boolean isAnswered() {
