@@ -38,7 +38,7 @@ public class SttSessionController {
 
     private String email(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated() || authentication instanceof AnonymousAuthenticationToken) {
-            throw new BusinessException(ErrorCode.AUTH_REQUIRED);
+            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
         }
         return authentication.getName();
     }
