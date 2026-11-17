@@ -5,7 +5,7 @@
 
 일정: 11/29 MVP 배포, 12/4 최종 배포, 12/7 최종 발표. Jira: https://ssakthree.atlassian.net/jira/software/projects/SCRUM/boards/1
 
-> 기획서는 `docs/planning.md`, 기능 정의서는 `docs/feature-spec.md`, API 명세는 `docs/api-spec.md`, ERD 는 `docs/db/erd.dbml` 이다. 문서끼리 어긋나면 PR 에서 팀원과 조율한다.
+> 기획서는 `docs/planning.md`, 기능 정의서는 `docs/feature-spec.md`, API 명세는 `docs/api-spec.md`(목차)와 `docs/api/<도메인>.md`, ERD 는 `docs/db/erd.dbml` 이다. 문서끼리 어긋나면 PR 에서 팀원과 조율한다.
 
 ## 기술 스택
 
