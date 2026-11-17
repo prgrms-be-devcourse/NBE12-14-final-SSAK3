@@ -16,7 +16,7 @@ backend/src/main/java/com/react/
 backend/src/test/java/com/react/<도메인>/
 
 frontend/        React + Vite
-docs/            conventions.md(협업 규칙), db/(테스트 DB 준비), testing.md
+docs/            planning.md(기획), feature-spec.md(기능 정의), api-spec.md(API 목차)와 api/(도메인별 REST·STOMP 명세), db/(erd.dbml, 테스트 DB 준비), conventions.md, testing.md
 docker-compose.yml   mysql, redis, backend, web(Nginx)
 ```
 
