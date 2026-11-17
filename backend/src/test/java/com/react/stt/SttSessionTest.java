@@ -167,6 +167,29 @@ class SttSessionTest {
     }
 
     @Test
+    void sameSessionTimesAcrossUtcAndSeoulConnections() {
+        UUID key = UUID.randomUUID();
+        try (var utc = connectionInZone("+00:00"); var seoul = connectionInZone("+09:00")) {
+            var utcJdbc = JdbcClient.create(utc);
+            var utcService = new SttSessionService(utcJdbc);
+            var seoulService = new SttSessionService(JdbcClient.create(seoul));
+            var started = utcService.start(room, email, key).session();
+            long id = started.sttSessionId();
+            assertThat(started.endedAt()).isNull();
+            assertThat(seoulService.start(room, email, key).session()).isEqualTo(started);
+
+            var stopped = utcService.stop(room, id, email, StopReason.MANUAL_STOP);
+            assertThat(stopped.endedAt()).isNotNull();
+            assertThat(seoulService.stop(room, id, email, StopReason.ERROR)).isEqualTo(stopped);
+            var offset = java.time.ZoneOffset.ofHours(9);
+            assertThat(utcJdbc.sql("SELECT started_at FROM stt_sessions WHERE id=?").param(id)
+                    .query(LocalDateTime.class).single()).isEqualTo(LocalDateTime.ofInstant(started.startedAt(), offset));
+            assertThat(utcJdbc.sql("SELECT ended_at FROM stt_sessions WHERE id=?").param(id)
+                    .query(LocalDateTime.class).single()).isEqualTo(LocalDateTime.ofInstant(stopped.endedAt(), offset));
+        }
+    }
+
+    @Test
     void sameSegmentAcrossUtcAndSeoulConnections() {
         UUID key = UUID.randomUUID();
         long id = service.start(room, email, key).session().sttSessionId();
