@@ -11,8 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.sql.Timestamp;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,6 +22,8 @@ import java.util.UUID;
 @Transactional
 @RequiredArgsConstructor
 public class SttSessionService {
+    // stt_segments DATETIME values use the original deployment's fixed +09:00 clock.
+    private static final ZoneOffset SEGMENT_STORAGE_OFFSET = ZoneOffset.ofHours(9);
     private final JdbcClient jdbc;
 
     public enum StopReason {
@@ -107,8 +110,11 @@ public class SttSessionService {
         }
         jdbc.sql("""
                 INSERT INTO stt_segments(stt_session_id, segment_key, transcript, segment_start_at, segment_end_at, received_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """).params(sessionId, request.segmentKey(), request.transcript(), Timestamp.from(start), Timestamp.from(end))
+                VALUES (?, ?, ?, ?, ?, ?)
+                """).params(sessionId, request.segmentKey(), request.transcript(),
+                        LocalDateTime.ofInstant(start, SEGMENT_STORAGE_OFFSET),
+                        LocalDateTime.ofInstant(end, SEGMENT_STORAGE_OFFSET),
+                        LocalDateTime.ofInstant(Instant.now().truncatedTo(ChronoUnit.SECONDS), SEGMENT_STORAGE_OFFSET))
                 .update();
         return new SegmentResult(true, findSegment(sessionId, request.segmentKey()).orElseThrow());
     }
@@ -116,12 +122,13 @@ public class SttSessionService {
     private Optional<SttSegmentView> findSegment(long sessionId, String key) {
         return jdbc.sql("""
                 SELECT id, stt_session_id, segment_key, transcript, segment_start_at, segment_end_at,
-                       UNIX_TIMESTAMP(received_at) AS received_epoch
+                       received_at
                 FROM stt_segments WHERE stt_session_id = ? AND segment_key = ?
                 """).params(sessionId, key).query((row, index) -> new SttSegmentView(
                         row.getLong("id"), row.getLong("stt_session_id"), row.getString("segment_key"),
-                        row.getString("transcript"), row.getTimestamp("segment_start_at").toInstant(),
-                        row.getTimestamp("segment_end_at").toInstant(), Instant.ofEpochSecond(row.getLong("received_epoch"))))
+                        row.getString("transcript"), row.getObject("segment_start_at", LocalDateTime.class).toInstant(SEGMENT_STORAGE_OFFSET),
+                        row.getObject("segment_end_at", LocalDateTime.class).toInstant(SEGMENT_STORAGE_OFFSET),
+                        row.getObject("received_at", LocalDateTime.class).toInstant(SEGMENT_STORAGE_OFFSET)))
                 .optional();
     }
 

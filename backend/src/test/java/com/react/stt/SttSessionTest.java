@@ -12,12 +12,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import javax.sql.DataSource;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -35,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SttSessionTest {
     @Autowired JdbcClient jdbc;
     @Autowired DataSource dataSource;
+    @Autowired DataSourceProperties database;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired SttSessionService service;
@@ -160,6 +164,37 @@ class SttSessionTest {
         var changedText = new SttSegmentRequest(key, "seg-1", "수정 발언", time, time.plusMillis(1));
         mvc.perform(segment(room, id, changedText).with(user(email))).andExpect(status().isConflict());
         mvc.perform(segment(room, id, late).with(user(email))).andExpect(status().isConflict());
+    }
+
+    @Test
+    void sameSegmentAcrossUtcAndSeoulConnections() {
+        UUID key = UUID.randomUUID();
+        long id = service.start(room, email, key).session().sttSessionId();
+        var start = Instant.parse("2026-11-17T18:00:12.350Z");
+        var line = new SttSegmentRequest(key, "tz-1", "발언", start, start.plusMillis(41));
+
+        try (var writer = connectionInZone("+00:00"); var reader = connectionInZone("+09:00")) {
+            var writeJdbc = JdbcClient.create(writer);
+            var first = new SttSessionService(writeJdbc).saveSegment(room, id, email, line);
+            var replay = new SttSessionService(JdbcClient.create(reader)).saveSegment(room, id, email, line);
+            assertThat(first.created()).isTrue();
+            assertThat(replay.created()).isFalse();
+            assertThat(replay.segment()).isEqualTo(first.segment());
+            assertThat(replay.segment().segmentStartAt()).isEqualTo(start);
+            assertThat(replay.segment().segmentEndAt()).isEqualTo(start.plusMillis(41));
+            assertThat(writeJdbc.sql("SELECT segment_start_at FROM stt_segments WHERE id=?")
+                    .param(first.segment().segmentId()).query(LocalDateTime.class).single())
+                    .isEqualTo(LocalDateTime.parse("2026-11-18T03:00:12.350"));
+        }
+    }
+
+    private SingleConnectionDataSource connectionInZone(String offset) {
+        String baseUrl = database.getUrl().split("\\?", 2)[0];
+        String zone = offset.equals("+00:00") ? "UTC" : "Asia/Seoul";
+        var connection = new SingleConnectionDataSource(baseUrl + "?connectionTimeZone=" + zone,
+                database.getUsername(), database.getPassword(), true);
+        JdbcClient.create(connection).sql("SET SESSION time_zone = ?").param(offset).update();
+        return connection;
     }
 
     @Test
