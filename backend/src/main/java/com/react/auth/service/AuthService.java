@@ -1,5 +1,7 @@
 package com.react.auth.service;
 
+import com.react.auth.dto.LoginRequest;
+import com.react.auth.dto.LoginResponse;
 import com.react.auth.dto.SignupRequest;
 import com.react.auth.dto.SignupResponse;
 import com.react.auth.entity.User;
@@ -100,5 +102,34 @@ public class AuthService {
         }
 
         return false;
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResponse login(LoginRequest request) {
+
+        String email = request.email()
+                .strip()
+                .toLowerCase(Locale.ROOT);
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.INVALID_CREDENTIALS
+                ));
+
+        if (!passwordEncoder.matches(
+                request.password(),
+                user.getPasswordHash()
+        )) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_CREDENTIALS
+            );
+        }
+
+        return new LoginResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName(),
+                true
+        );
     }
 }
