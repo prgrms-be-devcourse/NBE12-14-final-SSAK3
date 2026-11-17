@@ -1,4 +1,4 @@
-package com.csmatch;
+package com.react;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -6,7 +6,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
 @ActiveProfiles("test")
-class CsMatchApplicationTests {
+class ReActApplicationTests {
 
     @Test
     void contextLoads() {

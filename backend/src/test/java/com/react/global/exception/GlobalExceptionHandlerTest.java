@@ -1,6 +1,6 @@
-package com.csmatch.global.exception;
+package com.react.global.exception;
 
-import com.csmatch.global.response.ApiResponse;
+import com.react.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;

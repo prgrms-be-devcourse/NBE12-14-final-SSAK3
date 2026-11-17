@@ -1,4 +1,4 @@
-package com.csmatch.global.response;
+package com.react.global.response;
 
 public record ApiResponse<T>(T data) {
 

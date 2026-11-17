@@ -1,6 +1,6 @@
-package com.csmatch.global.response;
+package com.react.global.response;
 
-import com.csmatch.global.exception.ErrorCode;
+import com.react.global.exception.ErrorCode;
 
 public record ErrorResponse(ErrorDetail error) {
 

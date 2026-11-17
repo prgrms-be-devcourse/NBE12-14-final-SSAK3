@@ -16,4 +16,4 @@ spring:
 
 logging:
   level:
-    com.csmatch: info
+    com.react: info
