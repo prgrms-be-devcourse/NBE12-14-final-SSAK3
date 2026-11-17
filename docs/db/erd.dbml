@@ -88,12 +88,16 @@ Table poll_responses {
 }
 
 Table stt_sessions {
+  start_key char(36) [note: '시작 요청 UUID. 기존 세션은 NULL 허용']
   id bigint [pk, increment]
   lecture_room_id bigint [not null, ref: > lecture_rooms.id]
   status varchar(20) [not null, note: 'RECORDING, STOPPED, ERROR']
   started_at datetime [not null]
   ended_at datetime
-  indexes { lecture_room_id }
+  indexes {
+    lecture_room_id
+    (lecture_room_id, start_key) [unique]
+  }
 }
 
 Table stt_segments {
