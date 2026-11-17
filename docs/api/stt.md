@@ -3,6 +3,8 @@
 
 ### [STT-01] STT 세션 시작
 
+세션의 시작·종료 시각은 기존 배포 기준과 동일하게 DB의 `DATETIME`에 고정 오프셋 `+09:00`으로 기록한다. API는 이를 UTC로 반환하며, 진행 중인 세션의 `endedAt`은 `null`이다.
+
 **POST** `/api/v1/rooms/{roomId}/stt/sessions` — HOST, 강연방 소유자 — Request `{ "startKey": "9fad8ee6-dd0b-4402-9817-8da1b7144fe5" }`
 
 ```json
