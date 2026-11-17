@@ -46,7 +46,7 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/api/v1/test/duplicate"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code")
-                        .value("EMAIL_DUPLICATED"))
+                        .value("EMAIL_ALREADY_EXISTS"))
                 .andExpect(jsonPath("$.error.message")
                         .value("이미 가입된 이메일입니다."));
     }
@@ -162,7 +162,7 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/duplicate")
         void duplicate() {
             throw new BusinessException(
-                    ErrorCode.EMAIL_DUPLICATED
+                    ErrorCode.EMAIL_ALREADY_EXISTS
             );
         }
 

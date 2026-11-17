@@ -104,7 +104,6 @@ jobs:
       MYSQL_DATABASE: csmatch
       MYSQL_USER: csmatch
       MYSQL_PASSWORD: ci-smoke-password
-      JWT_SECRET: "0123456789abcdef0123456789abcdef"
 
     steps:
       - uses: actions/checkout@v4

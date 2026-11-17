@@ -1,14 +1,12 @@
 {
-  "name": "cs-match-frontend",
+  "name": "re-act-frontend",
   "private": true,
   "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:demo": "vite --mode demo --host 127.0.0.1 --port 5174 --strictPort",
     "build": "vite build",
-    "preview": "vite preview",
-    "test:e2e": "playwright test"
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^18.3.1",
