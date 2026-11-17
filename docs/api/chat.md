@@ -60,22 +60,24 @@ Response — 200 OK
 
 ```json
 {
-  "messages": [
-    {
-      "messageId": 1001,
-      "sender": { "type": "PARTICIPANT", "id": 101, "name": "청중A" },
-      "content": "Redis와 MySQL의 차이가 궁금합니다.",
-      "receivedAt": "2026-11-17T01:02:00Z"
-    },
-    {
-      "messageId": 1002,
-      "sender": { "type": "HOST", "id": 1, "name": "김강연" },
-      "content": "예시를 들어 설명할게요.",
-      "receivedAt": "2026-11-17T01:02:10Z"
-    }
-  ],
-  "nextCursor": 1001,
-  "hasNext": false
+  "data": {
+    "messages": [
+      {
+        "messageId": 1001,
+        "sender": { "type": "PARTICIPANT", "id": 101, "name": "청중A" },
+        "content": "Redis와 MySQL의 차이가 궁금합니다.",
+        "receivedAt": "2026-11-17T01:02:00Z"
+      },
+      {
+        "messageId": 1002,
+        "sender": { "type": "HOST", "id": 1, "name": "김강연" },
+        "content": "예시를 들어 설명할게요.",
+        "receivedAt": "2026-11-17T01:02:10Z"
+      }
+    ],
+    "nextCursor": 1001,
+    "hasNext": false
+  }
 }
 ```
 

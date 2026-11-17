@@ -32,13 +32,15 @@ Response — 201 Created
 
 ```json
 {
-  "segmentId": 9001,
-  "sttSessionId": 701,
-  "segmentKey": "browser-701-0001",
-  "transcript": "Redis는 메모리 기반 데이터 저장소입니다.",
-  "segmentStartAt": "2026-11-17T01:00:12Z",
-  "segmentEndAt": "2026-11-17T01:00:19Z",
-  "receivedAt": "2026-11-17T01:00:20Z"
+  "data": {
+    "segmentId": 9001,
+    "sttSessionId": 701,
+    "segmentKey": "browser-701-0001",
+    "transcript": "Redis는 메모리 기반 데이터 저장소입니다.",
+    "segmentStartAt": "2026-11-17T01:00:12Z",
+    "segmentEndAt": "2026-11-17T01:00:19Z",
+    "receivedAt": "2026-11-17T01:00:20Z"
+  }
 }
 ```
 
@@ -58,7 +60,7 @@ Request
 Response — 201 Created
 
 ```json
-{ "gapId": 8001, "sttSessionId": 701, "eventKey": "stt-701-gap-0001", "reason": "ERROR", "startedAt": "2026-11-17T01:25:00Z", "endedAt": null }
+{ "data": { "gapId": 8001, "sttSessionId": 701, "eventKey": "stt-701-gap-0001", "reason": "ERROR", "startedAt": "2026-11-17T01:25:00Z", "endedAt": null } }
 ```
 
 규칙: 브라우저 음성 인식 중단 시 기록, 기록이 없는 구간을 모두 오류로 간주하지 않음, `eventKey` 로 같은 이벤트 중복 저장 방지(동일 이벤트 재전송 시 기존 결과 반환, 같은 키로 다른 내용을 보내면 충돌 처리), 세션당 열린 누락 구간이 중복 생성되지 않도록 검증. 엔터티: `stt_gaps`
@@ -70,7 +72,7 @@ Response — 201 Created
 Request `{ "endedAt": "2026-11-17T01:25:15Z" }`
 
 ```json
-{ "gapId": 8001, "startedAt": "2026-11-17T01:25:00Z", "endedAt": "2026-11-17T01:25:15Z", "reason": "ERROR" }
+{ "data": { "gapId": 8001, "startedAt": "2026-11-17T01:25:00Z", "endedAt": "2026-11-17T01:25:15Z", "reason": "ERROR" } }
 ```
 
 규칙: STT 가 정상 재시작된 시점에 종료, 종료 시각은 시작 시각보다 빠를 수 없음, 이미 닫힌 구간의 중복 처리 방지, 누락 구간은 회고 보고서에 별도 표시.
@@ -93,20 +95,22 @@ Request `{ "reason": "MANUAL_STOP" }`
 
 ```json
 {
-  "roomId": 10,
-  "segments": [
-    {
-      "segmentId": 9001,
-      "sessionId": 701,
-      "transcript": "Redis는 메모리 기반 데이터 저장소입니다.",
-      "segmentStartAt": "2026-11-17T01:00:12Z",
-      "segmentEndAt": "2026-11-17T01:00:19Z",
-      "receivedAt": "2026-11-17T01:00:20Z"
-    }
-  ],
-  "gaps": [
-    { "gapId": 8001, "sessionId": 701, "reason": "ERROR", "startedAt": "2026-11-17T01:25:00Z", "endedAt": "2026-11-17T01:25:15Z" }
-  ]
+  "data": {
+    "roomId": 10,
+    "segments": [
+      {
+        "segmentId": 9001,
+        "sessionId": 701,
+        "transcript": "Redis는 메모리 기반 데이터 저장소입니다.",
+        "segmentStartAt": "2026-11-17T01:00:12Z",
+        "segmentEndAt": "2026-11-17T01:00:19Z",
+        "receivedAt": "2026-11-17T01:00:20Z"
+      }
+    ],
+    "gaps": [
+      { "gapId": 8001, "sessionId": 701, "reason": "ERROR", "startedAt": "2026-11-17T01:25:00Z", "endedAt": "2026-11-17T01:25:15Z" }
+    ]
+  }
 }
 ```
 

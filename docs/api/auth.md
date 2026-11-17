@@ -14,7 +14,7 @@ Request
 Response — 201 Created
 
 ```json
-{ "userId": 1, "email": "host@example.com", "name": "김강연", "createdAt": "2026-11-17T00:00:00Z" }
+{ "data": { "userId": 1, "email": "host@example.com", "name": "김강연", "createdAt": "2026-11-17T00:00:00Z" } }
 ```
 
 규칙: 이메일 형식 검증, 중복 가입 차단, 비밀번호 정책 검증, 비밀번호 해시 저장, 비밀번호·해시는 응답에 포함하지 않음, 가입 후 자동 로그인은 하지 않는 방식을 제안한다.
@@ -33,7 +33,7 @@ Request
 Response — 200 OK
 
 ```json
-{ "userId": 1, "email": "host@example.com", "name": "김강연", "authenticated": true }
+{ "data": { "userId": 1, "email": "host@example.com", "name": "김강연", "authenticated": true } }
 ```
 
 응답 헤더 예시: `Set-Cookie: HOST_SESSION=...; HttpOnly; Secure; SameSite=Lax`
@@ -47,7 +47,7 @@ Response — 200 OK
 Response — 200 OK
 
 ```json
-{ "userId": 1, "email": "host@example.com", "name": "김강연" }
+{ "data": { "userId": 1, "email": "host@example.com", "name": "김강연" } }
 ```
 
 규칙: 서버 인증 정보로 현재 사용자 식별(클라이언트가 보낸 userId 를 신뢰하지 않음), 비밀번호 정보 노출 금지.

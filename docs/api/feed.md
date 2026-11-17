@@ -21,12 +21,14 @@ Response — 200 OK
 
 ```json
 {
-  "participantId": 101,
-  "roomId": 10,
-  "previousStatus": "UNDERSTOOD",
-  "currentStatus": "CONFUSED",
-  "changed": true,
-  "updatedAt": "2026-11-17T01:12:00Z"
+  "data": {
+    "participantId": 101,
+    "roomId": 10,
+    "previousStatus": "UNDERSTOOD",
+    "currentStatus": "CONFUSED",
+    "changed": true,
+    "updatedAt": "2026-11-17T01:12:00Z"
+  }
 }
 ```
 
@@ -45,10 +47,10 @@ Response — 200 OK
 **GET** `/api/v1/rooms/{roomId}/understanding/me` — PARTICIPANT
 
 ```json
-{ "participantId": 101, "status": "CONFUSED", "updatedAt": "2026-11-17T01:12:00Z" }
+{ "data": { "participantId": 101, "status": "CONFUSED", "updatedAt": "2026-11-17T01:12:00Z" } }
 ```
 
-미응답이면 `{ "participantId": 101, "status": null, "updatedAt": null }`. 미선택은 모르겠음으로 간주하지 않는다. 자신의 최신 상태만 조회하며 재접속 시 복원에 활용할 수 있다.
+미응답이면 `{ "data": { "participantId": 101, "status": null, "updatedAt": null } }`. 미선택은 모르겠음으로 간주하지 않는다. 자신의 최신 상태만 조회하며 재접속 시 복원에 활용할 수 있다.
 
 ### [FEED-04, 06] 강연방 이해도 집계 조회
 
@@ -56,14 +58,16 @@ Response — 200 OK
 
 ```json
 {
-  "roomId": 10,
-  "totalParticipants": 20,
-  "respondedParticipants": 15,
-  "unrespondedParticipants": 5,
-  "responseRate": 75.0,
-  "counts": { "UNDERSTOOD": 8, "CONFUSED": 5, "NOT_UNDERSTOOD": 2 },
-  "percentagesOfAllParticipants": { "UNDERSTOOD": 40.0, "CONFUSED": 25.0, "NOT_UNDERSTOOD": 10.0 },
-  "calculatedAt": "2026-11-17T01:12:01Z"
+  "data": {
+    "roomId": 10,
+    "totalParticipants": 20,
+    "respondedParticipants": 15,
+    "unrespondedParticipants": 5,
+    "responseRate": 75.0,
+    "counts": { "UNDERSTOOD": 8, "CONFUSED": 5, "NOT_UNDERSTOOD": 2 },
+    "percentagesOfAllParticipants": { "UNDERSTOOD": 40.0, "CONFUSED": 25.0, "NOT_UNDERSTOOD": 10.0 },
+    "calculatedAt": "2026-11-17T01:12:01Z"
+  }
 }
 ```
 

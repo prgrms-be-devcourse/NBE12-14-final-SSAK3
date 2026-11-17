@@ -9,11 +9,13 @@ Response — 202 Accepted
 
 ```json
 {
-  "reportId": 601,
-  "roomId": 10,
-  "status": "PENDING",
-  "createdAt": "2026-11-17T02:00:10Z",
-  "message": "회고 보고서 생성 요청이 접수되었습니다."
+  "data": {
+    "reportId": 601,
+    "roomId": 10,
+    "status": "PENDING",
+    "createdAt": "2026-11-17T02:00:10Z",
+    "message": "회고 보고서 생성 요청이 접수되었습니다."
+  }
 }
 ```
 
@@ -96,22 +98,24 @@ Response — 202 Accepted
 
 ```json
 {
-  "reportId": 601,
-  "roomId": 10,
-  "status": "COMPLETED",
-  "createdAt": "2026-11-17T02:00:10Z",
-  "generatedAt": "2026-11-17T02:00:30Z",
-  "content": {
-    "overview": "Redis와 MySQL의 역할 차이에 대한 의견이 반복되었습니다.",
-    "timeline": [ { "startAt": "2026-11-17T01:12:00Z", "endAt": "2026-11-17T01:13:00Z", "sttSegments": [], "sttGaps": [], "understanding": { "confusedTransitions": 6 }, "audienceOpinions": [], "polls": [], "aiInterpretation": "해당 구간의 보충 설명을 검토할 수 있습니다." } ],
-    "dataLimitations": [],
-    "evidencePolicy": "시간적 동시성은 인과관계를 의미하지 않습니다."
+  "data": {
+    "reportId": 601,
+    "roomId": 10,
+    "status": "COMPLETED",
+    "createdAt": "2026-11-17T02:00:10Z",
+    "generatedAt": "2026-11-17T02:00:30Z",
+    "content": {
+      "overview": "Redis와 MySQL의 역할 차이에 대한 의견이 반복되었습니다.",
+      "timeline": [ { "startAt": "2026-11-17T01:12:00Z", "endAt": "2026-11-17T01:13:00Z", "sttSegments": [], "sttGaps": [], "understanding": { "confusedTransitions": 6 }, "audienceOpinions": [], "polls": [], "aiInterpretation": "해당 구간의 보충 설명을 검토할 수 있습니다." } ],
+      "dataLimitations": [],
+      "evidencePolicy": "시간적 동시성은 인과관계를 의미하지 않습니다."
+    }
   }
 }
 ```
 
-생성 중(200 OK): `{ "reportId": 601, "status": "PROCESSING", "content": null, "generatedAt": null }`
-생성 실패(200 OK): `{ "reportId": 601, "status": "FAILED", "content": null, "errorCode": "LLM_REQUEST_FAILED" }`
+생성 중(200 OK): `{ "data": { "reportId": 601, "status": "PROCESSING", "content": null, "generatedAt": null } }`
+생성 실패(200 OK): `{ "data": { "reportId": 601, "status": "FAILED", "content": null, "errorCode": "LLM_REQUEST_FAILED" } }`
 
 규칙: 보고서가 없으면 404, 생성 중이면 PROCESSING, 실패면 FAILED, 완료는 저장된 JSON 반환, **조회 시 LLM API 를 재호출하지 않음**, 다른 강연방 보고서 조회 차단.
 
