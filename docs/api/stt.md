@@ -3,13 +3,15 @@
 
 ### [STT-01] STT 세션 시작
 
-**POST** `/api/v1/rooms/{roomId}/stt/sessions` — HOST, 강연방 소유자 — Request `{}`
+**POST** `/api/v1/rooms/{roomId}/stt/sessions` — HOST, 강연방 소유자 — Request `{ "startKey": "9fad8ee6-dd0b-4402-9817-8da1b7144fe5" }`
 
 ```json
-{ "sttSessionId": 701, "roomId": 10, "status": "RECORDING", "startedAt": "2026-11-17T01:00:02Z" }
+{ "data": { "sttSessionId": 701, "roomId": 10, "status": "RECORDING", "startedAt": "2026-11-17T01:00:02Z", "endedAt": null, "canRecord": true } }
 ```
 
 규칙: LIVE 여야 함, 마이크 권한 확인은 프론트에서 수행, 브라우저 Web Speech API 로 STT 시작, 강연방당 동시에 하나의 RECORDING 세션만 허용, 중지 후 재시작하면 새 세션 생성 가능. 엔터티: `stt_sessions`
+
+시작할 때 새 UUID를 만들고 재시도에는 같은 키를 사용한다. 최초 생성은 `201`, 재시도는 기존 세션의 현재 상태와 `200`을 반환한다. 다른 키로 요청했을 때 이미 기록 중이면 `200`, `canRecord: false`를 반환한다. 마이크는 `canRecord: true`일 때만 켠다. 종료된 세션의 시작 키를 재전송해도 재시작하지 않는다.
 
 ### [STT-02, 03] STT 확정 발언 저장
 
@@ -80,10 +82,10 @@ Request `{ "endedAt": "2026-11-17T01:25:15Z" }`
 Request `{ "reason": "MANUAL_STOP" }`
 
 ```json
-{ "sttSessionId": 701, "status": "STOPPED", "endedAt": "2026-11-17T02:00:00Z" }
+{ "data": { "sttSessionId": 701, "roomId": 10, "status": "STOPPED", "startedAt": "2026-11-17T01:00:02Z", "endedAt": "2026-11-17T02:00:00Z", "canRecord": false } }
 ```
 
-규칙: 마지막 확정 전사 결과 저장 후 종료, 정상 종료는 STOPPED, 오류 종료는 ERROR 로 관리 가능, `reason` 은 ERD 에 저장 컬럼이 없는 참고 입력.
+규칙: 마지막 확정 전사 결과 저장 후 종료, `MANUAL_STOP`은 `STOPPED`, 복구 불가능한 오류인 `ERROR`는 `ERROR`로 저장한다. 중복 종료 시 최초 종료 상태와 시각을 반환한다, `reason` 은 ERD 에 저장 컬럼이 없는 참고 입력.
 
 ### [STT-05] 강연 발언 및 누락 구간 조회
 
