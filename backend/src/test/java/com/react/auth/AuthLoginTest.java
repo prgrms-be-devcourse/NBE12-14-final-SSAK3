@@ -23,6 +23,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -164,5 +166,24 @@ class AuthLoginTest {
                 "email", email,
                 "password", password
         ));
+    }
+
+    @Test
+    void 로그인_후_다음_요청에서도_인증이_유지된다() throws Exception {
+
+        var result = mvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(email, PASSWORD)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession)
+                result.getRequest().getSession(false);
+
+        assertThat(session).isNotNull();
+
+        mvc.perform(get("/actuator/health").session(session))
+                .andExpect(status().isOk())
+                .andExpect(authenticated().withUsername(email));
     }
 }

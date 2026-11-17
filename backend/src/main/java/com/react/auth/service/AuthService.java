@@ -2,6 +2,7 @@ package com.react.auth.service;
 
 import com.react.auth.dto.LoginRequest;
 import com.react.auth.dto.LoginResponse;
+import com.react.auth.dto.MeResponse;
 import com.react.auth.dto.SignupRequest;
 import com.react.auth.dto.SignupResponse;
 import com.react.auth.entity.User;
@@ -31,11 +32,7 @@ public class AuthService {
     @Transactional
     public SignupResponse signup(SignupRequest request) {
 
-        // 이메일 및 이름 정규화
-        String email = request.email()
-                .strip()
-                .toLowerCase(Locale.ROOT);
-
+        String email = normalizeEmail(request.email());
         String name = request.name().strip();
 
         // BCrypt 입력 길이 검사
@@ -66,7 +63,6 @@ public class AuthService {
                 );
             }
 
-            // 이메일 중복이 아닌 DB 제약 오류는 그대로 전달
             throw e;
         }
 
@@ -78,6 +74,53 @@ public class AuthService {
                         .atZone(SEOUL)
                         .toOffsetDateTime()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResponse login(LoginRequest request) {
+
+        String email = normalizeEmail(request.email());
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.INVALID_CREDENTIALS
+                ));
+
+        if (!passwordEncoder.matches(
+                request.password(),
+                user.getPasswordHash()
+        )) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_CREDENTIALS
+            );
+        }
+
+        return new LoginResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName(),
+                true
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public MeResponse me(String email) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.UNAUTHENTICATED
+                ));
+
+        return new MeResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName()
+        );
+    }
+
+    // 회원가입과 로그인에서 동일한 이메일 정규화 사용
+    private String normalizeEmail(String email) {
+        return email.strip().toLowerCase(Locale.ROOT);
     }
 
     // MySQL의 이메일 UNIQUE 제약 충돌인지 확인
@@ -102,34 +145,5 @@ public class AuthService {
         }
 
         return false;
-    }
-
-    @Transactional(readOnly = true)
-    public LoginResponse login(LoginRequest request) {
-
-        String email = request.email()
-                .strip()
-                .toLowerCase(Locale.ROOT);
-
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new BusinessException(
-                        ErrorCode.INVALID_CREDENTIALS
-                ));
-
-        if (!passwordEncoder.matches(
-                request.password(),
-                user.getPasswordHash()
-        )) {
-            throw new BusinessException(
-                    ErrorCode.INVALID_CREDENTIALS
-            );
-        }
-
-        return new LoginResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getName(),
-                true
-        );
     }
 }
