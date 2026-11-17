@@ -4,6 +4,7 @@ import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
 import com.react.global.response.ApiResponse;
 import com.react.stt.dto.SttSessionView;
+import com.react.stt.dto.SttGap;
 import com.react.stt.dto.SttSegmentRequest;
 import com.react.stt.dto.SttSegmentView;
 import com.react.stt.service.SttSessionService;
@@ -43,6 +44,19 @@ public class SttSessionController {
             @PathVariable long sessionId, @Valid @RequestBody SttSegmentRequest request, Authentication authentication) {
         var result = sessions.saveSegment(roomId, sessionId, email(authentication), request);
         return ResponseEntity.status(result.created() ? 201 : 200).body(ApiResponse.of(result.segment()));
+    }
+
+    @PostMapping("/{sessionId}/gaps")
+    public ResponseEntity<ApiResponse<SttGap.View>> openGap(@PathVariable long roomId, @PathVariable long sessionId,
+            @Valid @RequestBody SttGap.OpenRequest request, Authentication authentication) {
+        var result = sessions.openGap(roomId, sessionId, email(authentication), request);
+        return ResponseEntity.status(result.created() ? 201 : 200).body(ApiResponse.of(result.gap()));
+    }
+
+    @PatchMapping("/{sessionId}/gaps/{gapId}/close")
+    public ApiResponse<SttGap.ClosedView> closeGap(@PathVariable long roomId, @PathVariable long sessionId,
+            @PathVariable long gapId, @Valid @RequestBody SttGap.CloseRequest request, Authentication authentication) {
+        return ApiResponse.of(sessions.closeGap(roomId, sessionId, gapId, email(authentication), request));
     }
 
     private String email(Authentication authentication) {

@@ -4,6 +4,7 @@ import com.react.stt.service.SttSessionService;
 import com.react.stt.service.SttSessionService.StartResult;
 import com.react.stt.service.SttSessionService.StopReason;
 import com.react.stt.dto.SttSegmentRequest;
+import com.react.stt.dto.SttGap;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -167,6 +169,29 @@ class SttSessionTest {
     }
 
     @Test
+    void sameSessionTimesAcrossUtcAndSeoulConnections() {
+        UUID key = UUID.randomUUID();
+        try (var utc = connectionInZone("+00:00"); var seoul = connectionInZone("+09:00")) {
+            var utcJdbc = JdbcClient.create(utc);
+            var utcService = new SttSessionService(utcJdbc);
+            var seoulService = new SttSessionService(JdbcClient.create(seoul));
+            var started = utcService.start(room, email, key).session();
+            long id = started.sttSessionId();
+            assertThat(started.endedAt()).isNull();
+            assertThat(seoulService.start(room, email, key).session()).isEqualTo(started);
+
+            var stopped = utcService.stop(room, id, email, StopReason.MANUAL_STOP);
+            assertThat(stopped.endedAt()).isNotNull();
+            assertThat(seoulService.stop(room, id, email, StopReason.ERROR)).isEqualTo(stopped);
+            var offset = java.time.ZoneOffset.ofHours(9);
+            assertThat(utcJdbc.sql("SELECT started_at FROM stt_sessions WHERE id=?").param(id)
+                    .query(LocalDateTime.class).single()).isEqualTo(LocalDateTime.ofInstant(started.startedAt(), offset));
+            assertThat(utcJdbc.sql("SELECT ended_at FROM stt_sessions WHERE id=?").param(id)
+                    .query(LocalDateTime.class).single()).isEqualTo(LocalDateTime.ofInstant(stopped.endedAt(), offset));
+        }
+    }
+
+    @Test
     void sameSegmentAcrossUtcAndSeoulConnections() {
         UUID key = UUID.randomUUID();
         long id = service.start(room, email, key).session().sttSessionId();
@@ -186,6 +211,92 @@ class SttSessionTest {
                     .param(first.segment().segmentId()).query(LocalDateTime.class).single())
                     .isEqualTo(LocalDateTime.parse("2026-11-18T03:00:12.350"));
         }
+    }
+
+    private MockHttpServletRequestBuilder openGap(long session, UUID key, String event, Instant start) throws Exception {
+        var body = new SttGap.OpenRequest(key, event, SttGap.Reason.ERROR, start);
+        return post("/api/v1/rooms/{room}/stt/sessions/{id}/gaps", room, session)
+                .contentType("application/json").content(json.writeValueAsBytes(body));
+    }
+
+    private MockHttpServletRequestBuilder closeGap(long session, long gap, UUID key, Instant end) throws Exception {
+        return patch("/api/v1/rooms/{room}/stt/sessions/{id}/gaps/{gap}/close", room, session, gap)
+                .with(user(email)).contentType("application/json")
+                .content(json.writeValueAsBytes(new SttGap.CloseRequest(key, end)));
+    }
+
+    @Test
+    void gapsValidateOwnerKeyAndReplayAfterAutomaticClosure() throws Exception {
+        UUID key = UUID.randomUUID();
+        var session = service.start(room, email, key).session();
+        long id = session.sttSessionId();
+        Instant start = session.startedAt();
+        mvc.perform(openGap(id, key, "a", start)).andExpect(status().isUnauthorized());
+        mvc.perform(openGap(id, key, "a", start).with(user("other@example.com"))).andExpect(status().isForbidden());
+        mvc.perform(openGap(id, UUID.randomUUID(), "a", start).with(user(email))).andExpect(status().isForbidden());
+        mvc.perform(openGap(id, key, "a", start.minusSeconds(1)).with(user(email))).andExpect(status().isBadRequest());
+        mvc.perform(openGap(id, key, "a", start.plusSeconds(3600)).with(user(email))).andExpect(status().isBadRequest());
+        var response = mvc.perform(openGap(id, key, "a", start.plusMillis(999)).with(user(email)))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.startedAt").value(start.toString()))
+                .andReturn().getResponse();
+        long gap = json.readTree(response.getContentAsString()).at("/data/gapId").asLong();
+        mvc.perform(openGap(id, key, "b", start).with(user(email))).andExpect(status().isConflict());
+        mvc.perform(closeGap(id, gap, UUID.randomUUID(), start)).andExpect(status().isForbidden());
+        var stopped = service.stop(room, id, email, StopReason.MANUAL_STOP);
+        mvc.perform(openGap(id, key, "a", start).with(user(email))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.endedAt").value(stopped.endedAt().toString()))
+                .andExpect(jsonPath("$.data.reason").value("ERROR"));
+        mvc.perform(closeGap(id, gap, key, stopped.endedAt().plusMillis(999))).andExpect(status().isOk());
+        mvc.perform(closeGap(id, gap, key, stopped.endedAt().minusSeconds(1))).andExpect(status().isConflict());
+        mvc.perform(openGap(id, key, "b", start).with(user(email))).andExpect(status().isConflict());
+        var another = service.start(room, email, UUID.randomUUID()).session();
+        service.stop(room, another.sttSessionId(), email, StopReason.MANUAL_STOP);
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM stt_gaps WHERE stt_session_id=?")
+                .param(another.sttSessionId()).query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void adjacentGapsAndDelayedRecoveryAfterLectureEnds() throws Exception {
+        UUID key = UUID.randomUUID();
+        long id = service.start(room, email, key).session().sttSessionId();
+        Instant start = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).minusSeconds(60);
+        LocalDateTime localStart = LocalDateTime.ofInstant(start, java.time.ZoneOffset.ofHours(9));
+        jdbc.sql("UPDATE stt_sessions SET started_at=? WHERE id=?").params(localStart, id).update();
+        var first = service.openGap(room, id, email, new SttGap.OpenRequest(key, "first", SttGap.Reason.ERROR, start)).gap();
+        Instant boundary = start.plusSeconds(5);
+        mvc.perform(closeGap(id, first.gapId(), key, start.minusSeconds(1))).andExpect(status().isBadRequest());
+        mvc.perform(closeGap(id, first.gapId(), key, start.plusSeconds(3600))).andExpect(status().isBadRequest());
+        mvc.perform(closeGap(id, first.gapId(), key, boundary)).andExpect(status().isOk());
+        mvc.perform(openGap(id, key, "next", start).with(user(email))).andExpect(status().isConflict());
+        var next = service.openGap(room, id, email,
+                new SttGap.OpenRequest(key, "next", SttGap.Reason.PERMISSION_DENIED, boundary)).gap();
+        jdbc.sql("UPDATE lecture_rooms SET status='ENDED', ended_at=? WHERE id=?")
+                .params(localStart.plusSeconds(12), room).update();
+        mvc.perform(closeGap(id, next.gapId(), key, start.plusSeconds(13))).andExpect(status().isBadRequest());
+        mvc.perform(closeGap(id, next.gapId(), key, start.plusSeconds(12))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reason").value("PERMISSION_DENIED"));
+        mvc.perform(openGap(id, key, "late", start.plusSeconds(12)).with(user(email))).andExpect(status().isConflict());
+        mvc.perform(openGap(id, key, "first", start).with(user(email))).andExpect(status().isOk());
+    }
+
+    @Test
+    void concurrentGapStartsLeaveOneOpenGap() throws Exception {
+        UUID key = UUID.randomUUID();
+        var session = service.start(room, email, key).session();
+        var gate = new CyclicBarrier(2);
+        Callable<Integer> send = () -> {
+            var request = openGap(session.sttSessionId(), key, UUID.randomUUID().toString(), session.startedAt());
+            gate.await(5, TimeUnit.SECONDS);
+            return mvc.perform(request.with(user(email))).andReturn().getResponse().getStatus();
+        };
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(send);
+            var second = pool.submit(send);
+            assertThat(java.util.List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(201, 409);
+        }
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM stt_gaps WHERE stt_session_id=? AND ended_at IS NULL")
+                .param(session.sttSessionId()).query(Long.class).single()).isEqualTo(1);
     }
 
     private SingleConnectionDataSource connectionInZone(String offset) {

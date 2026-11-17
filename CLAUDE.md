@@ -26,7 +26,7 @@ cd frontend && npm install && npm run dev
 
 ## 구조
 
-- 백엔드는 도메인 패키지: `com.react.<도메인>.{controller,service,repository,domain,dto}`
+- 백엔드는 도메인 패키지: `com.react.<도메인>.{controller,service,repository,entity,dto}`
   - 도메인: auth, room, chat, feed(이해도), poll, stt, ai, dash, report
   - 공통: `com.react.global.{config,exception,response,security,websocket,util}`
 - 테스트는 `backend/src/test/java/com/react/<도메인>/` 에 같은 구조로 둔다.
