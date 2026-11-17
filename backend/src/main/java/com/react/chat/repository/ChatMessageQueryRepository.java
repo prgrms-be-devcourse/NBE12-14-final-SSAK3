@@ -18,6 +18,11 @@ public class ChatMessageQueryRepository {
     private static final ZoneOffset STORAGE_OFFSET = ZoneOffset.ofHours(9);
     private final JdbcClient jdbc;
 
+    public boolean existsRoom(long roomId) {
+        return jdbc.sql("SELECT COUNT(*) FROM lecture_rooms WHERE id = ?")
+                .param(roomId).query(Long.class).single() > 0;
+    }
+
     /** 강연방의 메시지를 최신 순(id DESC)으로 limit 건 조회한다. cursor 가 null 이면 가장 최신부터, 있으면 그 id 보다 오래된 것만. */
     public List<ChatMessageView> findPage(long roomId, Long cursor, int limit) {
         long before = cursor != null ? cursor : Long.MAX_VALUE;
