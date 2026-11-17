@@ -1,7 +1,7 @@
 package com.react.auth.controller;
 
-import com.react.auth.dto.request.SignupRequest;
-import com.react.auth.dto.response.SignupResponse;
+import com.react.auth.dto.SignupRequest;
+import com.react.auth.dto.SignupResponse;
 import com.react.auth.service.AuthService;
 import com.react.global.response.ApiResponse;
 import jakarta.validation.Valid;

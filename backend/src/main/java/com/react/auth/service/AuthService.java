@@ -1,7 +1,7 @@
 package com.react.auth.service;
 
-import com.react.auth.dto.request.SignupRequest;
-import com.react.auth.dto.response.SignupResponse;
+import com.react.auth.dto.SignupRequest;
+import com.react.auth.dto.SignupResponse;
 import com.react.auth.entity.User;
 import com.react.auth.repository.UserRepository;
 import com.react.global.exception.BusinessException;

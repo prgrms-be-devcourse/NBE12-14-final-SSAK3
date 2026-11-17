@@ -1,4 +1,4 @@
-package com.react.auth.dto.response;
+package com.react.auth.dto;
 
 import java.time.OffsetDateTime;
 

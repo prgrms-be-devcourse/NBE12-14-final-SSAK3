@@ -34,6 +34,6 @@
 ## 코드
 
 - 아직 합의된 코드 컨벤션이 없다. 새 코드는 주변 코드의 이름·구조·주석 스타일을 따른다.
-- 백엔드 패키지: `com.react.<도메인>.{controller,service,repository,domain,dto}`, 공통은 `com.react.global.*`
+- 백엔드 패키지: `com.react.<도메인>.{controller,service,repository,entity,dto}`, 공통은 `com.react.global.*`
 - 테스트는 `backend/src/test/java/com/react/<도메인>/` 에 같은 구조로 둔다.
 - 시크릿·`.env` 는 커밋하지 않는다. 설정은 환경 변수로 주입한다.
