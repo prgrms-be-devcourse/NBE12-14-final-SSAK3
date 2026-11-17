@@ -3,7 +3,6 @@ package com.react.global.exception;
 import com.react.global.response.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -22,19 +21,15 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // 비즈니스 예외 처리
+    // 비즈니스 예외
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusinessException(
             BusinessException e
     ) {
-        ErrorCode errorCode = e.getErrorCode();
-
-        return ResponseEntity
-                .status(errorCode.getStatus())
-                .body(ErrorResponse.of(errorCode));
+        return response(e.getErrorCode());
     }
 
-    // 요청값 검증 및 요청 본문 형식 오류
+    // 잘못된 요청값, JSON 및 파라미터
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             ConstraintViolationException.class,
@@ -43,35 +38,23 @@ public class GlobalExceptionHandler {
             MethodArgumentTypeMismatchException.class,
             MissingServletRequestPartException.class
     })
-
     public ResponseEntity<ErrorResponse> handleValidationException(
             Exception e
     ) {
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of(
-                        ErrorCode.VALIDATION_FAILED
-                ));
+        return response(ErrorCode.INVALID_INPUT);
     }
 
-
-    // 컨트롤러 메서드 검증 실패
+    // 컨트롤러 메서드 검증
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<ErrorResponse> handleMethodValidationException(
             HandlerMethodValidationException e
     ) {
-        ErrorCode errorCode;
-
         if (e.isForReturnValue()) {
             log.error("컨트롤러 반환값 검증 실패", e);
-            errorCode = ErrorCode.INTERNAL_ERROR;
-        } else {
-            errorCode = ErrorCode.VALIDATION_FAILED;
+            return response(ErrorCode.INTERNAL_ERROR);
         }
 
-        return ResponseEntity
-                .status(e.getStatusCode())
-                .body(ErrorResponse.of(errorCode));
+        return response(ErrorCode.INVALID_INPUT);
     }
 
     // 존재하지 않는 API 경로
@@ -82,37 +65,29 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleNotFoundException(
             Exception e
     ) {
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse.of(
-                        ErrorCode.NOT_FOUND
-                ));
+        return response(ErrorCode.NOT_FOUND);
     }
 
-    // 지원하지 않는 HTTP 메서드 (405)
+    // 지원하지 않는 HTTP 메서드
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> handleMethodNotAllowed(
             HttpRequestMethodNotSupportedException e
     ) {
         return ResponseEntity
-                .status(e.getStatusCode())
+                .status(ErrorCode.METHOD_NOT_ALLOWED.getStatus())
                 .headers(e.getHeaders())
-                .body(ErrorResponse.of(
-                        ErrorCode.METHOD_NOT_ALLOWED
-                ));
+                .body(ErrorResponse.of(ErrorCode.METHOD_NOT_ALLOWED));
     }
 
-    // 지원하지 않는 Content-Type (415)
+    // 지원하지 않는 Content-Type
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ErrorResponse> handleUnsupportedMediaType(
             HttpMediaTypeNotSupportedException e
     ) {
         return ResponseEntity
-                .status(e.getStatusCode())
+                .status(ErrorCode.UNSUPPORTED_MEDIA_TYPE.getStatus())
                 .headers(e.getHeaders())
-                .body(ErrorResponse.of(
-                        ErrorCode.UNSUPPORTED_MEDIA_TYPE
-                ));
+                .body(ErrorResponse.of(ErrorCode.UNSUPPORTED_MEDIA_TYPE));
     }
 
     // 예상하지 못한 서버 오류
@@ -121,11 +96,14 @@ public class GlobalExceptionHandler {
             Exception e
     ) {
         log.error("처리되지 않은 서버 예외 발생", e);
+        return response(ErrorCode.INTERNAL_ERROR);
+    }
 
+    private ResponseEntity<ErrorResponse> response(
+            ErrorCode errorCode
+    ) {
         return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ErrorResponse.of(
-                        ErrorCode.INTERNAL_ERROR
-                ));
+                .status(errorCode.getStatus())
+                .body(ErrorResponse.of(errorCode));
     }
 }
