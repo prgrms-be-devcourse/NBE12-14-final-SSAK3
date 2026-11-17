@@ -37,4 +37,4 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 
 요구 사항: JDK 25, Node 22, Docker. Gradle 은 Wrapper(`backend/gradlew`)를 사용하므로 따로 설치하지 않습니다.
 
-> 이전 버전(CS매치)의 DB 볼륨이 남아 있으면 `docker compose down -v` 로 지우고 시작하세요. 새 스키마는 SCRUM-163 의 Flyway V1 로 들어옵니다.
+> 스키마는 서버 기동 시 Flyway(`backend/src/main/resources/db/migration`)가 자동 적용합니다. 이전 버전(CS매치)의 DB 볼륨이 남아 있으면 `docker compose down -v` 후 시작하세요.
