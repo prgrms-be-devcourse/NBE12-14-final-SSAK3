@@ -2,7 +2,7 @@
 
 JDK 25와 실행 중인 MySQL 8.4가 필요하다. H2는 사용하지 않는다.
 
-테스트는 개발 DB `csmatch` 대신 `csmatch_test`를 사용한다. 테스트 전용 계정 `csmatch_test`에는 이 DB의 권한만 부여한다. 통합 테스트는 `create-drop`으로 테이블을 생성·삭제하므로 테스트 DB에 보관할 데이터를 넣지 않는다. `test` 프로파일은 Flyway를 끄므로 테스트 DB에는 마이그레이션 이력이 남지 않는다.
+테스트는 개발 DB `react` 대신 `react_test`를 사용한다. 테스트 전용 계정 `react_test`에는 이 DB의 권한만 부여한다. 통합 테스트는 `create-drop`으로 테이블을 생성·삭제하므로 테스트 DB에 보관할 데이터를 넣지 않는다. `test` 프로파일은 Flyway를 끄므로 테스트 DB에는 마이그레이션 이력이 남지 않는다.
 
 ## 최초 준비
 
@@ -10,7 +10,7 @@ JDK 25와 실행 중인 MySQL 8.4가 필요하다. H2는 사용하지 않는다.
 2. MySQL 관리자 연결에서 전용 계정을 생성한다. 아래 비밀번호 자리에는 새 테스트용 비밀번호를 지정한다.
 
    ```sql
-   CREATE USER 'csmatch_test'@'%' IDENTIFIED BY '<테스트 전용 비밀번호>';
+   CREATE USER 'react_test'@'%' IDENTIFIED BY '<테스트 전용 비밀번호>';
    ```
 
 3. 같은 관리자 연결에서 `docs/db/init-test-databases.sql`을 실행한다. 개발 DB를 수정하는 SQL은 포함하지 않는다.
