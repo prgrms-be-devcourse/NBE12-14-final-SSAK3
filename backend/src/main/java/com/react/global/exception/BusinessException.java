@@ -1,4 +1,4 @@
-package com.csmatch.global.exception;
+package com.react.global.exception;
 
 public class BusinessException extends RuntimeException {
 

@@ -26,10 +26,10 @@ cd frontend && npm install && npm run dev
 
 ## 구조
 
-- 백엔드는 도메인 패키지: `com.csmatch.<도메인>.{controller,service,repository,domain,dto}`
+- 백엔드는 도메인 패키지: `com.react.<도메인>.{controller,service,repository,domain,dto}`
   - 도메인: auth, room, chat, feed(이해도), poll, stt, ai, dash, report
-  - 공통: `com.csmatch.global.{config,exception,response,security,websocket,util}`
-- 테스트는 `backend/src/test/java/com/csmatch/<도메인>/` 에 같은 구조로 둔다.
+  - 공통: `com.react.global.{config,exception,response,security,websocket,util}`
+- 테스트는 `backend/src/test/java/com/react/<도메인>/` 에 같은 구조로 둔다.
 - 설정: `application.yml`(공통), `application-local.yml`(로컬), `application-prod.yml`(배포).
 - DB 스키마의 기준은 Flyway 마이그레이션(`backend/src/main/resources/db/migration`)이며 `ddl-auto: validate` 다. 적용된 `V` 파일은 수정하지 않고 새 버전을 추가한다. 통합 테스트(`test` 프로파일)는 Flyway 를 끈다.
 

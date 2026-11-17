@@ -9,11 +9,11 @@ Jira: https://ssakthree.atlassian.net/jira/software/projects/SCRUM/boards/1
 ## 구조
 
 ```
-backend/src/main/java/com/csmatch/
+backend/src/main/java/com/react/
   global/        config, exception, response, security, websocket, util
   <도메인>/       controller, service, repository, domain, dto
                  도메인: auth, room, chat, feed, poll, stt, ai, dash, report
-backend/src/test/java/com/csmatch/<도메인>/
+backend/src/test/java/com/react/<도메인>/
 
 frontend/        React + Vite
 docs/            conventions.md(협업 규칙), db/(테스트 DB 준비), testing.md
@@ -26,7 +26,7 @@ docker-compose.yml   mysql, redis, backend, web(Nginx)
 cp .env.example .env            # 값 채우기
 docker compose up -d mysql redis
 
-cd backend && ./gradlew bootRun   # 또는 IDE에서 CsMatchApplication 실행 (JDK 25 필요)
+cd backend && ./gradlew bootRun   # 또는 IDE에서 ReActApplication 실행 (JDK 25 필요)
 cd frontend && npm install && npm run dev   # http://localhost:5173
 ```
 

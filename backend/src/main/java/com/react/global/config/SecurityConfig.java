@@ -1,4 +1,4 @@
-package com.csmatch.global.config;
+package com.react.global.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

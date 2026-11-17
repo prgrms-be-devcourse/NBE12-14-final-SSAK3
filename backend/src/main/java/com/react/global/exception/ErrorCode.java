@@ -1,4 +1,4 @@
-package com.csmatch.global.exception;
+package com.react.global.exception;
 
 import org.springframework.http.HttpStatus;
 

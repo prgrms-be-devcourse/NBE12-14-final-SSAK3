@@ -1,6 +1,6 @@
-package com.csmatch.global.exception;
+package com.react.global.exception;
 
-import com.csmatch.global.response.ErrorResponse;
+import com.react.global.response.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
