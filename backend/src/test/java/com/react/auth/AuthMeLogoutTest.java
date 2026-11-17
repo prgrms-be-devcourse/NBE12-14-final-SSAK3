@@ -16,6 +16,7 @@ import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import javax.sql.DataSource;
 import java.util.Map;
@@ -115,11 +116,10 @@ class AuthMeLogoutTest {
 
         MockHttpSession session = login();
 
-        // 로그아웃 전에는 인증 상태가 정상이어야 한다.
         mvc.perform(get(ME_URL).session(session))
                 .andExpect(status().isOk());
 
-        var result = mvc.perform(post(LOGOUT_URL)
+        MvcResult result = mvc.perform(post(LOGOUT_URL)
                         .session(session))
                 .andExpect(status().isNoContent())
                 .andReturn();
@@ -127,11 +127,12 @@ class AuthMeLogoutTest {
         // 서버 세션 무효화 확인
         assertThat(session.isInvalid()).isTrue();
 
-        // 클라이언트에 전달하는 쿠키 만료 헤더 확인
+        // 쿠키 만료 헤더 확인
         String setCookie = result.getResponse()
                 .getHeader(HttpHeaders.SET_COOKIE);
 
         assertThat(setCookie).isNotNull();
+
         assertThat(setCookie)
                 .contains("HOST_SESSION=")
                 .contains("Path=/")
@@ -139,7 +140,7 @@ class AuthMeLogoutTest {
                 .contains("HttpOnly")
                 .contains("SameSite=Lax");
 
-        // 새로운 미인증 요청은 다시 401
+        // 세션 없이 다시 요청하면 인증 실패
         mvc.perform(get(ME_URL))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code")
@@ -163,7 +164,7 @@ class AuthMeLogoutTest {
                 "password", PASSWORD
         ));
 
-        var result = mvc.perform(post(LOGIN_URL)
+        MvcResult result = mvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())

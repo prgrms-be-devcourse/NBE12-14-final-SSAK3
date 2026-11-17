@@ -14,7 +14,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.web.ServerProperties;
+import org.springframework.boot.web.server.Cookie;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -22,9 +23,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
 
@@ -38,15 +39,12 @@ public class AuthController {
 
     private final AuthService authService;
     private final SecurityContextRepository securityContextRepository;
-
-    @Value("${server.servlet.session.cookie.secure:true}")
-    private boolean sessionCookieSecure;
+    private final ServerProperties serverProperties;
 
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse<SignupResponse>> signup(
             @Valid @RequestBody SignupRequest request
     ) {
-
         SignupResponse response = authService.signup(request);
 
         return ResponseEntity
@@ -60,7 +58,6 @@ public class AuthController {
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse
     ) {
-
         LoginResponse response = authService.login(request);
 
         // 기존 세션이 있으면 로그인 시 세션 ID 변경
@@ -68,8 +65,8 @@ public class AuthController {
             servletRequest.changeSessionId();
         }
 
-        // 강연자의 이메일을 인증 주체로 사용
-        var authentication =
+        // 이메일을 인증 주체로 사용
+        Authentication authentication =
                 UsernamePasswordAuthenticationToken.authenticated(
                         response.email(),
                         null,
@@ -84,7 +81,7 @@ public class AuthController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
 
-        // 다음 요청에서도 인증 상태를 복원할 수 있도록 저장
+        // 다음 요청에서도 인증 정보 유지
         securityContextRepository.saveContext(
                 context,
                 servletRequest,
@@ -98,10 +95,11 @@ public class AuthController {
     public ApiResponse<MeResponse> me(
             Authentication authentication
     ) {
-
         String email = requireHostEmail(authentication);
 
-        return ApiResponse.of(authService.me(email));
+        MeResponse response = authService.me(email);
+
+        return ApiResponse.of(response);
     }
 
     @PostMapping("/logout")
@@ -110,8 +108,7 @@ public class AuthController {
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse
     ) {
-
-        // 로그인한 강연자인지 확인
+        // 인증된 강연자인지 확인
         requireHostEmail(authentication);
 
         // 서버 세션 무효화
@@ -121,18 +118,35 @@ public class AuthController {
             session.invalidate();
         }
 
-        // 현재 요청의 SecurityContext 초기화
         SecurityContextHolder.clearContext();
 
-        // 브라우저의 HOST_SESSION 쿠키 만료
-        ResponseCookie expiredCookie = ResponseCookie
-                .from("HOST_SESSION", "")
-                .httpOnly(true)
-                .secure(sessionCookieSecure)
-                .sameSite("Lax")
-                .path("/")
-                .maxAge(Duration.ZERO)
-                .build();
+        // application.yml의 세션 쿠키 설정 사용
+        Cookie cookie = serverProperties.getServlet()
+                .getSession()
+                .getCookie();
+
+        String cookiePath = cookie.getPath() != null
+                ? cookie.getPath()
+                : "/";
+
+        ResponseCookie.ResponseCookieBuilder cookieBuilder =
+                ResponseCookie.from(cookie.getName(), "")
+                        .path(cookiePath)
+                        .httpOnly(Boolean.TRUE.equals(cookie.getHttpOnly()))
+                        .secure(Boolean.TRUE.equals(cookie.getSecure()))
+                        .maxAge(Duration.ZERO);
+
+        if (cookie.getSameSite() != null) {
+            cookieBuilder.sameSite(
+                    cookie.getSameSite().attributeValue()
+            );
+        }
+
+        if (cookie.getDomain() != null) {
+            cookieBuilder.domain(cookie.getDomain());
+        }
+
+        ResponseCookie expiredCookie = cookieBuilder.build();
 
         servletResponse.addHeader(
                 HttpHeaders.SET_COOKIE,
@@ -145,7 +159,6 @@ public class AuthController {
     private String requireHostEmail(
             Authentication authentication
     ) {
-
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || authentication instanceof AnonymousAuthenticationToken) {

@@ -52,7 +52,7 @@ public class AuthService {
 
         User user = new User(email, encodedPassword, name);
 
-        // DB UNIQUE 제약으로 동시 가입 요청도 보호
+        // DB UNIQUE 제약으로 동시 가입 요청 보호
         try {
             user = userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException e) {
@@ -118,16 +118,13 @@ public class AuthService {
         );
     }
 
-    // 회원가입과 로그인에서 동일한 이메일 정규화 사용
     private String normalizeEmail(String email) {
         return email.strip().toLowerCase(Locale.ROOT);
     }
 
-    // MySQL의 이메일 UNIQUE 제약 충돌인지 확인
     private boolean isEmailDuplicate(
             DataIntegrityViolationException exception
     ) {
-
         Throwable cause = exception;
 
         while (cause != null) {

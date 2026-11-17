@@ -17,15 +17,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import javax.sql.DataSource;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -37,12 +38,23 @@ class AuthLoginTest {
     private static final String LOGIN_URL = "/api/v1/auth/login";
     private static final String PASSWORD = "ExamplePassword123!";
 
-    @Autowired MockMvc mvc;
-    @Autowired ObjectMapper objectMapper;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
-    @Autowired JdbcClient jdbc;
-    @Autowired DataSource dataSource;
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    ObjectMapper objectMapper;
+
+    @Autowired
+    UserRepository userRepository;
+
+    @Autowired
+    PasswordEncoder passwordEncoder;
+
+    @Autowired
+    JdbcClient jdbc;
+
+    @Autowired
+    DataSource dataSource;
 
     private String email;
 
@@ -75,7 +87,7 @@ class AuthLoginTest {
     void 로그인_성공시_인증정보가_세션에_저장된다()
             throws Exception {
 
-        var result = mvc.perform(post(LOGIN_URL)
+        MvcResult result = mvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 email.toUpperCase(Locale.ROOT),
@@ -102,11 +114,11 @@ class AuthLoginTest {
                 );
 
         assertThat(context).isNotNull();
+
         assertThat(context.getAuthentication().getName())
                 .isEqualTo(email);
 
-        assertThat(context.getAuthentication()
-                .getAuthorities())
+        assertThat(context.getAuthentication().getAuthorities())
                 .extracting("authority")
                 .contains("ROLE_HOST");
     }
@@ -115,9 +127,12 @@ class AuthLoginTest {
     void 비밀번호가_틀리면_401을_반환하고_세션을_발급하지_않는다()
             throws Exception {
 
-        var result = mvc.perform(post(LOGIN_URL)
+        MvcResult result = mvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(request(email, "WrongPassword123!")))
+                        .content(request(
+                                email,
+                                "WrongPassword123!"
+                        )))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code")
                         .value("INVALID_CREDENTIALS"))
@@ -156,22 +171,15 @@ class AuthLoginTest {
                         .content(request(email, PASSWORD)))
                 .andExpect(status().isOk());
 
-        assertThat(session.getId()).isNotEqualTo(previousId);
-    }
-
-    private String request(String email, String password)
-            throws Exception {
-
-        return objectMapper.writeValueAsString(Map.of(
-                "email", email,
-                "password", password
-        ));
+        assertThat(session.getId())
+                .isNotEqualTo(previousId);
     }
 
     @Test
-    void 로그인_후_다음_요청에서도_인증이_유지된다() throws Exception {
+    void 로그인_후_다음_요청에서도_인증이_유지된다()
+            throws Exception {
 
-        var result = mvc.perform(post(LOGIN_URL)
+        MvcResult result = mvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(email, PASSWORD)))
                 .andExpect(status().isOk())
@@ -185,5 +193,16 @@ class AuthLoginTest {
         mvc.perform(get("/actuator/health").session(session))
                 .andExpect(status().isOk())
                 .andExpect(authenticated().withUsername(email));
+    }
+
+    private String request(
+            String email,
+            String password
+    ) throws Exception {
+
+        return objectMapper.writeValueAsString(Map.of(
+                "email", email,
+                "password", password
+        ));
     }
 }
