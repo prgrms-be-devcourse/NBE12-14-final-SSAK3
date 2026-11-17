@@ -24,8 +24,8 @@ jobs:
         image: mysql:8.4
         env:
           MYSQL_ROOT_PASSWORD: ci-root-only
-          MYSQL_DATABASE: csmatch_test
-          MYSQL_USER: csmatch_test
+          MYSQL_DATABASE: react_test
+          MYSQL_USER: react_test
           MYSQL_PASSWORD: ci-test-only
         ports:
           - 3306:3306
@@ -101,8 +101,8 @@ jobs:
 
     env:
       MYSQL_ROOT_PASSWORD: ci-smoke-root
-      MYSQL_DATABASE: csmatch
-      MYSQL_USER: csmatch
+      MYSQL_DATABASE: react
+      MYSQL_USER: react
       MYSQL_PASSWORD: ci-smoke-password
 
     steps:
