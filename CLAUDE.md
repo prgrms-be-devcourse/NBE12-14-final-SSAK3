@@ -5,7 +5,7 @@
 
 일정: 11/29 MVP 배포, 12/4 최종 배포, 12/7 최종 발표. Jira: https://ssakthree.atlassian.net/jira/software/projects/SCRUM/boards/1
 
-> 기획서·기능 정의서·API 명세·ERD 는 SCRUM-165 에서 `docs/` 로 옮긴다. 그 전까지는 팀 공유본을 기준으로 하고, 문서끼리 어긋나면 PR 에서 팀원과 조율한다.
+> API 명세는 `docs/api-spec.md`, ERD 는 `docs/db/erd.dbml` 이다. 기획서·기능 정의서 원문은 팀 공유본을 기준으로 하고, 문서끼리 어긋나면 PR 에서 팀원과 조율한다.
 
 ## 기술 스택
 

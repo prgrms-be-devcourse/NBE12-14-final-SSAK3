@@ -1,0 +1,167 @@
+// RE:ACT MVP ERD v1.1 (16개 테이블)
+// dbdiagram.io 에서 열 수 있는 DBML 원본이다. 실제 스키마의 기준은 Flyway 마이그레이션
+// (backend/src/main/resources/db/migration)이며, 이 파일과 어긋나면 새 V 파일로 맞추고 이 파일도 함께 갱신한다.
+// 링크: https://dbdiagram.io/e/6af3e06d063ad9ee168b99b8/6af3f73504c7e97b1d2c23f0
+
+Table users {
+  id bigint [pk, increment]
+  email varchar(255) [not null, unique]
+  password_hash varchar(255) [not null]
+  name varchar(100) [not null]
+  created_at datetime [not null]
+}
+
+Table lecture_rooms {
+  id bigint [pk, increment]
+  host_user_id bigint [not null, ref: > users.id]
+  title varchar(200) [not null]
+  description text
+  join_code varchar(64) [not null, unique]
+  status varchar(20) [not null, note: 'READY, LIVE, ENDED']
+  created_at datetime [not null]
+  started_at datetime
+  ended_at datetime
+  indexes { host_user_id }
+}
+
+Table lecture_participants {
+  id bigint [pk, increment]
+  lecture_room_id bigint [not null, ref: > lecture_rooms.id]
+  nickname varchar(50) [not null]
+  participant_token_hash varchar(255) [not null, unique]
+  joined_at datetime [not null]
+  indexes { lecture_room_id }
+}
+
+Table chat_messages {
+  id bigint [pk, increment]
+  lecture_room_id bigint [not null, ref: > lecture_rooms.id]
+  participant_id bigint [ref: > lecture_participants.id]
+  host_user_id bigint [ref: > users.id]
+  content text [not null]
+  received_at datetime [not null]
+  indexes { (lecture_room_id, received_at, id) }
+  Note: 'participant_id와 host_user_id 중 정확히 하나만 존재. AI 청중 의견 분석은 participant_id가 있는 메시지만 대상'
+}
+
+Table participant_understandings {
+  id bigint [pk, increment]
+  participant_id bigint [not null, unique, ref: > lecture_participants.id]
+  current_status varchar(30) [not null, note: 'UNDERSTOOD, CONFUSED, NOT_UNDERSTOOD']
+  updated_at datetime [not null]
+}
+
+Table understanding_histories {
+  id bigint [pk, increment]
+  participant_id bigint [not null, ref: > lecture_participants.id]
+  previous_status varchar(30)
+  new_status varchar(30) [not null]
+  changed_at datetime [not null]
+  indexes { (participant_id, changed_at) }
+}
+
+Table polls {
+  id bigint [pk, increment]
+  lecture_room_id bigint [not null, ref: > lecture_rooms.id]
+  question varchar(500) [not null]
+  status varchar(20) [not null, note: 'OPEN, CLOSED']
+  created_at datetime [not null]
+  closed_at datetime
+  indexes { (lecture_room_id, status) }
+}
+
+Table poll_options {
+  id bigint [pk, increment]
+  poll_id bigint [not null, ref: > polls.id]
+  content varchar(255) [not null]
+  display_order int [not null]
+  indexes { (poll_id, display_order) [unique] }
+}
+
+Table poll_responses {
+  id bigint [pk, increment]
+  poll_id bigint [not null, ref: > polls.id]
+  poll_option_id bigint [not null, ref: > poll_options.id]
+  participant_id bigint [not null, ref: > lecture_participants.id]
+  responded_at datetime [not null]
+  indexes { (poll_id, participant_id) [unique] }
+}
+
+Table stt_sessions {
+  id bigint [pk, increment]
+  lecture_room_id bigint [not null, ref: > lecture_rooms.id]
+  status varchar(20) [not null, note: 'RECORDING, STOPPED, ERROR']
+  started_at datetime [not null]
+  ended_at datetime
+  indexes { lecture_room_id }
+}
+
+Table stt_segments {
+  id bigint [pk, increment]
+  stt_session_id bigint [not null, ref: > stt_sessions.id]
+  segment_key varchar(100) [not null]
+  transcript text [not null]
+  segment_start_at datetime [not null]
+  segment_end_at datetime [not null]
+  received_at datetime [not null]
+  indexes {
+    (stt_session_id, segment_key) [unique]
+    (stt_session_id, segment_start_at)
+  }
+}
+
+Table stt_gaps {
+  id bigint [pk, increment]
+  stt_session_id bigint [not null, ref: > stt_sessions.id]
+  event_key varchar(100) [not null, note: 'STT 누락 시작 이벤트의 중복 전송 방지 식별자']
+  started_at datetime [not null]
+  ended_at datetime
+  reason varchar(50) [not null, note: 'ERROR, MANUAL_STOP, PERMISSION_DENIED']
+  indexes {
+    (stt_session_id, event_key) [unique]
+    (stt_session_id, started_at)
+  }
+}
+
+Table ai_analyses {
+  id bigint [pk, increment]
+  lecture_room_id bigint [not null, ref: > lecture_rooms.id]
+  window_start_at datetime [not null]
+  window_end_at datetime [not null]
+  status varchar(20) [not null, note: 'PENDING, PROCESSING, COMPLETED, FAILED']
+  model_name varchar(100)
+  error_message varchar(500)
+  created_at datetime [not null]
+  completed_at datetime
+  indexes {
+    (lecture_room_id, window_start_at, window_end_at) [unique]
+  }
+}
+
+Table ai_topic_groups {
+  id bigint [pk, increment]
+  analysis_id bigint [not null, ref: > ai_analyses.id]
+  topic varchar(200) [not null]
+  category varchar(30) [not null, note: 'QUESTION, OPINION, REQUEST, CONFUSION, MIXED']
+  summary text [not null]
+  created_at datetime [not null]
+  Note: '주제별 청중 의견 요약. 대표 질문 아님. 혼합된 의견이면 MIXED로 분류하고 상반된 의견을 요약에 보존'
+}
+
+Table ai_topic_group_messages {
+  id bigint [pk, increment]
+  topic_group_id bigint [not null, ref: > ai_topic_groups.id]
+  chat_message_id bigint [not null, ref: > chat_messages.id]
+  indexes { (topic_group_id, chat_message_id) [unique] }
+}
+
+Table lecture_reports {
+  id bigint [pk, increment]
+  lecture_room_id bigint [not null, unique, ref: > lecture_rooms.id]
+  status varchar(20) [not null, note: 'PENDING, PROCESSING, COMPLETED, FAILED']
+  content json
+  error_message varchar(500)
+  created_at datetime [not null]
+  generated_at datetime
+  updated_at datetime
+}
