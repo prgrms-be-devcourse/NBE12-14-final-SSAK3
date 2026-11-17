@@ -15,12 +15,14 @@ Response — 201 Created
 
 ```json
 {
-  "roomId": 10,
-  "title": "Redis 실습 강연",
-  "description": "Redis와 MySQL의 역할을 알아봅니다.",
-  "status": "READY",
-  "joinCode": "AB7KQ9",
-  "createdAt": "2026-11-17T00:00:00Z"
+  "data": {
+    "roomId": 10,
+    "title": "Redis 실습 강연",
+    "description": "Redis와 MySQL의 역할을 알아봅니다.",
+    "status": "READY",
+    "joinCode": "AB7KQ9",
+    "createdAt": "2026-11-17T00:00:00Z"
+  }
 }
 ```
 
@@ -35,10 +37,12 @@ Response — 200 OK
 
 ```json
 {
-  "roomId": 10,
-  "joinCode": "AB7KQ9",
-  "joinUrl": "https://react.example/join/AB7KQ9",
-  "qrText": "https://react.example/join/AB7KQ9"
+  "data": {
+    "roomId": 10,
+    "joinCode": "AB7KQ9",
+    "joinUrl": "https://react.example/join/AB7KQ9",
+    "qrText": "https://react.example/join/AB7KQ9"
+  }
 }
 ```
 
@@ -53,14 +57,16 @@ Response — 200 OK
 
 ```json
 {
-  "roomId": 10,
-  "title": "Redis 실습 강연",
-  "description": "Redis와 MySQL의 역할을 알아봅니다.",
-  "status": "READY",
-  "joinCode": "AB7KQ9",
-  "createdAt": "2026-11-17T00:00:00Z",
-  "startedAt": null,
-  "endedAt": null
+  "data": {
+    "roomId": 10,
+    "title": "Redis 실습 강연",
+    "description": "Redis와 MySQL의 역할을 알아봅니다.",
+    "status": "READY",
+    "joinCode": "AB7KQ9",
+    "createdAt": "2026-11-17T00:00:00Z",
+    "startedAt": null,
+    "endedAt": null
+  }
 }
 ```
 
@@ -74,11 +80,13 @@ Response — 200 OK
 
 ```json
 {
-  "roomId": 10,
-  "title": "Redis 실습 강연",
-  "description": "Redis와 MySQL의 역할을 알아봅니다.",
-  "status": "READY",
-  "canJoin": true
+  "data": {
+    "roomId": 10,
+    "title": "Redis 실습 강연",
+    "description": "Redis와 MySQL의 역할을 알아봅니다.",
+    "status": "READY",
+    "canJoin": true
+  }
 }
 ```
 
@@ -91,7 +99,7 @@ Response — 200 OK
 Response — 200 OK
 
 ```json
-{ "roomId": 10, "status": "LIVE", "startedAt": "2026-11-17T01:00:00Z" }
+{ "data": { "roomId": 10, "status": "LIVE", "startedAt": "2026-11-17T01:00:00Z" } }
 ```
 
 규칙: READY 에서만 시작, 시작 시각은 서버 기준, LIVE 부터 채팅·이해도·투표 응답 허용, STT 음성 인식은 브라우저에서 별도로 시작, 시작 이벤트를 WebSocket 으로 전달.
@@ -105,11 +113,13 @@ Response — 200 OK
 
 ```json
 {
-  "roomId": 10,
-  "status": "ENDED",
-  "endedAt": "2026-11-17T02:00:00Z",
-  "reportReady": false,
-  "pendingFinalization": true
+  "data": {
+    "roomId": 10,
+    "status": "ENDED",
+    "endedAt": "2026-11-17T02:00:00Z",
+    "reportReady": false,
+    "pendingFinalization": true
+  }
 }
 ```
 
@@ -132,7 +142,7 @@ Request
 Response — 201 Created
 
 ```json
-{ "participantId": 101, "roomId": 10, "nickname": "청중A", "roomStatus": "LIVE", "joinedAt": "2026-11-17T01:00:10Z" }
+{ "data": { "participantId": 101, "roomId": 10, "nickname": "청중A", "roomStatus": "LIVE", "joinedAt": "2026-11-17T01:00:10Z" } }
 ```
 
 참여 쿠키 예시: `Set-Cookie: PARTICIPANT_SESSION=...; HttpOnly; Secure`
@@ -146,7 +156,7 @@ Response — 201 Created
 Response — 200 OK
 
 ```json
-{ "participantId": 101, "roomId": 10, "nickname": "청중A", "joinedAt": "2026-11-17T01:00:10Z" }
+{ "data": { "participantId": 101, "roomId": 10, "nickname": "청중A", "joinedAt": "2026-11-17T01:00:10Z" } }
 ```
 
 규칙: 새로고침 후 기존 참여 정보 확인, 참여자 식별 정보로 중복 집계 방지, 다른 강연방의 참여자로 인증되지 않음. 오류: `401 UNAUTHENTICATED`, `403 FORBIDDEN`

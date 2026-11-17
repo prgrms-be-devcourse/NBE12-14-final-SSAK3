@@ -50,27 +50,29 @@ LLM 출력 예시
 
 ```json
 {
-  "roomId": 10,
-  "analyses": [
-    {
-      "analysisId": 301,
-      "windowStartAt": "2026-11-17T01:01:30Z",
-      "windowEndAt": "2026-11-17T01:02:00Z",
-      "status": "COMPLETED",
-      "completedAt": "2026-11-17T01:02:08Z",
-      "topicGroups": [
-        {
-          "topicGroupId": 401,
-          "topic": "Redis 사용 이유",
-          "category": "MIXED",
-          "summary": "Redis 도입 이유와 활용 사례에 대한 질문과 의견이 있었습니다.",
-          "messageCount": 2,
-          "sourceMessageIds": [1001, 1003]
-        }
-      ]
-    }
-  ],
-  "lastCompletedAt": "2026-11-17T01:02:08Z"
+  "data": {
+    "roomId": 10,
+    "analyses": [
+      {
+        "analysisId": 301,
+        "windowStartAt": "2026-11-17T01:01:30Z",
+        "windowEndAt": "2026-11-17T01:02:00Z",
+        "status": "COMPLETED",
+        "completedAt": "2026-11-17T01:02:08Z",
+        "topicGroups": [
+          {
+            "topicGroupId": 401,
+            "topic": "Redis 사용 이유",
+            "category": "MIXED",
+            "summary": "Redis 도입 이유와 활용 사례에 대한 질문과 의견이 있었습니다.",
+            "messageCount": 2,
+            "sourceMessageIds": [1001, 1003]
+          }
+        ]
+      }
+    ],
+    "lastCompletedAt": "2026-11-17T01:02:08Z"
+  }
 }
 ```
 
@@ -82,12 +84,14 @@ LLM 출력 예시
 
 ```json
 {
-  "topicGroupId": 401,
-  "topic": "Redis 사용 이유",
-  "messages": [
-    { "messageId": 1001, "participantId": 101, "nickname": "청중A", "content": "Redis를 꼭 사용해야 하나요?", "receivedAt": "2026-11-17T01:01:40Z" },
-    { "messageId": 1003, "participantId": 102, "nickname": "청중B", "content": "MySQL만으로 처리하는 예시도 보여 주세요.", "receivedAt": "2026-11-17T01:01:50Z" }
-  ]
+  "data": {
+    "topicGroupId": 401,
+    "topic": "Redis 사용 이유",
+    "messages": [
+      { "messageId": 1001, "participantId": 101, "nickname": "청중A", "content": "Redis를 꼭 사용해야 하나요?", "receivedAt": "2026-11-17T01:01:40Z" },
+      { "messageId": 1003, "participantId": 102, "nickname": "청중B", "content": "MySQL만으로 처리하는 예시도 보여 주세요.", "receivedAt": "2026-11-17T01:01:50Z" }
+    ]
+  }
 }
 ```
 
