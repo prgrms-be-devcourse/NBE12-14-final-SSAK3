@@ -4,6 +4,8 @@ import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
 import com.react.global.response.ApiResponse;
 import com.react.stt.dto.SttSessionView;
+import com.react.stt.dto.SttSegmentRequest;
+import com.react.stt.dto.SttSegmentView;
 import com.react.stt.service.SttSessionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -34,6 +36,13 @@ public class SttSessionController {
     public ApiResponse<SttSessionView> stop(@PathVariable long roomId, @PathVariable long sessionId,
             @Valid @RequestBody StopRequest request, Authentication authentication) {
         return ApiResponse.of(sessions.stop(roomId, sessionId, email(authentication), request.reason()));
+    }
+
+    @PostMapping("/{sessionId}/segments")
+    public ResponseEntity<ApiResponse<SttSegmentView>> saveSegment(@PathVariable long roomId,
+            @PathVariable long sessionId, @Valid @RequestBody SttSegmentRequest request, Authentication authentication) {
+        var result = sessions.saveSegment(roomId, sessionId, email(authentication), request);
+        return ResponseEntity.status(result.created() ? 201 : 200).body(ApiResponse.of(result.segment()));
     }
 
     private String email(Authentication authentication) {
