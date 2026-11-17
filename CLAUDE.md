@@ -1,30 +1,19 @@
-# CS매치
+# RE:ACT
 
-레이팅 기반 1:1 실시간 CS 객관식 퀴즈 대결 서비스 (백엔드 12기 14회차 3팀). 일정: 11/27 MVP 배포, 12/7 최종 발표.
+청중의 질문·반응이 강연에 반영되도록 돕는 실시간 소통 서비스 (백엔드 12기 14회차 3팀).
+강연자는 STT 로 발언을 기록하고, 청중은 QR 로 입장해 채팅·이해도(이해됨/헷갈림/모르겠음)·투표로 반응하며, AI 가 청중 의견을 주제별로 요약하고 강연 종료 후 회고 보고서를 만든다.
 
-작업 전에 읽을 문서:
-- `docs/game-rules.md`: 게임 규칙·점수·레이팅
-- `docs/conventions.md`: 브랜치·커밋·PR·Jira 규칙
-- `README.md`: 폴더 구조, 실행 방법
-- DB 스키마: `backend/src/main/resources/db/migration` (Flyway), `docs/db/schema.sql`은 ERD 내보내기 참고본
-- API 명세(REST·WebSocket): `docs/api-spec.md`
-- ERD: https://dbdiagram.io/d/%EC%8B%B9%EC%93%B0%EB%A6%AC-6af3e06d063ad9ee168b99b8
-- API 명세 원본(REST·WebSocket): https://claude.ai/artifact/VGMk2169cgJ9CYqfTdnmGn
+일정: 11/29 MVP 배포, 12/4 최종 배포, 12/7 최종 발표. Jira: https://ssakthree.atlassian.net/jira/software/projects/SCRUM/boards/1
 
-문서끼리 어긋나거나 정해지지 않은 값이 있을 때의 원칙:
-- DB 테이블·컬럼·제약조건은 Flyway 마이그레이션(`db/migration`)을 따른다. ERD를 고치면 새 `V` 파일로 반영하고 `docs/db/schema.sql`도 함께 갱신한다.
-- 게임 규칙·점수·레이팅은 `docs/game-rules.md`를 따른다.
-- REST API 및 WebSocket 메시지 형식은 `docs/api-spec.md`를 따른다.
-- 문서 간 실제 충돌은 PR에서 공유하고 팀원과 조율한다.
-- `[미정]` 항목은 기존 팀 규칙에 따라 개발자가 결정하고 PR 본문 "리뷰어에게"에 기록한다.
-- 확정된 게임 규칙과 범위 밖 기능은 임의로 변경하지 않는다.
+> 기획서·기능 정의서·API 명세·ERD 는 SCRUM-165 에서 `docs/` 로 옮긴다. 그 전까지는 팀 공유본을 기준으로 하고, 문서끼리 어긋나면 PR 에서 팀원과 조율한다.
 
 ## 기술 스택
 
-- 백엔드: Java 25, Spring Boot 3.5.x, Gradle(Wrapper), JPA, MySQL, Redis, 순수 WebSocket(STOMP 없음, JSON 메시지), JWT, Cloudinary(프로필 이미지)
-- 프론트: React 18 + Vite, react-router-dom 6
+- 백엔드: Java 25, Spring Boot 3.5.x, Gradle(Wrapper), JPA, Flyway, MySQL, Redis, Spring Security, WebSocket
+- 프론트: React + Vite (TypeScript 전환은 SCRUM-98)
 - 배포: AWS EC2 1대, Docker Compose, Nginx (REST·WSS 한 도메인)
-- 문제 생성: Anthropic Claude API (배치에서만 호출, 관리자가 실행)
+- AI: LLM API 는 서버에서만 호출한다 (채팅 주기 분석, 종료 후 보고서 생성)
+- 인증·실시간 방식(세션 쿠키, STOMP)은 API 명세 v1.1 제안이며 SCRUM-164 에서 확정한다.
 
 ## 명령어
 
@@ -38,23 +27,19 @@ cd frontend && npm install && npm run dev
 ## 구조
 
 - 백엔드는 도메인 패키지: `com.csmatch.<도메인>.{controller,service,repository,domain,dto}`
-  - 도메인: auth, user, rating, matchmaking, match, question, review, report, practice, admin
+  - 도메인: auth, room, chat, feed(이해도), poll, stt, ai, dash, report
   - 공통: `com.csmatch.global.{config,exception,response,security,websocket,util}`
 - 테스트는 `backend/src/test/java/com/csmatch/<도메인>/` 에 같은 구조로 둔다.
 - 설정: `application.yml`(공통), `application-local.yml`(로컬), `application-prod.yml`(배포).
-- JPA 스키마 관리:
-  - 공통: `ddl-auto: validate`
-  - 로컬: `ddl-auto: validate`
-  - 배포: `ddl-auto: validate`
-- DB 스키마의 기준은 Flyway 마이그레이션(`backend/src/main/resources/db/migration`)이며 Hibernate는 테이블을 자동 수정하지 않는다. 적용된 `V` 파일은 수정하지 않고 새 버전을 추가한다. 통합 테스트(`test` 프로파일)는 Flyway를 끄고 `create-drop`을 쓴다.
+- DB 스키마의 기준은 Flyway 마이그레이션(`backend/src/main/resources/db/migration`)이며 `ddl-auto: validate` 다. 적용된 `V` 파일은 수정하지 않고 새 버전을 추가한다. 통합 테스트(`test` 프로파일)는 Flyway 를 끈다.
 
 ## 지켜야 할 것
 
 - **Git:** `main`, `develop` 에 직접 push 하지 않는다. `develop` 에서 `타입/SCRUM-번호-설명` 브랜치를 따서 PR 한다. 커밋은 `타입: 내용 (SCRUM-번호)`, PR 제목은 `[타입] 내용`. 자세한 건 `docs/conventions.md`.
-- **범위:** `docs/game-rules.md` 의 "범위 밖" 기능은 만들지 않는다.
-- **정합성:** 점수·레이팅은 서버가 판정한다. 같은 요청 ID 는 한 번만 반영하고, 레이팅은 경기당 한 번만 정산한다. 경기 단위로 직렬 처리한다.
-- **LLM 호출은 관리자가 실행한 문제 생성 작업에서만.** (`POST /admin/questions/generate`, 결정 배경은 `docs/adr/0003-llm-question-generation.md`) 대결·연습 중에는 호출하지 않고, 서버 기동이나 스케줄로 저절로 호출하지 않는다.
-- **시크릿:** `.env`, API 키, JWT 비밀값은 커밋·로그·응답에 남기지 않는다. 비밀번호는 `PasswordEncoder`(BCrypt) 로만 저장한다.
+- **강연방 격리:** 채팅·이해도·투표·STT·AI 분석·보고서는 모두 강연방 단위로 저장·조회한다. 권한은 REST 와 WebSocket 모두 서버에서 검증하고, 클라이언트가 보낸 userId·participantId·역할을 믿지 않는다.
+- **종료 후 차단:** ENDED 강연방은 새 채팅·이해도 변경·투표 응답을 받지 않는다.
+- **AI:** 실패해도 채팅·이해도·투표는 계속 동작해야 한다. 같은 분석 구간은 한 번만 실행하고, 호출 횟수·입력량 상한을 둔다. 보고서 조회는 LLM 을 다시 부르지 않는다. AI 생성 내용과 실제 기록(STT 원문·채팅·집계)을 구분해 저장·표시하고, STT 누락 구간은 지어내지 않는다.
+- **시크릿:** `.env`, API 키는 커밋·로그·응답에 남기지 않는다. 비밀번호는 `PasswordEncoder`(BCrypt) 로만 저장한다.
 - **리뷰:** PR 은 최소 1명 승인 후 머지한다.
 - **CI:** `.github/workflows/ci.yml` 이 PR·push 때 백엔드 빌드·테스트와 프론트 빌드를 돌린다. 머지 전 `./gradlew build` 를 먼저 돌려 둔다.
 - 새 코드는 주변 코드의 이름·구조·주석 스타일을 따른다. 요청받지 않은 리팩터링·기능 추가는 하지 않는다.
