@@ -4,10 +4,10 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
 @Entity
@@ -15,9 +15,6 @@ import java.time.temporal.ChronoUnit;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatMessage {
-    // DATETIME 은 STT 와 같이 고정 +09:00 기준으로 저장한다.
-    private static final ZoneOffset STORAGE_OFFSET = ZoneOffset.ofHours(9);
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -35,8 +32,10 @@ public class ChatMessage {
     @Column(nullable = false, columnDefinition = "text")
     private String content;
 
+    // Instant 로 들고 있으면 hibernate.jdbc.time_zone(Asia/Seoul) 기준으로 변환되어 JVM 시간대와 무관하게 +09:00 시각이 저장된다.
+    @JdbcTypeCode(SqlTypes.TIMESTAMP)
     @Column(name = "received_at", nullable = false)
-    private LocalDateTime receivedAt;
+    private Instant receivedAt;
 
     private ChatMessage(Long lectureRoomId, Long participantId, Long hostUserId, String content) {
         this.lectureRoomId = lectureRoomId;
@@ -44,11 +43,7 @@ public class ChatMessage {
         this.hostUserId = hostUserId;
         this.content = content;
         // DATETIME 은 초 단위라 DB 가 반올림하지 않도록 미리 초로 자른다. 반환값과 조회값이 같아진다.
-        this.receivedAt = LocalDateTime.now(STORAGE_OFFSET).truncatedTo(ChronoUnit.SECONDS);
-    }
-
-    public Instant getReceivedAtInstant() {
-        return receivedAt.toInstant(STORAGE_OFFSET);
+        this.receivedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
     }
 
     public static ChatMessage ofParticipant(Long lectureRoomId, Long participantId, String content) {

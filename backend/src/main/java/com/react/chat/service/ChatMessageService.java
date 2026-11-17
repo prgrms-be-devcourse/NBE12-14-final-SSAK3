@@ -95,6 +95,6 @@ public class ChatMessageService {
     }
 
     private ChatMessageView view(ChatMessage message, ChatSenderView sender) {
-        return new ChatMessageView(message.getId(), sender, message.getContent(), message.getReceivedAtInstant());
+        return new ChatMessageView(message.getId(), sender, message.getContent(), message.getReceivedAt());
     }
 }
