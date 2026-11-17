@@ -76,11 +76,12 @@ Response — 200 OK
       }
     ],
     "nextCursor": 1001,
-    "hasNext": false
+    "hasNext": true
   }
 }
 ```
 
-규칙: 해당 강연방 메시지만 조회, 커서 기반 페이지 조회, 응답은 최신 메시지부터 정렬하는 방식을 제안한다, 종료된 강연도 기존 메시지 조회 가능, AI 전처리 제외 여부와 무관하게 원문 조회 가능.
-오류: `401 UNAUTHENTICATED`, `403 FORBIDDEN`, `404 ROOM_NOT_FOUND`
+규칙: 해당 강연방 메시지만 조회, 커서 기반 페이지 조회, 종료된 강연도 기존 메시지 조회 가능, AI 전처리 제외 여부와 무관하게 원문 조회 가능.
+정렬·페이지: 각 페이지는 `cursor` 보다 이전 메시지 중 최신 `size`개를 가져오되, `messages` 배열은 오래된 순으로 정렬한다(화면은 최신이 아래). `nextCursor` 는 배열의 첫 번째(가장 오래된) 메시지 ID 이며, 더 오래된 메시지가 없으면(`hasNext` 가 `false`) `null` 이다. 다음 페이지는 이 값을 `cursor` 로 요청한다. `size` 는 1~100, `cursor` 는 1 이상이어야 한다.
+오류: `400 INVALID_INPUT`, `401 UNAUTHENTICATED`, `403 FORBIDDEN`, `404 ROOM_NOT_FOUND`
 
