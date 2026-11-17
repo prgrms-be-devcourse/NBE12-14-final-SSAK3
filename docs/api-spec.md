@@ -1,6 +1,6 @@
 # RE:ACT — MVP API 명세서 v1.1
 
-DB 기준은 `docs/db/erd.dbml`(ERD v1.1, 16개 테이블)과 Flyway 마이그레이션이다. 기능 ID(AUTH-01 등)는 팀의 기능 정의서(P0)를 따른다.
+기준 문서는 `docs/feature-spec.md`(기능 정의서, P0), DB 기준은 `docs/db/erd.dbml`(ERD v1.1, 16개 테이블)과 Flyway 마이그레이션이다.
 문서끼리 어긋나면 DB 는 Flyway 마이그레이션을, 이 명세의 REST·WebSocket 형식을 우선하고, 실제 충돌은 PR 에서 팀원과 조율한다.
 
 상태: 초기 개발 명세. 인증·실시간 프로토콜(세션 쿠키, STOMP)과 일부 정책은 팀 합의가 필요하다(§14).
@@ -1106,7 +1106,7 @@ Response — 202 Accepted
 
 ## 15. MVP 완료 기준
 
-기능별 완료 기준은 팀의 기능 정의서·기획서를 따른다. 요약:
+기능별 완료 기준은 `docs/feature-spec.md` §14 와 `docs/planning.md` §11 을 따른다. 요약:
 
 - 강연자 인증, 강연방 생성·QR 입장·권한 구분·시작/종료·종료 후 응답 차단
 - 강연자·청중 실시간 채팅, 저장·조회·검증·강연방 격리
