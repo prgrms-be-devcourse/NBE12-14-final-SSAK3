@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatMessageController {
     private final ChatMessageService messages;
 
+    // TODO(SCRUM-164): 해당 강연방의 강연자·참여자만 조회하도록 인증·권한 검증을 붙인다.
     @GetMapping
     public ApiResponse<ChatMessagePageView> getMessages(@PathVariable long roomId,
             @RequestParam(required = false) Long cursor, @RequestParam(defaultValue = "30") int size) {
