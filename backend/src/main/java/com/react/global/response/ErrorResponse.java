@@ -1,21 +1,31 @@
 package com.react.global.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.react.global.exception.ErrorCode;
 
-public record ErrorResponse(ErrorDetail error) {
+import java.time.Instant;
 
-    public record ErrorDetail(
-            String code,
-            String message
-    ) {
-    }
+@JsonInclude(JsonInclude.Include.ALWAYS)
+public record ErrorResponse(
+        String code,
+        String message,
+        Object details,
+        String timestamp
+) {
 
     public static ErrorResponse of(ErrorCode errorCode) {
+        return of(errorCode, null);
+    }
+
+    public static ErrorResponse of(
+            ErrorCode errorCode,
+            Object details
+    ) {
         return new ErrorResponse(
-                new ErrorDetail(
-                        errorCode.name(),
-                        errorCode.getMessage()
-                )
+                errorCode.name(),
+                errorCode.getMessage(),
+                details,
+                Instant.now().toString()
         );
     }
 }
