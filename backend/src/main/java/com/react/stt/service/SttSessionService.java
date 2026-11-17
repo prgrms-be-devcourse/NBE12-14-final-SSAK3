@@ -22,8 +22,8 @@ import java.util.UUID;
 @Transactional
 @RequiredArgsConstructor
 public class SttSessionService {
-    // stt_segments DATETIME values use the original deployment's fixed +09:00 clock.
-    private static final ZoneOffset SEGMENT_STORAGE_OFFSET = ZoneOffset.ofHours(9);
+    // STT DATETIME values use the original deployment's fixed +09:00 clock.
+    private static final ZoneOffset STT_STORAGE_OFFSET = ZoneOffset.ofHours(9);
     private final JdbcClient jdbc;
 
     public enum StopReason {
@@ -38,18 +38,21 @@ public class SttSessionService {
     public record StartResult(boolean created, SttSessionView session) {}
     public record SegmentResult(boolean created, SttSegmentView segment) {}
     private record Room(String status, String email) {}
-    private record Session(long id, long roomId, String status, long startedAt, Long endedAt, String startKey) {
+    private record Session(long id, long roomId, String status, LocalDateTime startedAt, LocalDateTime endedAt, String startKey) {
         SttSessionView view(String key) {
-            return new SttSessionView(id, roomId, status, Instant.ofEpochSecond(startedAt),
-                    endedAt == null ? null : Instant.ofEpochSecond(endedAt),
+            return new SttSessionView(id, roomId, status, startedAt.toInstant(STT_STORAGE_OFFSET),
+                    endedAt == null ? null : endedAt.toInstant(STT_STORAGE_OFFSET),
                     key != null && key.equals(startKey) && "RECORDING".equals(status));
         }
     }
 
     private static final String SESSIONS = """
-            SELECT id, lecture_room_id AS room_id, status, UNIX_TIMESTAMP(started_at) AS started_at,
-                   UNIX_TIMESTAMP(ended_at) AS ended_at, start_key FROM stt_sessions WHERE lecture_room_id = ?
+            SELECT id, lecture_room_id AS room_id, status, started_at, ended_at, start_key FROM stt_sessions WHERE lecture_room_id = ?
             """;
+
+    private static LocalDateTime storageNow() {
+        return LocalDateTime.now(STT_STORAGE_OFFSET).truncatedTo(ChronoUnit.SECONDS);
+    }
 
     public StartResult start(long roomId, String email, UUID requestKey) {
         Room room = lockOwnedRoom(roomId, email);
@@ -67,8 +70,8 @@ public class SttSessionService {
         }
         jdbc.sql("""
                 INSERT INTO stt_sessions(lecture_room_id, start_key, status, started_at)
-                VALUES (?, ?, 'RECORDING', CURRENT_TIMESTAMP)
-                """).params(roomId, key).update();
+                VALUES (?, ?, 'RECORDING', ?)
+                """).params(roomId, key, storageNow()).update();
         var created = jdbc.sql(SESSIONS + "AND start_key = ?").params(roomId, key).query(Session.class).single();
         return new StartResult(true, created.view(key));
     }
@@ -76,9 +79,9 @@ public class SttSessionService {
     public SttSessionView stop(long roomId, long sessionId, String email, StopReason reason) {
         lockOwnedRoom(roomId, email);
         jdbc.sql("""
-                UPDATE stt_sessions SET status = ?, ended_at = CURRENT_TIMESTAMP
+                UPDATE stt_sessions SET status = ?, ended_at = ?
                 WHERE lecture_room_id = ? AND id = ? AND status = 'RECORDING'
-                """).params(reason.status, roomId, sessionId).update();
+                """).params(reason.status, storageNow(), roomId, sessionId).update();
         return jdbc.sql(SESSIONS + "AND id = ?").params(roomId, sessionId).query(Session.class).optional()
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND)).view(null);
     }
@@ -112,9 +115,9 @@ public class SttSessionService {
                 INSERT INTO stt_segments(stt_session_id, segment_key, transcript, segment_start_at, segment_end_at, received_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """).params(sessionId, request.segmentKey(), request.transcript(),
-                        LocalDateTime.ofInstant(start, SEGMENT_STORAGE_OFFSET),
-                        LocalDateTime.ofInstant(end, SEGMENT_STORAGE_OFFSET),
-                        LocalDateTime.ofInstant(Instant.now().truncatedTo(ChronoUnit.SECONDS), SEGMENT_STORAGE_OFFSET))
+                        LocalDateTime.ofInstant(start, STT_STORAGE_OFFSET),
+                        LocalDateTime.ofInstant(end, STT_STORAGE_OFFSET),
+                        storageNow())
                 .update();
         return new SegmentResult(true, findSegment(sessionId, request.segmentKey()).orElseThrow());
     }
@@ -126,9 +129,9 @@ public class SttSessionService {
                 FROM stt_segments WHERE stt_session_id = ? AND segment_key = ?
                 """).params(sessionId, key).query((row, index) -> new SttSegmentView(
                         row.getLong("id"), row.getLong("stt_session_id"), row.getString("segment_key"),
-                        row.getString("transcript"), row.getObject("segment_start_at", LocalDateTime.class).toInstant(SEGMENT_STORAGE_OFFSET),
-                        row.getObject("segment_end_at", LocalDateTime.class).toInstant(SEGMENT_STORAGE_OFFSET),
-                        row.getObject("received_at", LocalDateTime.class).toInstant(SEGMENT_STORAGE_OFFSET)))
+                        row.getString("transcript"), row.getObject("segment_start_at", LocalDateTime.class).toInstant(STT_STORAGE_OFFSET),
+                        row.getObject("segment_end_at", LocalDateTime.class).toInstant(STT_STORAGE_OFFSET),
+                        row.getObject("received_at", LocalDateTime.class).toInstant(STT_STORAGE_OFFSET)))
                 .optional();
     }
 
