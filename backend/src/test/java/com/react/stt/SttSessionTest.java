@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -297,6 +298,69 @@ class SttSessionTest {
         }
         assertThat(jdbc.sql("SELECT COUNT(*) FROM stt_gaps WHERE stt_session_id=? AND ended_at IS NULL")
                 .param(session.sttSessionId()).query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void recordQueryIncludesOverlappingRecordsAcrossSessionsAndKeepsOriginalTimes() throws Exception {
+        UUID key = UUID.randomUUID();
+        long first = service.start(room, email, key).session().sttSessionId();
+        Instant from = Instant.parse("2026-11-17T01:01:00Z");
+        Instant to = from.plusSeconds(60);
+        service.saveSegment(room, first, email, new SttSegmentRequest(key, "ends-at-from", "excluded",
+                from.minusSeconds(2), from));
+        service.saveSegment(room, first, email, new SttSegmentRequest(key, "overlap", "whole transcript",
+                from.minusSeconds(2), from.plusSeconds(4)));
+        service.stop(room, first, email, StopReason.MANUAL_STOP);
+        UUID nextKey = UUID.randomUUID();
+        long second = service.start(room, email, nextKey).session().sttSessionId();
+        service.saveSegment(room, second, email, new SttSegmentRequest(nextKey, "point", "point",
+                from, from));
+        service.saveSegment(room, second, email, new SttSegmentRequest(nextKey, "tie", "tie",
+                from, from.plusSeconds(1)));
+        service.saveSegment(room, second, email, new SttSegmentRequest(nextKey, "starts-at-to", "excluded",
+                to, to.plusSeconds(1)));
+        LocalDateTime localFrom = LocalDateTime.ofInstant(from, java.time.ZoneOffset.ofHours(9));
+        jdbc.sql("""
+                INSERT INTO stt_gaps(stt_session_id,event_key,reason,started_at,ended_at)
+                VALUES (?, 'point','ERROR',?,?), (?, 'closed','ERROR',?,?), (?, 'open','ERROR',?,NULL)
+                """).params(first, localFrom, localFrom, first, localFrom.minusSeconds(10), localFrom,
+                        second, localFrom.plusSeconds(30)).update();
+
+        mvc.perform(get("/api/v1/rooms/{room}/stt/segments", room).with(user(email))
+                        .param("from", from.toString()).param("to", to.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.segments.length()").value(3))
+                .andExpect(jsonPath("$.data.segments[0].transcript").value("whole transcript"))
+                .andExpect(jsonPath("$.data.segments[0].sessionId").value(first))
+                .andExpect(jsonPath("$.data.segments[0].segmentStartAt").value(from.minusSeconds(2).toString()))
+                .andExpect(jsonPath("$.data.segments[1].transcript").value("point"))
+                .andExpect(jsonPath("$.data.segments[2].transcript").value("tie"))
+                .andExpect(jsonPath("$.data.gaps.length()").value(2))
+                .andExpect(jsonPath("$.data.gaps[1].endedAt").isEmpty());
+        assertThat(service.records(room, email, null, null).segments()).hasSize(5);
+        assertThat(service.records(room, email, null, from).segments()).hasSize(2);
+        assertThat(service.records(room, email, to, null).segments()).hasSize(1);
+        assertThat(service.records(room, email, Instant.now().plusSeconds(60), null).gaps()).isEmpty();
+        assertThat(service.records(room, email, from.plusMillis(1), to).gaps()).hasSize(1);
+    }
+
+    @Test
+    void recordQueryValidatesAccessAndRangeAndAllowsEveryRoomStatus() throws Exception {
+        String url = "/api/v1/rooms/{room}/stt/segments";
+        mvc.perform(get(url, room)).andExpect(status().isUnauthorized());
+        mvc.perform(get(url, room).with(user("other@example.com"))).andExpect(status().isForbidden());
+        mvc.perform(get(url, Long.MAX_VALUE).with(user(email))).andExpect(status().isNotFound());
+        mvc.perform(get(url, room).with(user(email)).param("from", "invalid")).andExpect(status().isBadRequest());
+        String time = "2026-11-17T01:01:00Z";
+        mvc.perform(get(url, room).with(user(email)).param("from", time).param("to", time))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(url, room).with(user(email)).param("from", "2026-11-17T01:02:00Z").param("to", time))
+                .andExpect(status().isBadRequest());
+        for (String state : java.util.List.of("READY", "LIVE", "ENDED")) {
+            jdbc.sql("UPDATE lecture_rooms SET status=? WHERE id=?").params(state, room).update();
+            mvc.perform(get(url, room).with(user(email))).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.segments").isEmpty()).andExpect(jsonPath("$.data.gaps").isEmpty());
+        }
     }
 
     private SingleConnectionDataSource connectionInZone(String offset) {
