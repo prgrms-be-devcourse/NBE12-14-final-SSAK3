@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import javax.sql.DataSource;
 import java.util.Locale;
@@ -27,6 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AuthSignupTest {
+
+    private static final String SIGNUP_URL = "/api/v1/auth/signup";
 
     @Autowired
     MockMvc mvc;
@@ -43,10 +46,9 @@ class AuthSignupTest {
     @Autowired
     PasswordEncoder passwordEncoder;
 
-    private static final String SIGNUP_URL = "/api/v1/auth/signup";
-
     @BeforeEach
     void setUp() {
+
         String database = jdbc.sql("SELECT DATABASE()")
                 .query(String.class)
                 .single();
@@ -60,14 +62,19 @@ class AuthSignupTest {
     }
 
     @Test
-    void 회원가입_성공시_비밀번호를_해시로_저장한다() throws Exception {
+    void 회원가입_성공시_비밀번호를_해시로_저장한다()
+            throws Exception {
 
         String email = "HOST-" + UUID.randomUUID() + "@example.com";
         String password = "ExamplePassword123!";
 
-        var result = mvc.perform(post(SIGNUP_URL)
+        MvcResult result = mvc.perform(post(SIGNUP_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(request(email, password, "김강연")))
+                        .content(request(
+                                email,
+                                password,
+                                "김강연"
+                        )))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.userId").isNumber())
                 .andExpect(jsonPath("$.data.email")
@@ -97,16 +104,18 @@ class AuthSignupTest {
                 passwordEncoder.matches(password, storedHash)
         ).isTrue();
 
-        // 회원가입 후 자동 로그인되지 않아야 한다.
+        // 회원가입 후 자동 로그인 없음
         assertThat(
                 result.getResponse().getCookie("HOST_SESSION")
         ).isNull();
     }
 
     @Test
-    void 같은_이메일로_중복_가입하면_409를_반환한다() throws Exception {
+    void 같은_이메일로_중복_가입하면_409를_반환한다()
+            throws Exception {
 
-        String email = "duplicate-" + UUID.randomUUID() + "@example.com";
+        String email =
+                "duplicate-" + UUID.randomUUID() + "@example.com";
 
         mvc.perform(post(SIGNUP_URL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -130,7 +139,8 @@ class AuthSignupTest {
     }
 
     @Test
-    void 잘못된_이메일은_400을_반환한다() throws Exception {
+    void 잘못된_이메일은_400을_반환한다()
+            throws Exception {
 
         mvc.perform(post(SIGNUP_URL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -145,12 +155,14 @@ class AuthSignupTest {
     }
 
     @Test
-    void 짧은_비밀번호는_400을_반환한다() throws Exception {
+    void 짧은_비밀번호는_400을_반환한다()
+            throws Exception {
 
         mvc.perform(post(SIGNUP_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
-                                "short-" + UUID.randomUUID() + "@example.com",
+                                "short-" + UUID.randomUUID()
+                                        + "@example.com",
                                 "123",
                                 "김강연"
                         )))
@@ -171,21 +183,30 @@ class AuthSignupTest {
 
         mvc.perform(post(SIGNUP_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(request(email, password, "김강연")))
+                        .content(request(
+                                email,
+                                password,
+                                "김강연"
+                        )))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code")
                         .value("INVALID_INPUT"));
     }
 
     @Test
-    void 이름이_비어있으면_400을_반환한다() throws Exception {
+    void 이름이_비어있으면_400을_반환한다()
+            throws Exception {
 
         String email =
                 "blank-" + UUID.randomUUID() + "@example.com";
 
         mvc.perform(post(SIGNUP_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(request(email, "Password123!", "   ")))
+                        .content(request(
+                                email,
+                                "Password123!",
+                                "   "
+                        )))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code")
                         .value("INVALID_INPUT"));

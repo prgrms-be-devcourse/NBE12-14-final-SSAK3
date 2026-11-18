@@ -4,6 +4,7 @@ import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
 import com.react.stt.dto.SttSessionView;
 import com.react.stt.dto.SttGap;
+import com.react.stt.dto.SttRecordsView;
 import com.react.stt.dto.SttSegmentRequest;
 import com.react.stt.dto.SttSegmentView;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import java.time.temporal.ChronoUnit;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.HashMap;
 
 @Service
 @Transactional
@@ -213,12 +215,75 @@ public class SttSessionService {
                 .optional();
     }
 
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public SttRecordsView records(long roomId, String email, Instant from, Instant to) {
+        Instant requestedAt = Instant.now();
+        ownedRoom(roomId, email, false);
+        if (from != null && to != null && !from.isBefore(to)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        var segments = recordsQuery("""
+                SELECT r.id, r.session_id, r.transcript, r.started_at, r.ended_at, r.received_at FROM (
+                    SELECT g.id, g.stt_session_id AS session_id, g.transcript,
+                           g.segment_start_at AS started_at, g.segment_end_at AS ended_at, g.received_at
+                    FROM stt_segments g JOIN stt_sessions s ON s.id = g.stt_session_id
+                    WHERE s.lecture_room_id = :roomId
+                ) r WHERE 1=1
+                """, roomId, from, to, requestedAt)
+                .query((row, index) -> new SttRecordsView.Segment(row.getLong("id"), row.getLong("session_id"),
+                        row.getString("transcript"),
+                        row.getObject("started_at", LocalDateTime.class).toInstant(STT_STORAGE_OFFSET),
+                        row.getObject("ended_at", LocalDateTime.class).toInstant(STT_STORAGE_OFFSET),
+                        row.getObject("received_at", LocalDateTime.class).toInstant(STT_STORAGE_OFFSET))).list();
+        var gaps = recordsQuery("""
+                SELECT r.id, r.stt_session_id AS session_id, r.reason, r.started_at, r.ended_at
+                FROM stt_gaps r JOIN stt_sessions s ON s.id = r.stt_session_id
+                WHERE s.lecture_room_id = :roomId
+                """, roomId, from, to, requestedAt)
+                .query((row, index) -> {
+                    LocalDateTime endedAt = row.getObject("ended_at", LocalDateTime.class);
+                    return new SttRecordsView.Gap(row.getLong("id"), row.getLong("session_id"),
+                            SttGap.Reason.valueOf(row.getString("reason")),
+                            row.getObject("started_at", LocalDateTime.class).toInstant(STT_STORAGE_OFFSET),
+                            endedAt == null ? null : endedAt.toInstant(STT_STORAGE_OFFSET));
+                }).list();
+        return new SttRecordsView(roomId, segments, gaps);
+    }
+
+    private JdbcClient.StatementSpec recordsQuery(String sql, long roomId, Instant from, Instant to, Instant now) {
+        var parameters = new HashMap<String, Object>();
+        parameters.put("roomId", roomId);
+        if (from != null) {
+            // A zero-duration record is a point; open gaps extend only to this request's timestamp.
+            sql += """
+                     AND (COALESCE(r.ended_at, CAST(:now AS DATETIME(6))) > CAST(:from AS DATETIME(6))
+                          OR (r.started_at = COALESCE(r.ended_at, CAST(:now AS DATETIME(6)))
+                              AND r.started_at >= CAST(:from AS DATETIME(6))))
+                    """;
+            parameters.put("from", LocalDateTime.ofInstant(from, STT_STORAGE_OFFSET));
+            parameters.put("now", LocalDateTime.ofInstant(now, STT_STORAGE_OFFSET));
+        }
+        if (to != null) {
+            sql += " AND r.started_at < :to";
+            parameters.put("to", LocalDateTime.ofInstant(to, STT_STORAGE_OFFSET));
+        }
+        return jdbc.sql(sql + " ORDER BY r.started_at, r.id").params(parameters);
+    }
+
     // Serialize lifecycle changes even when the room has no session row yet.
     private Room lockOwnedRoom(long roomId, String email) {
-        Room room = jdbc.sql("""
+        return ownedRoom(roomId, email, true);
+    }
+
+    private Room ownedRoom(long roomId, String email, boolean lock) {
+        String sql = """
                 SELECT r.status, u.email, r.ended_at FROM lecture_rooms r JOIN users u ON u.id = r.host_user_id
-                WHERE r.id = ? FOR UPDATE OF r
-                """).param(roomId).query(Room.class).optional()
+                WHERE r.id = ?
+                """;
+        if (lock) {
+            sql += " FOR UPDATE OF r";
+        }
+        Room room = jdbc.sql(sql).param(roomId).query(Room.class).optional()
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
         if (!room.email().equalsIgnoreCase(email)) {      // 회원가입시 이메일 대소문자 확정
             throw new BusinessException(ErrorCode.FORBIDDEN);

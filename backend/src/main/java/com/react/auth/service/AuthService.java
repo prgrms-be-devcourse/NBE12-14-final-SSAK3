@@ -1,5 +1,8 @@
 package com.react.auth.service;
 
+import com.react.auth.dto.LoginRequest;
+import com.react.auth.dto.LoginResponse;
+import com.react.auth.dto.MeResponse;
 import com.react.auth.dto.SignupRequest;
 import com.react.auth.dto.SignupResponse;
 import com.react.auth.entity.User;
@@ -29,11 +32,7 @@ public class AuthService {
     @Transactional
     public SignupResponse signup(SignupRequest request) {
 
-        // 이메일 및 이름 정규화
-        String email = request.email()
-                .strip()
-                .toLowerCase(Locale.ROOT);
-
+        String email = normalizeEmail(request.email());
         String name = request.name().strip();
 
         // BCrypt 입력 길이 검사
@@ -53,7 +52,7 @@ public class AuthService {
 
         User user = new User(email, encodedPassword, name);
 
-        // DB UNIQUE 제약으로 동시 가입 요청도 보호
+        // DB UNIQUE 제약으로 동시 가입 요청 보호
         try {
             user = userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException e) {
@@ -64,7 +63,6 @@ public class AuthService {
                 );
             }
 
-            // 이메일 중복이 아닌 DB 제약 오류는 그대로 전달
             throw e;
         }
 
@@ -78,11 +76,55 @@ public class AuthService {
         );
     }
 
-    // MySQL의 이메일 UNIQUE 제약 충돌인지 확인
+    @Transactional(readOnly = true)
+    public LoginResponse login(LoginRequest request) {
+
+        String email = normalizeEmail(request.email());
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.INVALID_CREDENTIALS
+                ));
+
+        if (!passwordEncoder.matches(
+                request.password(),
+                user.getPasswordHash()
+        )) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_CREDENTIALS
+            );
+        }
+
+        return new LoginResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName(),
+                true
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public MeResponse me(String email) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.UNAUTHENTICATED
+                ));
+
+        return new MeResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName()
+        );
+    }
+
+    private String normalizeEmail(String email) {
+        return email.strip().toLowerCase(Locale.ROOT);
+    }
+
     private boolean isEmailDuplicate(
             DataIntegrityViolationException exception
     ) {
-
         Throwable cause = exception;
 
         while (cause != null) {
