@@ -1,7 +1,7 @@
 # RE:ACT
 
 청중의 질문·반응이 강연에 반영되도록 돕는 실시간 소통 서비스 (백엔드 12기 14회차 3팀).
-강연자는 STT 로 발언을 기록하고, 청중은 QR 로 입장해 채팅·이해도(이해됨/헷갈림/모르겠음)·투표로 반응하며, AI 가 청중 의견을 주제별로 요약하고 강연 종료 후 회고 보고서를 만든다.
+강연자는 STT 로 발언을 기록하고, 청중은 QR 로 입장해 채팅·투표(강연자가 여는 이해도 체크: 이해됨/헷갈림/모르겠음 포함)로 반응하며, AI 가 청중 의견을 주제별로 요약하고 강연 종료 후 회고 보고서를 만든다.
 
 일정: 11/29 MVP 배포, 12/4 최종 배포, 12/7 최종 발표. Jira: https://ssakthree.atlassian.net/jira/software/projects/SCRUM/boards/1
 
@@ -27,7 +27,7 @@ cd frontend && npm install && npm run dev
 ## 구조
 
 - 백엔드는 도메인 패키지: `com.react.<도메인>.{controller,service,repository,entity,dto}`
-  - 도메인: auth, room, chat, feed(이해도), poll, stt, ai, dash, report
+  - 도메인: auth, room, chat, poll(투표·이해도 체크), stt, ai, dash, report
   - 공통: `com.react.global.{config,exception,response,security,websocket,util}`
 - 테스트는 `backend/src/test/java/com/react/<도메인>/` 에 같은 구조로 둔다.
 - 설정: `application.yml`(공통), `application-local.yml`(로컬), `application-prod.yml`(배포).
@@ -37,7 +37,7 @@ cd frontend && npm install && npm run dev
 
 - **Git:** `main`, `develop` 에 직접 push 하지 않는다. `develop` 에서 `타입/SCRUM-번호-설명` 브랜치를 따서 PR 한다. 커밋은 `타입: 내용 (SCRUM-번호)`, PR 제목은 `[타입] 내용`. 자세한 건 `docs/conventions.md`.
 - **강연방 격리:** 채팅·이해도·투표·STT·AI 분석·보고서는 모두 강연방 단위로 저장·조회한다. 권한은 REST 와 WebSocket 모두 서버에서 검증하고, 클라이언트가 보낸 userId·participantId·역할을 믿지 않는다.
-- **종료 후 차단:** ENDED 강연방은 새 채팅·이해도 변경·투표 응답을 받지 않는다.
+- **종료 후 차단:** ENDED 강연방은 새 채팅·투표 응답(이해도 체크 포함)을 받지 않는다.
 - **AI:** 실패해도 채팅·이해도·투표는 계속 동작해야 한다. 같은 분석 구간은 한 번만 실행하고, 호출 횟수·입력량 상한을 둔다. 보고서 조회는 LLM 을 다시 부르지 않는다. AI 생성 내용과 실제 기록(STT 원문·채팅·집계)을 구분해 저장·표시하고, STT 누락 구간은 지어내지 않는다.
 - **시크릿:** `.env`, API 키는 커밋·로그·응답에 남기지 않는다. 비밀번호는 `PasswordEncoder`(BCrypt) 로만 저장한다.
 - **리뷰:** PR 은 최소 1명 승인 후 머지한다.
