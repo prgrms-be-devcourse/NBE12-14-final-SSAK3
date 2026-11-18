@@ -17,6 +17,8 @@
 
 시작할 때 새 UUID를 만들고 재시도에는 같은 키를 사용한다. 최초 생성은 `201`, 재시도는 기존 세션의 현재 상태와 `200`을 반환한다. 다른 키로 요청했을 때 이미 기록 중이면 `200`, `canRecord: false`를 반환한다. 마이크는 `canRecord: true`일 때만 켠다. 종료된 세션의 시작 키를 재전송해도 재시작하지 않는다.
 
+`canRecord`는 요청의 시작 키가 일치하고, 세션이 `RECORDING`이며, 강연방이 `LIVE`일 때만 `true`다. 강연방이 먼저 `ENDED`가 되면 세션이 아직 `RECORDING`이어도 같은 시작 키의 재전송에 `200 OK`와 `canRecord: false`를 반환한다.
+
 ### [STT-02, 03] STT 확정 발언 저장
 
 **POST** `/api/v1/rooms/{roomId}/stt/sessions/{sessionId}/segments` — HOST, 강연방 소유자
