@@ -30,7 +30,6 @@ class FlywayMigrationTest {
 
     private static final List<String> EXPECTED_TABLES = List.of(
             "users", "lecture_rooms", "lecture_participants", "chat_messages",
-            "participant_understandings", "understanding_histories",
             "polls", "poll_options", "poll_responses",
             "stt_sessions", "stt_segments", "stt_gaps",
             "ai_analyses", "ai_topic_groups", "ai_topic_group_messages",
@@ -119,16 +118,9 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void 이해_상태와_보고서는_참여자와_강연방당_하나만_둘_수_있다() {
+    void 보고서는_강연방당_하나만_둘_수_있다() {
         long hostId = insertUser("host@example.com");
         long roomId = insertRoom(hostId, "CODE01");
-        long participantId = insertParticipant(roomId, "token-1");
-
-        jdbc.update("INSERT INTO participant_understandings(participant_id, current_status, updated_at) "
-                + "VALUES (?, 'CONFUSED', NOW())", participantId);
-        assertThatThrownBy(() -> jdbc.update("INSERT INTO participant_understandings(participant_id, current_status, updated_at) "
-                + "VALUES (?, 'UNDERSTOOD', NOW())", participantId))
-                .isInstanceOf(DataIntegrityViolationException.class);
 
         jdbc.update("INSERT INTO lecture_reports(lecture_room_id, status, created_at) VALUES (?, 'PENDING', NOW())", roomId);
         assertThatThrownBy(() -> jdbc.update("INSERT INTO lecture_reports(lecture_room_id, status, created_at) "
@@ -183,8 +175,8 @@ class FlywayMigrationTest {
     }
 
     private long insertPoll(long roomId) {
-        return insertAndGetId("INSERT INTO polls(lecture_room_id, question, status, created_at) "
-                + "VALUES (?, '이해했나요?', 'OPEN', NOW())", roomId);
+        return insertAndGetId("INSERT INTO polls(lecture_room_id, question, status, created_at, closes_at) "
+                + "VALUES (?, '이해했나요?', 'OPEN', NOW(), NOW() + INTERVAL 60 SECOND)", roomId);
     }
 
     private long insertPollOption(long pollId, int displayOrder) {

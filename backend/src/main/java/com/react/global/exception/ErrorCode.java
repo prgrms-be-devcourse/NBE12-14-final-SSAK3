@@ -28,6 +28,7 @@ public enum ErrorCode {
     INVALID_ROOM_STATUS(HttpStatus.CONFLICT, "현재 강연 상태에서는 요청을 처리할 수 없습니다."),
     ROOM_NOT_LIVE(HttpStatus.CONFLICT, "진행 중인 강연이 아닙니다."),
     ROOM_ENDED(HttpStatus.CONFLICT, "이미 종료된 강연입니다."),
+    POLL_ALREADY_OPEN(HttpStatus.CONFLICT, "이미 진행 중인 투표가 있습니다."),
     POLL_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종료된 투표입니다."),
     POLL_CLOSED(HttpStatus.CONFLICT, "종료된 투표에는 응답할 수 없습니다."),
     ALREADY_VOTED(HttpStatus.CONFLICT, "이미 응답한 투표입니다."),

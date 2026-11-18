@@ -95,8 +95,8 @@ Response — 200 OK
         "question": "Redis가 필요한 이유를 이해했나요?",
         "status": "OPEN",
         "options": [
-          { "optionId": 1, "content": "이해했어요", "understandingStatus": null },
-          { "optionId": 2, "content": "조금 헷갈려요", "understandingStatus": null }
+          { "optionId": 1, "content": "이해했어요", "displayOrder": 1, "understandingStatus": null },
+          { "optionId": 2, "content": "조금 헷갈려요", "displayOrder": 2, "understandingStatus": null }
         ],
         "createdAt": "2026-11-17T01:20:00Z",
         "closesAt": "2026-11-17T01:21:30Z",
