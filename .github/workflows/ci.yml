@@ -91,6 +91,15 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Test STT behavior
+        run: npm test
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test STT browser integration
+        run: npm run test:e2e
+
       - name: Build
         run: npm run build
 

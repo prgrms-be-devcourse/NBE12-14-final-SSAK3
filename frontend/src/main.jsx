@@ -1,9 +1,10 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
+import { SttDemo } from './stt/SttDemo.jsx'
 
-// RE:ACT 프론트 뼈대(SCRUM-98)가 들어오기 전까지의 자리표시 화면
+// SCRUM-98 화면에 SttPanel을 연결하기 전까지의 실제 API 확인용 화면.
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <h1>RE:ACT</h1>
+    <SttDemo />
   </React.StrictMode>,
 )
