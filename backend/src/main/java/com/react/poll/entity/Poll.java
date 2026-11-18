@@ -98,6 +98,13 @@ public class Poll {
         this.closeReason = PollCloseReason.HOST;
     }
 
+    /** 강연이 종료되어 마감한다. 호출하는 쪽이 이미 제한 시간이 지난 투표는 expire() 로 처리한다. */
+    public void closeByRoomEnded(Instant now) {
+        this.status = PollStatus.CLOSED;
+        this.closedAt = now;
+        this.closeReason = PollCloseReason.ROOM_ENDED;
+    }
+
     /** 제한 시간이 지나 마감한다. 마감 시각은 실제 처리 시각이 아니라 closesAt 이다. */
     public void expire() {
         this.status = PollStatus.CLOSED;

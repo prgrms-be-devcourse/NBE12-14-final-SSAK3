@@ -85,6 +85,26 @@ public class PollService {
         return new PollCloseView(poll.getId(), poll.getStatus(), poll.getClosedAt(), poll.getCloseReason());
     }
 
+    /**
+     * 강연 종료로 진행 중이던 투표를 마감한다. 강연 종료 API 가 방 상태를 ENDED 로 바꾸는 트랜잭션 안에서 호출한다
+     * (방 행 UPDATE 가 쓰기 잠금이라 투표 생성·마감과 순서가 갈린다). 이미 제한 시간이 지난 투표는 TIMEOUT 으로 남긴다.
+     *
+     * @return 마감한 투표 수
+     */
+    @Transactional
+    public int closeOpenPollsOnRoomEnded(long roomId) {
+        Instant now = now();
+        List<Poll> open = polls.findByLectureRoomIdAndStatus(roomId, PollStatus.OPEN);
+        for (Poll poll : open) {
+            if (poll.isExpired(now)) {
+                poll.expire();
+            } else {
+                poll.closeByRoomEnded(now);
+            }
+        }
+        return open.size();
+    }
+
     public PollListView list(long roomId, String hostEmail, PollStatus status) {
         var room = rooms.findRoom(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
