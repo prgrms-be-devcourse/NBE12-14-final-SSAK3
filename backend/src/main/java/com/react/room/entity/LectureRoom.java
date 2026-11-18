@@ -17,10 +17,6 @@ public class LectureRoom {
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
-    public enum Status {
-        READY, LIVE, ENDED
-    }
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -40,7 +36,7 @@ public class LectureRoom {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private Status status;
+    private LectureRoomStatus status;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -63,7 +59,7 @@ public class LectureRoom {
                 ? null
                 : description.strip();
         this.joinCode = joinCode;
-        this.status = Status.READY;
+        this.status = LectureRoomStatus.READY;
         this.createdAt = LocalDateTime.now(SEOUL);
     }
 }

@@ -5,6 +5,7 @@ import com.react.auth.repository.UserRepository;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
 import com.react.room.entity.LectureRoom;
+import com.react.room.entity.LectureRoomStatus;
 import com.react.room.dto.CreateRoomRequest;
 import com.react.room.dto.CreateRoomResponse;
 import com.react.room.dto.PublicRoomResponse;
@@ -27,11 +28,9 @@ public class LectureRoomService {
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String JOIN_CODE_CHARACTERS =
-            "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final String JOIN_CODE_CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int JOIN_CODE_LENGTH = 12;
     private static final int MAX_CODE_ATTEMPTS = 10;
-
     private final LectureRoomRepository lectureRoomRepository;
     private final UserRepository userRepository;
     private final String joinBaseUrl;
@@ -121,7 +120,7 @@ public class LectureRoomService {
                 );
 
         boolean canJoin =
-                room.getStatus() != LectureRoom.Status.ENDED;
+                room.getStatus() != LectureRoomStatus.ENDED;
 
         return new PublicRoomResponse(
                 room.getId(),
