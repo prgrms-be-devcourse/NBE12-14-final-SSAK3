@@ -2,6 +2,8 @@ package com.react.ai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,12 +27,19 @@ class AiAnalysisJsonParserTest {
         assertThat(parser.parse("{\"topics\":[]}").topics()).isEmpty();
     }
 
-    @Test
-    void 명세와_다른_필드나_잘못된_category는_거절한다() {
-        assertThatThrownBy(() -> parser.parse("""
-                {"topics":[{"topic":"주제","summary":"요약","category":"UNKNOWN",
+    @ParameterizedTest
+    @ValueSource(strings = {
+            """
+                {"topics":[{"topic":"주제","summary":"요약","category":"QUESTION",
                 "sourceMessageIds":[1],"extra":true}]}
-                """))
+                """,
+            """
+                {"topics":[{"topic":"주제","summary":"요약","category":"UNKNOWN",
+                "sourceMessageIds":[1]}]}
+                """
+    })
+    void 명세와_다른_필드나_잘못된_category는_각각_거절한다(String response) {
+        assertThatThrownBy(() -> parser.parse(response))
                 .isInstanceOf(InvalidAiAnalysisResultException.class);
     }
 
