@@ -28,3 +28,7 @@ CLAUDE.local.md
 
 # 개인 공부용 문서
 /docs/study/
+
+# Local report experiments (source text and model responses)
+/.report-experiments/
+__pycache__/
