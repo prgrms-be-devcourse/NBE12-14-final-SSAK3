@@ -3,6 +3,7 @@ package com.react.feed.service;
 import com.react.feed.dto.MyUnderstandingView;
 import com.react.feed.dto.UnderstandingChangeView;
 import com.react.feed.dto.UnderstandingStatus;
+import com.react.feed.dto.UnderstandingSummaryView;
 import com.react.feed.entity.ParticipantUnderstanding;
 import com.react.feed.entity.UnderstandingHistory;
 import com.react.feed.repository.ParticipantUnderstandingRepository;
@@ -14,8 +15,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumMap;
+import java.util.Map;
 
 @Service
 @Transactional(readOnly = true)
@@ -64,6 +69,35 @@ public class UnderstandingService {
         return understandings.findByParticipantId(participantId)
                 .map(u -> new MyUnderstandingView(participantId, u.getCurrentStatus(), u.getUpdatedAt()))
                 .orElse(new MyUnderstandingView(participantId, null, null));
+    }
+
+    /** 강연방 소유자만 조회할 수 있다. 응답 인원은 최신 이해 상태 기준이라 과거 이력은 중복 포함되지 않는다. */
+    public UnderstandingSummaryView getSummary(long roomId, String hostEmail) {
+        String owner = repository.findHostEmail(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
+        if (hostEmail == null || !owner.equalsIgnoreCase(hostEmail)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        var counts = repository.countByRoom(roomId);
+        long responded = counts.understood() + counts.confused() + counts.notUnderstood();
+        Map<UnderstandingStatus, Long> byStatus = new EnumMap<>(UnderstandingStatus.class);
+        byStatus.put(UnderstandingStatus.UNDERSTOOD, counts.understood());
+        byStatus.put(UnderstandingStatus.CONFUSED, counts.confused());
+        byStatus.put(UnderstandingStatus.NOT_UNDERSTOOD, counts.notUnderstood());
+        Map<UnderstandingStatus, Double> percentages = new EnumMap<>(UnderstandingStatus.class);
+        byStatus.forEach((status, count) -> percentages.put(status, percent(count, counts.total())));
+
+        return new UnderstandingSummaryView(roomId, counts.total(), responded, counts.total() - responded,
+                percent(responded, counts.total()), byStatus, percentages, Instant.now());
+    }
+
+    // 소수 첫째 자리까지 반올림한다. 참여자가 없으면 0 이다.
+    private static double percent(long part, long whole) {
+        if (whole == 0) {
+            return 0.0;
+        }
+        return BigDecimal.valueOf(part * 100.0 / whole).setScale(1, RoundingMode.HALF_UP).doubleValue();
     }
 
     private String findRoomStatus(long roomId) {
