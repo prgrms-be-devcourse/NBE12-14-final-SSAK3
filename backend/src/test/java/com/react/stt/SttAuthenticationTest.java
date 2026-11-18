@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -81,27 +82,27 @@ class SttAuthenticationTest {
         long id = data.path("sttSessionId").asLong();
         Instant time = Instant.parse(data.path("startedAt").asText());
         String path = "/api/v1/rooms/" + room + "/stt/sessions/" + id;
-        mvc.perform(post(path + "/segments").session(session).contentType("application/json")
+        mvc.perform(post(path + "/segments").with(csrf()).session(session).contentType("application/json")
                         .content(json.writeValueAsBytes(new SttSegmentRequest(key, "one", "발언", time, time))))
                 .andExpect(status().isCreated());
-        var opened = mvc.perform(post(path + "/gaps").session(session).contentType("application/json")
+        var opened = mvc.perform(post(path + "/gaps").with(csrf()).session(session).contentType("application/json")
                         .content(json.writeValueAsBytes(new SttGap.OpenRequest(key, "gap", SttGap.Reason.ERROR, time))))
                 .andExpect(status().isCreated()).andReturn().getResponse();
         long gap = json.readTree(opened.getContentAsString()).at("/data/gapId").asLong();
-        mvc.perform(patch(path + "/gaps/" + gap + "/close").session(session).contentType("application/json")
+        mvc.perform(patch(path + "/gaps/" + gap + "/close").with(csrf()).session(session).contentType("application/json")
                         .content(json.writeValueAsBytes(new SttGap.CloseRequest(key, time))))
                 .andExpect(status().isOk());
-        mvc.perform(post(path + "/stop").session(session).contentType("application/json")
+        mvc.perform(post(path + "/stop").with(csrf()).session(session).contentType("application/json")
                         .content("{\"reason\":\"MANUAL_STOP\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("STOPPED"));
         mvc.perform(request(Endpoint.QUERY).session(session)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.segments.length()").value(1))
                 .andExpect(jsonPath("$.data.gaps.length()").value(1));
-        mvc.perform(post("/api/v1/auth/logout").session(session)).andExpect(status().isNoContent());
+        mvc.perform(post("/api/v1/auth/logout").with(csrf()).session(session)).andExpect(status().isNoContent());
         assertThat(session.isInvalid()).isTrue();
         // Replay the invalidated server session, rather than merely omitting authentication.
         mvc.perform(request(Endpoint.QUERY).session(session)).andExpect(status().isUnauthorized());
-        mvc.perform(startRequest().session(session)).andExpect(status().isUnauthorized());
+        mvc.perform(startRequest()).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -117,7 +118,7 @@ class SttAuthenticationTest {
     }
 
     private MockHttpSession login(String loginEmail) throws Exception {
-        var result = mvc.perform(post("/api/v1/auth/login").contentType("application/json")
+        var result = mvc.perform(post("/api/v1/auth/login").with(csrf()).contentType("application/json")
                         .content(json.writeValueAsBytes(Map.of("email", loginEmail, "password", PASSWORD))))
                 .andExpect(status().isOk()).andReturn();
         var session = (MockHttpSession) result.getRequest().getSession(false);
@@ -126,7 +127,7 @@ class SttAuthenticationTest {
     }
 
     private MockHttpServletRequestBuilder startRequest() throws Exception {
-        return post("/api/v1/rooms/{room}/stt/sessions", room).contentType("application/json")
+        return post("/api/v1/rooms/{room}/stt/sessions", room).with(csrf()).contentType("application/json")
                 .content(json.writeValueAsBytes(Map.of("startKey", key)));
     }
 
@@ -135,12 +136,12 @@ class SttAuthenticationTest {
         Instant time = Instant.parse("2026-11-18T00:00:00Z");
         return switch (endpoint) {
             case START -> startRequest();
-            case STOP -> post(path + "/stop").contentType("application/json").content("{\"reason\":\"MANUAL_STOP\"}");
-            case SEGMENT -> post(path + "/segments").contentType("application/json")
+            case STOP -> post(path + "/stop").with(csrf()).contentType("application/json").content("{\"reason\":\"MANUAL_STOP\"}");
+            case SEGMENT -> post(path + "/segments").with(csrf()).contentType("application/json")
                     .content(json.writeValueAsBytes(new SttSegmentRequest(key, "one", "발언", time, time)));
-            case OPEN_GAP -> post(path + "/gaps").contentType("application/json")
+            case OPEN_GAP -> post(path + "/gaps").with(csrf()).contentType("application/json")
                     .content(json.writeValueAsBytes(new SttGap.OpenRequest(key, "gap", SttGap.Reason.ERROR, time)));
-            case CLOSE_GAP -> patch(path + "/gaps/1/close").contentType("application/json")
+            case CLOSE_GAP -> patch(path + "/gaps/1/close").with(csrf()).contentType("application/json")
                     .content(json.writeValueAsBytes(new SttGap.CloseRequest(key, time)));
             case QUERY -> get("/api/v1/rooms/{room}/stt/segments", room);
         };

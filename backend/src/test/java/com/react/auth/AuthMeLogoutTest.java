@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -120,6 +121,7 @@ class AuthMeLogoutTest {
                 .andExpect(status().isOk());
 
         MvcResult result = mvc.perform(post(LOGOUT_URL)
+                        .with(csrf())
                         .session(session))
                 .andExpect(status().isNoContent())
                 .andReturn();
@@ -151,7 +153,8 @@ class AuthMeLogoutTest {
     void 로그인하지_않고_로그아웃하면_401을_반환한다()
             throws Exception {
 
-        mvc.perform(post(LOGOUT_URL))
+        mvc.perform(post(LOGOUT_URL)
+                        .with(csrf()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code")
                         .value("UNAUTHENTICATED"));
@@ -165,6 +168,7 @@ class AuthMeLogoutTest {
         ));
 
         MvcResult result = mvc.perform(post(LOGIN_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
