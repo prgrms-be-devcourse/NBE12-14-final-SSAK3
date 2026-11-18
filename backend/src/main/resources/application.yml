@@ -35,3 +35,18 @@ management:
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  ai:
+    audience:
+      scheduler:
+        fixed-delay: ${AI_ANALYSIS_SCHEDULER_DELAY:5000}
+        max-windows-per-run: ${AI_ANALYSIS_SCHEDULER_MAX_WINDOWS_PER_RUN:3}
+      gemini:
+        api-key: ${GEMINI_API_KEY:}
+        model: ${GEMINI_MODEL:}
+        base-url: ${GEMINI_API_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+        connect-timeout: ${GEMINI_CONNECT_TIMEOUT:2s}
+        read-timeout: ${GEMINI_READ_TIMEOUT:15s}
+        max-messages: ${GEMINI_MAX_MESSAGES:100}
+        max-input-characters: ${GEMINI_MAX_INPUT_CHARACTERS:32000}
+        max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:2048}
+        max-response-characters: ${GEMINI_MAX_RESPONSE_CHARACTERS:128000}

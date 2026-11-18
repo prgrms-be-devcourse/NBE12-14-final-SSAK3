@@ -1,6 +1,7 @@
 package com.react.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.react.ai.config.GeminiAudienceAnalysisProperties;
 import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.domain.TopicCategory;
 import com.react.ai.dto.AiAnalysisResult;
@@ -10,6 +11,7 @@ import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AudienceMessageRepository;
 import com.react.ai.service.AiAnalysisJsonParser;
 import com.react.ai.service.AudienceAnalysisService;
+import com.react.ai.service.GeminiAudienceAnalysisLlmClient;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,18 +19,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.RestClient;
 
 import javax.sql.DataSource;
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import org.springframework.http.MediaType;
 
 @SpringBootTest
 @ActiveProfiles("test")
 class AudienceAnalysisIntegrationTest {
+    private static final String GEMINI_MODEL = "gemini-3.5-flash-lite";
     @Autowired JdbcClient jdbc;
     @Autowired DataSource dataSource;
     @Autowired AiAnalysisRepository analyses;
@@ -90,6 +99,54 @@ class AudienceAnalysisIntegrationTest {
     }
 
     @Test
+    void Gemini_어댑터_응답을_기존_코어로_저장하고_잘못된_JSON은_FAILED로_기록한다() {
+        long messageId = insertAudienceMessage("Redis는 왜 사용하나요?", start);
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"))
+                .andRespond(withSuccess("""
+                        {"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"{\\"topics\\":[{\\"topic\\":\\"Redis 사용 이유\\",\\"summary\\":\\"도입 이유를 질문했습니다.\\",\\"category\\":\\"QUESTION\\",\\"sourceMessageIds\\":[%d]}]}"}]}}]}
+                        """.formatted(messageId), MediaType.APPLICATION_JSON));
+        var service = service(geminiClient(builder.build()));
+
+        var completed = service.process(roomId, start, end);
+
+        assertThat(completed.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?").param(completed.analysisId())
+                .query(Long.class).single()).isEqualTo(1L);
+
+        LocalDateTime nextEnd = end.plusSeconds(30);
+        insertAudienceMessage("다음 구간 메시지", end);
+        RestClient.Builder malformedBuilder = RestClient.builder();
+        MockRestServiceServer malformedServer = MockRestServiceServer.bindTo(malformedBuilder).build();
+        malformedServer.expect(requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"))
+                .andRespond(withSuccess("""
+                        {"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"{topics:[]}"}]}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        var failed = service(geminiClient(malformedBuilder.build())).process(roomId, end, nextEnd);
+
+        assertThat(failed.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        assertThat(jdbc.sql("SELECT error_message FROM ai_analyses WHERE id = ?").param(failed.analysisId())
+                .query(String.class).single()).isEqualTo("INVALID_LLM_RESPONSE");
+
+        LocalDateTime finalEnd = nextEnd.plusSeconds(30);
+        insertAudienceMessage("출력이 잘린 다음 구간 메시지", nextEnd);
+        RestClient.Builder truncatedBuilder = RestClient.builder();
+        MockRestServiceServer truncatedServer = MockRestServiceServer.bindTo(truncatedBuilder).build();
+        truncatedServer.expect(requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"))
+                .andRespond(withSuccess("""
+                        {"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"{\\"topics\\":[]}"}]}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        var truncated = service(geminiClient(truncatedBuilder.build())).process(roomId, nextEnd, finalEnd);
+
+        assertThat(truncated.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        assertThat(jdbc.sql("SELECT status FROM ai_analyses WHERE id = ?").param(truncated.analysisId())
+                .query(String.class).single()).isEqualTo("FAILED");
+    }
+
+    @Test
     void 빈_구간은_LLM_호출_없이_모델없이_완료로_저장한다() {
         var calls = new AtomicInteger();
         var service = service(messages -> {
@@ -147,6 +204,12 @@ class AudienceAnalysisIntegrationTest {
 
     private AudienceAnalysisService service(com.react.ai.service.AudienceAnalysisLlmClient llm) {
         return new AudienceAnalysisService(analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()));
+    }
+
+    private GeminiAudienceAnalysisLlmClient geminiClient(RestClient restClient) {
+        return new GeminiAudienceAnalysisLlmClient(restClient, new ObjectMapper(),
+                new GeminiAudienceAnalysisProperties("test-key", GEMINI_MODEL, "https://gemini.test/v1beta",
+                        Duration.ofSeconds(1), Duration.ofSeconds(1), 100, 32_000, 2_048, 128_000));
     }
 
     private AudienceAnalysisLlmResponse response(String content) {
