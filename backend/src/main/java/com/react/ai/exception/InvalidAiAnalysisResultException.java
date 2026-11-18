@@ -1,4 +1,4 @@
-package com.react.ai.service;
+package com.react.ai.exception;
 
 public class InvalidAiAnalysisResultException extends RuntimeException {
     public InvalidAiAnalysisResultException(String message) {
