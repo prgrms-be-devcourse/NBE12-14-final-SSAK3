@@ -132,6 +132,20 @@ class UnderstandingSummaryTest {
                 .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
     }
 
+    @Test
+    void nonHostRoleIsForbiddenEvenWithMatchingEmail() throws Exception {
+        var participantRole = UsernamePasswordAuthenticationToken.authenticated(
+                hostEmail, null, List.of(new SimpleGrantedAuthority("ROLE_PARTICIPANT")));
+        var noRole = UsernamePasswordAuthenticationToken.authenticated(hostEmail, null, List.of());
+
+        mvc.perform(get(url(room)).with(authentication(participantRole)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        mvc.perform(get(url(room)).with(authentication(noRole)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
     private static String url(long roomId) {
         return "/api/v1/rooms/" + roomId + "/understanding/summary";
     }

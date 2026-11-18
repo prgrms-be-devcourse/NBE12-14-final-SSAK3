@@ -29,6 +29,11 @@ public class UnderstandingController {
         if (authentication == null || !authentication.isAuthenticated() || authentication instanceof AnonymousAuthenticationToken) {
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
         }
+        boolean isHost = authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_HOST".equals(authority.getAuthority()));
+        if (!isHost) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
         return authentication.getName();
     }
 }
