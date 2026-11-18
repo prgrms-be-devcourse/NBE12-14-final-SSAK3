@@ -7,6 +7,8 @@
 
 실행 조건: LIVE 중 강연 `startedAt` 기준 분석 주기(기본 30초) 도래, 분석 대상 정규 구간 확정. 구간은 `[windowStartAt, windowEndAt)` 이며 청중 채팅은 서버 수신 시각 `receivedAt` 으로 포함 여부를 판단한다. ENDED 전환 후에는 `endedAt`까지 남은 30초 미만 잔여 구간을 한 번 확정해 비동기로 처리한다. 강연 종료 API는 LLM 분석 완료를 기다리지 않으며, 종료 finalization의 호출 주체·방식은 A/C/D 협의 사항이다.
 
+스케줄러 지연 또는 서버 재시작 후에는 `startedAt`부터 현재 시각까지 완전히 닫힌 정규 30초 구간 중 `ai_analyses` 기록이 없는 구간을 오래된 순서로 처리한다. 강연방별 한 실행의 최대 처리 구간 수는 `app.ai.audience.scheduler.max-windows-per-run`(기본 3)이며, 남은 미기록 구간은 다음 실행에서 이어서 처리한다. 이미 분석 행이 있는 구간(`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`)은 이 경로에서 다시 호출하지 않는다. 종료 시 잔여 구간 처리와 FAILED 재시도는 별도 후속 작업이다.
+
 정상 흐름: 채팅 DB 조회 → 강연자 메시지 제외 → 분석 구간 확정 → `ai_analyses` PENDING 생성 → PROCESSING 변경 → 청중 채팅이 있으면 LLM API 호출·구조화된 결과 검증·유사 주제 그룹화·원문 메시지 연결·결과 저장 → COMPLETED 변경 → 대시보드 알림. 청중 채팅이 없는 구간은 LLM 호출 없이 `COMPLETED` 로 변경하며, `model_name` 은 null이고 주제 그룹은 0개다. `COMPLETED` 는 LLM 호출 성공만이 아니라 해당 분석 구간의 정상 처리 완료를 뜻한다.
 
 LLM 출력 예시
@@ -35,6 +37,9 @@ LLM 출력 예시
 규칙:
 
 - AI 입력은 청중이 작성한 메시지로 한정하고 강연자 메시지는 제외한다.
+- P0 구현은 Gemini `generateContent` API를 사용한다. 모델은 `GEMINI_MODEL` 환경변수로 주입하며 로컬 예시는 `gemini-3.5-flash-lite`다. API 키는 `GEMINI_API_KEY` 환경변수로만 주입하고 코드·로그·응답에 포함하지 않는다.
+- 요청은 Gemini의 JSON MIME type 및 JSON Schema를 사용해 `topics` 구조를 요청한다. 그래도 외부 응답은 신뢰하지 않고 아래의 서버 측 JSON·원문 ID 검증을 반드시 수행한다.
+- 30초 구간의 비용과 지연을 제한하기 위해 기본적으로 메시지 100개, 메시지 본문 합계 32,000자, 출력 2,048 토큰, 응답 본문 128,000자로 제한한다. 상한 초과 시 메시지를 잘라내거나 일부만 전송하지 않고 해당 분석을 FAILED로 기록한다. 향후 배치 분할은 별도 정책으로 정한다.
 - 물음표 없는 의견도 분석 대상이다. 같은 주제의 서로 다른 유형을 그룹화할 수 있다.
 - 서로 반대되는 의견을 하나의 합의된 의견으로 왜곡하지 않고, 원문에 없는 의견을 생성하지 않는다.
 - LLM 구조화 출력의 최상위 필드는 `topics`만 허용하며, 빈 `topics: []`는 유효한 결과다. 각 topic은 `topic`, `summary`, `category`, `sourceMessageIds` 필드만 가진다. `topic`과 `summary`는 공백이 아니어야 하고, `topic`은 최대 200자다. `category`는 위 표의 값만 허용한다.
