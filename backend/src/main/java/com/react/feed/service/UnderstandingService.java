@@ -30,7 +30,9 @@ public class UnderstandingService {
         if (status == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
-        String roomStatus = findRoomStatus(roomId);
+        // 강연방 행을 공유 잠금으로 읽어 변경과 종료가 동시에 일어나도 종료 후에는 저장되지 않게 한다. 잠금 순서는 강연방 → 참여자.
+        String roomStatus = repository.findRoomStatusForShare(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
         // 참여자 행을 잠가서 같은 청중의 동시 변경이 순서대로 처리되게 한다.
         if (!repository.lockParticipant(roomId, participantId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
