@@ -12,7 +12,7 @@ Jira: https://ssakthree.atlassian.net/jira/software/projects/SCRUM/boards/1
 backend/src/main/java/com/react/
   global/        config, exception, response, security, websocket, util
   <도메인>/       controller, service, repository, domain, dto
-                 도메인: auth, room, chat, feed, poll, stt, ai, dash, report
+                 도메인: auth, room, chat, poll, stt, ai, dash, report
 backend/src/test/java/com/react/<도메인>/
 
 frontend/        React + Vite

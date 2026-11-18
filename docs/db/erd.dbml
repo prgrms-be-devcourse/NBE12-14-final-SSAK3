@@ -1,4 +1,4 @@
-// RE:ACT MVP ERD v1.1 (16개 테이블)
+// RE:ACT MVP ERD v1.2 (14개 테이블)
 // dbdiagram.io 에서 열 수 있는 DBML 원본이다. 실제 스키마의 기준은 Flyway 마이그레이션
 // (backend/src/main/resources/db/migration)이며, 이 파일과 어긋나면 새 V 파일로 맞추고 이 파일도 함께 갱신한다.
 // 링크: https://dbdiagram.io/e/6af3e06d063ad9ee168b99b8/6af3f73504c7e97b1d2c23f0
@@ -44,30 +44,21 @@ Table chat_messages {
   Note: 'participant_id와 host_user_id 중 정확히 하나만 존재. AI 청중 의견 분석은 participant_id가 있는 메시지만 대상'
 }
 
-Table participant_understandings {
-  id bigint [pk, increment]
-  participant_id bigint [not null, unique, ref: > lecture_participants.id]
-  current_status varchar(30) [not null, note: 'UNDERSTOOD, CONFUSED, NOT_UNDERSTOOD']
-  updated_at datetime [not null]
-}
-
-Table understanding_histories {
-  id bigint [pk, increment]
-  participant_id bigint [not null, ref: > lecture_participants.id]
-  previous_status varchar(30)
-  new_status varchar(30) [not null]
-  changed_at datetime [not null]
-  indexes { (participant_id, changed_at) }
-}
-
 Table polls {
   id bigint [pk, increment]
   lecture_room_id bigint [not null, ref: > lecture_rooms.id]
+  type varchar(20) [not null, default: 'GENERAL', note: 'GENERAL, UNDERSTANDING']
   question varchar(500) [not null]
   status varchar(20) [not null, note: 'OPEN, CLOSED']
   created_at datetime [not null]
-  closed_at datetime
-  indexes { (lecture_room_id, status) }
+  closes_at datetime [not null, note: '마감 예정 시각 = created_at + 제한 시간(초). 서버가 계산']
+  closed_at datetime [note: '실제 마감 시각. 자동 마감이면 closes_at']
+  close_reason varchar(20) [note: 'HOST, TIMEOUT, ROOM_ENDED. OPEN 이면 NULL']
+  indexes {
+    (lecture_room_id, status)
+    (status, closes_at)
+  }
+  Note: '이해도 체크는 type=UNDERSTANDING 인 투표 한 건(라운드). 강연방당 OPEN 투표는 종류와 관계없이 1개이며 서비스에서 강연방 행을 잠그고 검증. 서버 스케줄러가 closes_at 이 지난 OPEN 투표를 CLOSED/TIMEOUT 으로 바꾼다'
 }
 
 Table poll_options {
@@ -75,6 +66,7 @@ Table poll_options {
   poll_id bigint [not null, ref: > polls.id]
   content varchar(255) [not null]
   display_order int [not null]
+  understanding_status varchar(30) [note: 'UNDERSTOOD, CONFUSED, NOT_UNDERSTOOD. type=UNDERSTANDING 투표의 선택지에만 값이 있고 GENERAL 은 NULL']
   indexes { (poll_id, display_order) [unique] }
 }
 
@@ -83,8 +75,9 @@ Table poll_responses {
   poll_id bigint [not null, ref: > polls.id]
   poll_option_id bigint [not null, ref: > poll_options.id]
   participant_id bigint [not null, ref: > lecture_participants.id]
-  responded_at datetime [not null]
+  responded_at datetime [not null, note: '마지막으로 선택이 바뀐 서버 시각']
   indexes { (poll_id, participant_id) [unique] }
+  Note: '청중당 투표당 최종 응답 1건. 마감 전 변경은 같은 행을 덮어쓰고 변경 이력은 남기지 않는다. 행이 없으면 미응답'
 }
 
 Table stt_sessions {

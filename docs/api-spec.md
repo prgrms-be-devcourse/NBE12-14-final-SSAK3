@@ -1,6 +1,6 @@
 # RE:ACT — MVP API 명세서 v1.1
 
-기준 문서는 `docs/feature-spec.md`(기능 정의서, P0), DB 기준은 `docs/db/erd.dbml`(ERD v1.1, 16개 테이블)과 Flyway 마이그레이션이다.
+기준 문서는 `docs/feature-spec.md`(기능 정의서, P0), DB 기준은 `docs/db/erd.dbml`(ERD v1.2, 14개 테이블)과 Flyway 마이그레이션이다.
 문서끼리 어긋나면 DB 는 Flyway 마이그레이션을, 이 명세의 REST·WebSocket 형식을 우선하고, 실제 충돌은 PR 에서 팀원과 조율한다.
 
 상태: 초기 개발 명세. 인증·실시간 프로토콜(세션 쿠키, STOMP)과 일부 정책은 팀 합의가 필요하다(§14).
@@ -13,8 +13,7 @@
 | [auth](api/auth.md) | AUTH-01~04 강연자 인증 | A |
 | [room](api/room.md) | ROOM-01~07 강연방·청중 입장·권한 | A |
 | [chat](api/chat.md) | CHAT-01~05 실시간 채팅 | B |
-| [feed](api/feed.md) | FEED-01~06 이해도 신호 | B |
-| [poll](api/poll.md) | POLL-01~03 실시간 투표 | A |
+| [poll](api/poll.md) | POLL-01~03, 05~07 실시간 투표·이해도 체크 | A·B |
 | [stt](api/stt.md) | STT-01~05 발언 기록 | D |
 | [ai-chat](api/ai-chat.md) | AI-CHAT-01~08 청중 의견 분석 | C |
 | [dash](api/dash.md) | DASH-01~05 대시보드, STOMP 이벤트 | B(01~03)·C(04~05) |
@@ -35,11 +34,12 @@
 | ROOM-06, 07 | REST 및 WebSocket 권한·종료 상태 검증 |
 | CHAT-01, 02, 04, 05 | WebSocket 채팅 송수신·저장·검증·격리 |
 | CHAT-03 | GET `/rooms/{roomId}/messages` |
-| FEED-01, 02, 03, 05 | PUT/GET `/rooms/{roomId}/understanding/me`, 이해도 변경 트랜잭션에서 이력 저장 |
-| FEED-04, 06 | GET `/rooms/{roomId}/understanding/summary` |
-| POLL-01 | POST 투표 생성 / POST 투표 종료 / GET 투표 목록 |
-| POLL-02 | POST 투표 응답 |
-| POLL-03 | GET 투표 결과 / 응답 중복 방지 |
+| POLL-01 | POST `/rooms/{roomId}/polls`(`type`: GENERAL·UNDERSTANDING, 제한 시간), POST `/rooms/{roomId}/polls/{pollId}/close`, GET `/rooms/{roomId}/polls`, 서버 스케줄러의 자동 마감 |
+| POLL-02 | PUT `/rooms/{roomId}/polls/{pollId}/responses/me` (마감 전 변경 가능, 마지막 선택이 최종 응답) |
+| POLL-03 | GET `/rooms/{roomId}/polls/{pollId}/results` (HOST 만), 응답 중복 방지 |
+| POLL-05 | 이해도 체크(`type=UNDERSTANDING`) 결과의 인원·비율·미응답 집계 |
+| POLL-06 (P1) | GET `/rooms/{roomId}/polls/understanding-rounds` |
+| POLL-07 (P1) | GET `/rooms/{roomId}/polls/{pollId}/responses/me` |
 | STT-01 | POST 세션 시작 / POST 세션 종료 |
 | STT-02, 03 | POST 확정 전사 저장 |
 | STT-04 | POST 누락 시작 / PATCH 누락 종료 |
@@ -64,9 +64,11 @@
 | 강연 상태 | READY 에서 채팅 차단, ENDED 에서 신규 응답 차단 |
 | 채팅 저장 | 강연자·청중 메시지 정상 저장 및 발신자 구분 |
 | AI 분석 대상 | 강연자 메시지는 청중 의견 요약에서 제외 |
-| 이해도 정합성 | 같은 상태 재요청 시 이력·집계 중복 없음 |
-| 이해도 동시성 | 빠른 상태 변경 후 최신 상태와 이력 일치 |
-| 투표 정합성 | 동일 참가자의 중복 응답 거부 |
+| 투표 응답 변경 | 마감 전 같은 청중이 선택을 바꾸면 응답은 1건이고 마지막 선택이 집계에 반영, 같은 선택 재요청은 `changed=false` |
+| 투표 동시성 | 한 청중의 빠른 연속 변경·동시 요청 후 최종 선택과 집계 일치 |
+| 투표 마감 | 제한 시간이 지나면 자동 마감되어 이후 응답 거부, 마감 직전 응답은 반영, 강연 종료 시 진행 중 투표 마감 |
+| 이해도 체크 | `type=UNDERSTANDING` 선택지 고정, 선택하지 않고 마감되면 미응답으로 집계, 청중에게 결과 비공개 |
+| 동시 투표 제한 | 진행 중인 투표가 있으면 새 투표(이해도 체크 포함) 생성 거부 |
 | 투표 소속 검증 | 다른 투표의 선택지로 응답하는 요청 거부 |
 | STT 저장 | 확정 발언 및 시간 기록 정상 저장 |
 | STT 중복 전송 | 같은 segmentKey 재전송 시 중복 생성 없음 |
@@ -91,9 +93,9 @@
 | AI 중복 분석 | 강연방·분석 시작·종료 구간 UNIQUE |
 | STT 중복 저장 | 세션·segmentKey UNIQUE |
 | STT 누락 이벤트 | `event_key` 및 UNIQUE |
-| 이해도 최신 상태 | `participant_understandings` |
-| 이해도 변경 이력 | `understanding_histories` |
-| 투표 중복 방지 | `(poll_id, participant_id)` UNIQUE |
+| 투표 종류·마감 | `polls.type`, `closes_at`, `closed_at`, `close_reason` |
+| 이해도 체크 선택지 | `poll_options.understanding_status` |
+| 투표 최종 응답 | `poll_responses` (`(poll_id, participant_id)` UNIQUE, 변경 시 덮어씀) |
 | 시간대별 회고 | 원천 데이터 집계 후 보고서 JSON 저장 |
 | 보고서 중복 생성 | `lecture_reports.lecture_room_id` UNIQUE |
 | QR 이미지 | 별도 DB 저장 없음 |
@@ -112,8 +114,10 @@
 | 강연자 채팅 | 허용 |
 | AI 의견 요약 대상 | 청중 채팅만 |
 | 이해도 비율 분모 | 누적 고유 청중 수 |
-| 투표 | 단일 선택, 재응답 불가 |
-| 동시 투표 | 강연방당 OPEN 하나 |
+| 투표 | 단일 선택, 마감 전 변경 가능, 마감 시 마지막 선택이 최종 응답 |
+| 동시 투표 | 강연방당 OPEN 하나(이해도 체크 포함) |
+| 투표 제한 시간 | 투표마다 강연자가 선택, 기본 60초(10~300초) |
+| 투표 결과 공개 | 강연자만(진행 중에도 실시간) |
 | STT | 브라우저 Web Speech API |
 | STT 저장 | 최종 확정 결과만 저장 |
 | STT 중단 | 누락 구간 기록 |
@@ -129,11 +133,11 @@
 
 ## 15. MVP 완료 기준
 
-기능별 완료 기준은 `docs/feature-spec.md` §14 와 `docs/planning.md` §11 을 따른다. 요약:
+기능별 완료 기준은 `docs/feature-spec.md` §13 와 `docs/planning.md` §11 을 따른다. 요약:
 
 - 강연자 인증, 강연방 생성·QR 입장·권한 구분·시작/종료·종료 후 응답 차단
 - 강연자·청중 실시간 채팅, 저장·조회·검증·강연방 격리
-- 이해도 선택·변경·이력·집계, 투표 생성·종료·응답·중복 방지
+- 이해도 체크(투표 종류) 생성·응답·집계, 투표 생성·마감·응답 변경·자동 마감·중복 방지
 - STT 시작·중지·저장·누락 구간·조회
 - 주기적 AI 분석·주제별 요약·원문 연결·실패 처리
 - 대시보드(채팅·이해도·투표·AI 요약·근거 원문)
