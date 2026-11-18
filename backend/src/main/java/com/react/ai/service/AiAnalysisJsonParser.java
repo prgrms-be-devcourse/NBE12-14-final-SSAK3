@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.domain.TopicCategory;
 import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AiTopicResult;
+import com.react.ai.exception.InvalidAiAnalysisResultException;
 
 import java.util.ArrayList;
 import java.util.HashSet;
