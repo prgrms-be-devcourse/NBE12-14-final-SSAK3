@@ -18,6 +18,14 @@ spring:
     hibernate:
       ddl-auto: validate
 
+# 로컬 HTTP 환경에서만 Secure=false
+# 운영 환경에서는 HTTPS와 Secure=true 유지
+server:
+  servlet:
+    session:
+      cookie:
+        secure: ${SESSION_COOKIE_SECURE:false}
+
 logging:
   level:
     com.react: debug

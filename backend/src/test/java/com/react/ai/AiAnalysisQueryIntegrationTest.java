@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -188,7 +189,7 @@ class AiAnalysisQueryIntegrationTest {
     void 로그인_세션의_ROLE_HOST로_조회할_수_있다() throws Exception {
         jdbc.sql("UPDATE users SET password_hash = ? WHERE email = ?")
                 .params(passwordEncoder.encode(PASSWORD), ownerEmail).update();
-        var login = mvc.perform(post("/api/v1/auth/login").contentType("application/json")
+        var login = mvc.perform(post("/api/v1/auth/login").with(csrf()).contentType("application/json")
                         .content(json.writeValueAsBytes(Map.of("email", ownerEmail, "password", PASSWORD))))
                 .andExpect(status().isOk())
                 .andReturn();
