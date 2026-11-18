@@ -3,6 +3,7 @@ package com.react.ai.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.config.GeminiAudienceAnalysisProperties;
 import com.react.ai.dto.AudienceMessage;
+import com.react.ai.exception.GeminiAudienceAnalysisException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;

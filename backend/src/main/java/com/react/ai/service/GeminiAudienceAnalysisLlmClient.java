@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.react.ai.config.GeminiAudienceAnalysisProperties;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.dto.AudienceMessage;
+import com.react.ai.exception.GeminiAudienceAnalysisException;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;

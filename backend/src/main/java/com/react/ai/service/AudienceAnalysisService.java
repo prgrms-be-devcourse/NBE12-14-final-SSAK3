@@ -6,6 +6,7 @@ import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AiTopicResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.dto.AudienceMessage;
+import com.react.ai.exception.InvalidAiAnalysisResultException;
 import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AudienceMessageRepository;
 
