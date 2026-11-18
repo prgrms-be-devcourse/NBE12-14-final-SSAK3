@@ -1,12 +1,15 @@
 package com.react.ai;
 
 import com.react.ai.repository.AiAnalysisTargetRoomRepository;
+import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 
+import javax.sql.DataSource;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -16,7 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 class AiAnalysisTargetRoomRepositoryIntegrationTest {
     @Autowired JdbcClient jdbc;
+    @Autowired DataSource dataSource;
     @Autowired AiAnalysisTargetRoomRepository rooms;
+
+    @BeforeEach
+    void prepareDatabase() {
+        assertThat(jdbc.sql("SELECT DATABASE()").query(String.class).single()).endsWith("_test");
+        Flyway.configure().dataSource(dataSource).load().migrate();
+    }
 
     @Test
     void LIVE이고_startedAt이_있는_강연방만_조회한다() {
