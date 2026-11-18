@@ -50,10 +50,10 @@ public class SttSessionService {
         }
     }
     private record Session(long id, long roomId, String status, LocalDateTime startedAt, LocalDateTime endedAt, String startKey) {
-        SttSessionView view(String key) {
+        SttSessionView view(String key, String roomStatus) {
             return new SttSessionView(id, roomId, status, startedAt.toInstant(STT_STORAGE_OFFSET),
                     endedAt == null ? null : endedAt.toInstant(STT_STORAGE_OFFSET),
-                    key != null && key.equals(startKey) && "RECORDING".equals(status));
+                    key != null && key.equals(startKey) && "RECORDING".equals(status) && "LIVE".equals(roomStatus));
         }
     }
 
@@ -74,25 +74,25 @@ public class SttSessionService {
         String key = requestKey.toString();
         var previous = jdbc.sql(SESSIONS + "AND start_key = ?").params(roomId, key).query(Session.class).optional();
         if (previous.isPresent()) {
-            return new StartResult(false, previous.get().view(key));
+            return new StartResult(false, previous.get().view(key, room.status()));
         }
         if (!"LIVE".equals(room.status())) {
             throw new BusinessException(ErrorCode.CONFLICT);
         }
         var active = jdbc.sql(SESSIONS + "AND status = 'RECORDING'").param(roomId).query(Session.class).optional();
         if (active.isPresent()) {
-            return new StartResult(false, active.get().view(key));
+            return new StartResult(false, active.get().view(key, room.status()));
         }
         jdbc.sql("""
                 INSERT INTO stt_sessions(lecture_room_id, start_key, status, started_at)
                 VALUES (?, ?, 'RECORDING', ?)
                 """).params(roomId, key, storageNow()).update();
         var created = jdbc.sql(SESSIONS + "AND start_key = ?").params(roomId, key).query(Session.class).single();
-        return new StartResult(true, created.view(key));
+        return new StartResult(true, created.view(key, room.status()));
     }
 
     public SttSessionView stop(long roomId, long sessionId, String email, StopReason reason) {
-        lockOwnedRoom(roomId, email);
+        Room room = lockOwnedRoom(roomId, email);
         LocalDateTime endedAt = storageNow();
         int stopped = jdbc.sql("""
                 UPDATE stt_sessions SET status = ?, ended_at = ?
@@ -103,7 +103,7 @@ public class SttSessionService {
                     .params(endedAt, sessionId).update();
         }
         return jdbc.sql(SESSIONS + "AND id = ?").params(roomId, sessionId).query(Session.class).optional()
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND)).view(null);
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND)).view(null, room.status());
     }
 
     private Session requireRecordingKey(long roomId, long sessionId, UUID startKey) {

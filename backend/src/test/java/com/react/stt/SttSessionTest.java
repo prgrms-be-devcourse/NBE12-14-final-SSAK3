@@ -86,6 +86,34 @@ class SttSessionTest {
     }
 
     @Test
+    void endedRoomDisablesRecordingOnStartReplayBeforeSessionStops() throws Exception {
+        UUID key = UUID.randomUUID();
+        var session = service.start(room, email, key).session();
+        assertThat(session.canRecord()).isTrue();
+        mvc.perform(start(key).with(user(email).roles("HOST")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.canRecord").value(true));
+
+        jdbc.sql("UPDATE lecture_rooms SET status='ENDED', ended_at=NOW() WHERE id=?").param(room).update();
+        mvc.perform(start(key).with(user(email).roles("HOST"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sttSessionId").value(session.sttSessionId()))
+                .andExpect(jsonPath("$.data.startedAt").value(session.startedAt().toString()))
+                .andExpect(jsonPath("$.data.status").value("RECORDING"))
+                .andExpect(jsonPath("$.data.endedAt").isEmpty())
+                .andExpect(jsonPath("$.data.canRecord").value(false));
+        mvc.perform(start(UUID.randomUUID()).with(user(email).roles("HOST"))).andExpect(status().isConflict());
+        var line = new SttSegmentRequest(key, "after-end", "발언", session.startedAt(), session.startedAt());
+        mvc.perform(segment(room, session.sttSessionId(), line).with(user(email).roles("HOST")))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM stt_sessions WHERE lecture_room_id=?")
+                .param(room).query(Long.class).single()).isEqualTo(1);
+
+        service.stop(room, session.sttSessionId(), email, StopReason.MANUAL_STOP);
+        mvc.perform(start(key).with(user(email).roles("HOST"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("STOPPED"))
+                .andExpect(jsonPath("$.data.canRecord").value(false));
+    }
+
+    @Test
     void simultaneousStartsAndLateRequests() throws Exception {
         var gate = new CyclicBarrier(2);
         var firstKey = UUID.randomUUID();
