@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -62,7 +63,7 @@ class SttSessionTest {
     }
 
     private MockHttpServletRequestBuilder start(UUID key) {
-        return post("/api/v1/rooms/{id}/stt/sessions", room).contentType("application/json")
+        return post("/api/v1/rooms/{id}/stt/sessions", room).with(csrf()).contentType("application/json")
                 .content("{\"startKey\":\"" + key + "\"}");
     }
 
@@ -76,7 +77,7 @@ class SttSessionTest {
                 .andExpect(jsonPath("$.data.sttSessionId").isNumber());
         long id = service.start(room, email, key).session().sttSessionId();
         mvc.perform(post("/api/v1/rooms/{room}/stt/sessions/{id}/stop", room, id)
-                        .with(user(email).roles("HOST")).contentType("application/json")
+                        .with(csrf()).with(user(email).roles("HOST")).contentType("application/json")
                         .content("{\"reason\":\"MANUAL_STOP\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("STOPPED"))
@@ -148,7 +149,7 @@ class SttSessionTest {
     }
 
     private MockHttpServletRequestBuilder segment(long roomId, long sessionId, SttSegmentRequest request) throws Exception {
-        return post("/api/v1/rooms/{room}/stt/sessions/{session}/segments", roomId, sessionId)
+        return post("/api/v1/rooms/{room}/stt/sessions/{session}/segments", roomId, sessionId).with(csrf())
                 .contentType("application/json").content(json.writeValueAsBytes(request));
     }
 
@@ -240,13 +241,13 @@ class SttSessionTest {
 
     private MockHttpServletRequestBuilder openGap(long session, UUID key, String event, Instant start) throws Exception {
         var body = new SttGap.OpenRequest(key, event, SttGap.Reason.ERROR, start);
-        return post("/api/v1/rooms/{room}/stt/sessions/{id}/gaps", room, session)
+        return post("/api/v1/rooms/{room}/stt/sessions/{id}/gaps", room, session).with(csrf())
                 .contentType("application/json").content(json.writeValueAsBytes(body));
     }
 
     private MockHttpServletRequestBuilder closeGap(long session, long gap, UUID key, Instant end) throws Exception {
         return patch("/api/v1/rooms/{room}/stt/sessions/{id}/gaps/{gap}/close", room, session, gap)
-                .with(user(email).roles("HOST")).contentType("application/json")
+                .with(csrf()).with(user(email).roles("HOST")).contentType("application/json")
                 .content(json.writeValueAsBytes(new SttGap.CloseRequest(key, end)));
     }
 

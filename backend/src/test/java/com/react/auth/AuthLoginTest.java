@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -88,6 +89,7 @@ class AuthLoginTest {
             throws Exception {
 
         MvcResult result = mvc.perform(post(LOGIN_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 email.toUpperCase(Locale.ROOT),
@@ -124,10 +126,11 @@ class AuthLoginTest {
     }
 
     @Test
-    void 비밀번호가_틀리면_401을_반환하고_세션을_발급하지_않는다()
+    void 비밀번호가_틀리면_401을_반환하고_인증정보를_저장하지_않는다()
             throws Exception {
 
         MvcResult result = mvc.perform(post(LOGIN_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 email,
@@ -138,8 +141,16 @@ class AuthLoginTest {
                         .value("INVALID_CREDENTIALS"))
                 .andReturn();
 
-        assertThat(result.getRequest().getSession(false))
-                .isNull();
+        // CSRF 토큰 때문에 익명 세션은 생길 수 있다.
+        MockHttpSession failedSession = (MockHttpSession)
+                result.getRequest().getSession(false);
+
+        if (failedSession != null) {
+            assertThat(failedSession.getAttribute(
+                    HttpSessionSecurityContextRepository
+                            .SPRING_SECURITY_CONTEXT_KEY
+            )).isNull();
+        }
     }
 
     @Test
@@ -147,6 +158,7 @@ class AuthLoginTest {
             throws Exception {
 
         mvc.perform(post(LOGIN_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 "missing-" + UUID.randomUUID()
@@ -166,6 +178,7 @@ class AuthLoginTest {
         String previousId = session.getId();
 
         mvc.perform(post(LOGIN_URL)
+                        .with(csrf())
                         .session(session)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(email, PASSWORD)))
@@ -180,6 +193,7 @@ class AuthLoginTest {
             throws Exception {
 
         MvcResult result = mvc.perform(post(LOGIN_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(email, PASSWORD)))
                 .andExpect(status().isOk())

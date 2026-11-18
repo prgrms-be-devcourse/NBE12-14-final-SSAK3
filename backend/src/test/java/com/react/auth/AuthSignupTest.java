@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -69,6 +70,7 @@ class AuthSignupTest {
         String password = "ExamplePassword123!";
 
         MvcResult result = mvc.perform(post(SIGNUP_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 email,
@@ -104,10 +106,16 @@ class AuthSignupTest {
                 passwordEncoder.matches(password, storedHash)
         ).isTrue();
 
-        // 회원가입 후 자동 로그인 없음
-        assertThat(
-                result.getResponse().getCookie("HOST_SESSION")
-        ).isNull();
+        // 회원가입만으로 인증 정보가 저장되지는 않는다.
+        var session = result.getRequest().getSession(false);
+
+        if (session != null) {
+            assertThat(session.getAttribute(
+                    org.springframework.security.web.context
+                            .HttpSessionSecurityContextRepository
+                            .SPRING_SECURITY_CONTEXT_KEY
+            )).isNull();
+        }
     }
 
     @Test
@@ -118,6 +126,7 @@ class AuthSignupTest {
                 "duplicate-" + UUID.randomUUID() + "@example.com";
 
         mvc.perform(post(SIGNUP_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 email,
@@ -127,6 +136,7 @@ class AuthSignupTest {
                 .andExpect(status().isCreated());
 
         mvc.perform(post(SIGNUP_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 email.toUpperCase(Locale.ROOT),
@@ -143,6 +153,7 @@ class AuthSignupTest {
             throws Exception {
 
         mvc.perform(post(SIGNUP_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 "not-an-email",
@@ -159,6 +170,7 @@ class AuthSignupTest {
             throws Exception {
 
         mvc.perform(post(SIGNUP_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 "short-" + UUID.randomUUID()
@@ -182,6 +194,7 @@ class AuthSignupTest {
         String password = "가".repeat(25);
 
         mvc.perform(post(SIGNUP_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 email,
@@ -201,6 +214,7 @@ class AuthSignupTest {
                 "blank-" + UUID.randomUUID() + "@example.com";
 
         mvc.perform(post(SIGNUP_URL)
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(
                                 email,
