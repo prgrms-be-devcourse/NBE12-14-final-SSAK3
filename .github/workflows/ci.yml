@@ -1,4 +1,3 @@
-
 name: CI
 
 on:
@@ -45,6 +44,9 @@ jobs:
           --health-retries 5
     env:
       TEST_MYSQL_PASSWORD: ci-test-only
+
+      # SCRUM-128: CI 테스트 전용 비밀키 (운영 사용 금지)
+      PARTICIPANT_JOIN_SECRET: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 
     defaults:
       run:
@@ -113,6 +115,10 @@ jobs:
       MYSQL_DATABASE: react
       MYSQL_USER: react
       MYSQL_PASSWORD: ci-smoke-password
+
+      # SCRUM-128: 임시 CI 환경에서만 사용하는 비밀키
+      PARTICIPANT_JOIN_SECRET: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      PARTICIPANT_SESSION_TTL: PT24H
 
     steps:
       - uses: actions/checkout@v4

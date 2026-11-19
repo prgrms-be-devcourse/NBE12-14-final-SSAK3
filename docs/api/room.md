@@ -1,6 +1,5 @@
 # ROOM — 강연방 관리
 
-
 ### [ROOM-01] 강연방 생성 및 참여 코드 발급
 
 **POST** `/api/v1/rooms` — HOST
@@ -131,7 +130,13 @@ Response — 200 OK
 
 ### [ROOM-05] 청중 비회원 입장
 
-**POST** `/api/v1/public/rooms/{joinCode}/participants` — 인증 불필요
+**POST** `/api/v1/public/rooms/{joinCode}/participants` — HOST 로그인 불필요
+
+Request Headers
+
+- `Content-Type: application/json`
+- `X-CSRF-TOKEN: <발급된 CSRF 토큰>`
+- `Idempotency-Key: <UUID v4>`
 
 Request
 
@@ -139,15 +144,59 @@ Request
 { "nickname": "청중A" }
 ```
 
-Response — 201 Created
+Response — 최초 입장 시 201 Created
 
 ```json
-{ "data": { "participantId": 101, "roomId": 10, "nickname": "청중A", "roomStatus": "LIVE", "joinedAt": "2026-11-17T01:00:10Z" } }
+{
+  "data": {
+    "participantId": 101,
+    "roomId": 10,
+    "nickname": "청중A",
+    "roomStatus": "LIVE",
+    "joinedAt": "2026-11-17T01:00:10Z"
+  }
+}
 ```
 
-참여 쿠키 예시: `Set-Cookie: PARTICIPANT_SESSION=...; HttpOnly; Secure`
-규칙: 회원가입 없이 참여, 동일 닉네임 허용, 참여자 ID 는 서버 생성, 참여 토큰 원문은 DB 에 저장하지 않고 해시만 저장, 기존 유효 세션이면 동일 참여자 정보 재사용(재입장 시 `200 OK` 가능), ENDED 강연에는 신규 입장 불가.
-오류: `400 INVALID_NICKNAME`, `404 INVALID_JOIN_CODE`, `409 ROOM_ENDED` · 엔터티: `lecture_rooms`, `lecture_participants`
+참여 쿠키 예시:
+
+```http
+Set-Cookie: PARTICIPANT_SESSION_10=<token>; HttpOnly; Secure; SameSite=Lax; Path=/
+```
+
+규칙:
+
+- 회원가입 없이 QR 링크와 닉네임으로 입장한다.
+- 동일 닉네임을 사용하는 서로 다른 참여자를 허용한다.
+- 참여자 ID와 인증 토큰은 서버에서 생성한다.
+- 참여 토큰 원문은 DB에 저장하지 않고 SHA-256 해시만 저장한다.
+- 방별 인증 쿠키 이름은 `PARTICIPANT_SESSION_{roomId}`이다.
+- 쿠키의 `{roomId}`는 숫자로 된 강연방 ID이다.
+- 동일 브라우저에서 여러 강연방의 쿠키를 독립적으로 유지한다.
+- A방 → B방 → A방으로 복귀해도 A방의 기존 참여자 ID를 재사용한다.
+- 기존에 발급된 유효한 방별 쿠키가 있으면 `200 OK`와 기존 참여자 정보를 반환한다.
+- 기존 쿠키가 없으면 신규 입장 요청에 UUID v4 형식의 `Idempotency-Key`가 필요하다.
+- 같은 입장 시도를 재전송할 때는 동일한 키를 사용한다.
+- 동일한 방·키에 대한 중복 요청은 기존 참여자 ID와 동일한 인증 토큰을 재발급한다(`200 OK`).
+- 최초 성공한 신규 입장은 `201 Created`를 반환한다.
+- 동일 키의 동시 요청은 DB의 토큰 해시 UNIQUE 제약으로 중복 생성을 방지한다.
+- 동일한 키를 다른 강연방에서 사용하더라도 토큰 생성 범위에 roomId가 포함되어 방별 토큰은 서로 다르다.
+- 유효기간이 지난 키를 재사용하면 `409 CONFLICT`를 반환한다.
+- ENDED 강연에서는 신규 참여자를 생성하지 않는다.
+- 유효한 기존 참여자의 재입장 및 참여 정보 조회는 허용한다.
+- 세션 유효기간은 최초 입장 시각 기준으로 계산하며 `PARTICIPANT_SESSION_TTL`로 설정한다.
+- 클라이언트는 같은 입장 시도의 재시도에서 키를 유지하고, 새로운 입장 시도에서는 새 키를 생성해야 한다.
+- `Idempotency-Key`도 인증 쿠키 재발급에 이용될 수 있으므로 요청 로그나 외부에 노출하지 않는다.
+
+오류:
+
+- `400 INVALID_NICKNAME`: 닉네임이 올바르지 않음
+- `400 INVALID_INPUT`: 신규 입장 키 누락 또는 형식 오류
+- `404 INVALID_JOIN_CODE`: 유효하지 않은 강연 참여 코드
+- `409 ROOM_ENDED`: 종료된 강연에 신규 입장 시도
+- `409 CONFLICT`: 만료된 입장 키 재사용
+
+엔터티: `lecture_rooms`, `lecture_participants`
 
 ### [ROOM-05] 내 청중 참여 정보 조회
 
@@ -156,10 +205,19 @@ Response — 201 Created
 Response — 200 OK
 
 ```json
-{ "data": { "participantId": 101, "roomId": 10, "nickname": "청중A", "joinedAt": "2026-11-17T01:00:10Z" } }
+{
+  "data": {
+    "participantId": 101,
+    "roomId": 10,
+    "nickname": "청중A",
+    "joinedAt": "2026-11-17T01:00:10Z"
+  }
+}
 ```
 
-규칙: 새로고침 후 기존 참여 정보 확인, 참여자 식별 정보로 중복 집계 방지, 다른 강연방의 참여자로 인증되지 않음. 오류: `401 UNAUTHENTICATED`, `403 FORBIDDEN`
+규칙: 새로고침 후 기존 참여 정보 확인, 참여자 식별 정보로 중복 집계 방지, 다른 강연방의 참여자로 인증되지 않음. 요청에 포함된 해당 방의 `PARTICIPANT_SESSION_{roomId}` 쿠키를 검증한다.
+
+오류: `401 UNAUTHENTICATED`, `403 FORBIDDEN`
 
 ### [ROOM-06, ROOM-07] 권한 및 강연 종료 상태 검증
 
@@ -170,4 +228,4 @@ Response — 200 OK
 - 다른 강연방의 데이터 조회·등록·수정을 차단한다.
 - ENDED 에서는 신규 채팅·이해도·투표 응답을 거부하고, 기존 데이터 조회는 권한에 따라 허용한다.
 - WebSocket 연결뿐 아니라 구독·메시지 전송 시에도 권한을 검증한다.
-
+```
