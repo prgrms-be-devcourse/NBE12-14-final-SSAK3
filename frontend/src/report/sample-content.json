@@ -1,0 +1,387 @@
+{
+  "normal": {
+    "chats": [
+      {
+        "id": 1001,
+        "participantId": "p1",
+        "offsetSeconds": 260,
+        "text": "트랜잭션이 스마트 컨트랙트를 호출하면 상태가 어떻게 달라지는지 예시를 더 보고 싶어요."
+      },
+      {
+        "id": 1002,
+        "participantId": "p2",
+        "offsetSeconds": 290,
+        "text": "코드를 배포하는 것과 이미 배포된 코드를 실행하는 것의 차이가 궁금해요."
+      },
+      {
+        "id": 1003,
+        "participantId": "p3",
+        "offsetSeconds": 1150,
+        "text": "가스가 무한 반복을 막는 방식이 헷갈려요."
+      },
+      {
+        "id": 1004,
+        "participantId": "p4",
+        "offsetSeconds": 1310,
+        "text": "가스 한도를 다 쓰면 어떤 결과가 되는지 사례가 있으면 좋겠어요."
+      }
+    ],
+    "overview": {
+      "mainInterests": [
+        {
+          "text": "실험용 청중 기록에서는 트랜잭션이 스마트 컨트랙트를 호출할 때 상태가 어떻게 바뀌는지, 그리고 코드를 배포하는 것과 이미 배포된 코드를 실행하는 것의 차이에 관심이 나타났습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1001
+            },
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1002
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:04:00Z",
+              "endAt": "2026-11-18T00:05:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": []
+        },
+        {
+          "text": "가스가 무한 반복을 막는 방식과 가스 한도를 모두 소진했을 때의 결과가 실험용 청중 기록에서 질문 및 추가 예시 요청으로 나타났습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1003
+            },
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1004
+            },
+            {
+              "type": "POLL_RESULT",
+              "id": 3001
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:19:00Z",
+              "endAt": "2026-11-18T00:20:00Z"
+            },
+            {
+              "startAt": "2026-11-18T00:21:00Z",
+              "endAt": "2026-11-18T00:22:00Z"
+            },
+            {
+              "startAt": "2026-11-18T00:22:00Z",
+              "endAt": "2026-11-18T00:23:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": []
+        }
+      ],
+      "reviewPoints": [
+        {
+          "text": "가스 설명에 관한 마감된 이해도 투표에서는 응답자 중 이해함과 헷갈림이 각각 1명이었고, 응답하지 않은 사람도 있었습니다. 가스가 무한 반복을 제한하는 원리와 한도 소진 시 실행이 어떻게 처리되는지를 보충 설명할지 검토할 수 있습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1003
+            },
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1004
+            },
+            {
+              "type": "POLL_RESULT",
+              "id": 2001
+            },
+            {
+              "type": "POLL_RESULT",
+              "id": 3001
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:19:00Z",
+              "endAt": "2026-11-18T00:20:00Z"
+            },
+            {
+              "startAt": "2026-11-18T00:21:00Z",
+              "endAt": "2026-11-18T00:22:00Z"
+            },
+            {
+              "startAt": "2026-11-18T00:22:00Z",
+              "endAt": "2026-11-18T00:23:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": []
+        }
+      ],
+      "suggestions": [
+        {
+          "text": "다음 강연에서는 간단한 트랜잭션 사례를 사용해 호출 전후의 계정 잔액과 컨트랙트 저장 상태를 나란히 보여주고, 컨트랙트 배포와 배포된 코드 호출을 구분해 설명하는 방안을 검토할 수 있습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1001
+            },
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1002
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:04:00Z",
+              "endAt": "2026-11-18T00:05:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": []
+        },
+        {
+          "text": "가스 한도 안에서 실행이 끝나는 경우와 한도 소진으로 실행이 중단되는 경우를 구체적인 수치나 단계별 사례로 비교하는 방안을 검토할 수 있습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1003
+            },
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1004
+            },
+            {
+              "type": "POLL_RESULT",
+              "id": 3001
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:19:00Z",
+              "endAt": "2026-11-18T00:20:00Z"
+            },
+            {
+              "startAt": "2026-11-18T00:21:00Z",
+              "endAt": "2026-11-18T00:22:00Z"
+            },
+            {
+              "startAt": "2026-11-18T00:22:00Z",
+              "endAt": "2026-11-18T00:23:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": []
+        }
+      ]
+    }
+  },
+  "sparse": {
+    "chats": [
+      {
+        "id": 1101,
+        "participantId": "p1",
+        "offsetSeconds": 1150,
+        "text": "가스 계산 예시를 하나 더 보고 싶어요."
+      }
+    ],
+    "overview": {
+      "mainInterests": [],
+      "reviewPoints": [],
+      "suggestions": [
+        {
+          "text": "가스가 연산 실행에 따라 차감되고 부족하면 실행이 중단되는 과정을 구체적인 수치 예제로 한 번 더 보여주는 방안을 검토할 수 있습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1101
+            },
+            {
+              "type": "STT_SEGMENT",
+              "id": 9017
+            },
+            {
+              "type": "STT_SEGMENT",
+              "id": 9021
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:18:00Z",
+              "endAt": "2026-11-18T00:19:00Z"
+            },
+            {
+              "startAt": "2026-11-18T00:19:00Z",
+              "endAt": "2026-11-18T00:20:00Z"
+            },
+            {
+              "startAt": "2026-11-18T00:23:00Z",
+              "endAt": "2026-11-18T00:24:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": []
+        }
+      ]
+    }
+  },
+  "opposing": {
+    "chats": [
+      {
+        "id": 1201,
+        "participantId": "p1",
+        "offsetSeconds": 1800,
+        "text": "Web3 개념 설명은 줄이고 스마트 컨트랙트 코드 실습을 더 보고 싶어요."
+      },
+      {
+        "id": 1202,
+        "participantId": "p2",
+        "offsetSeconds": 1810,
+        "text": "저는 코드 실습 전에 Web3 개념을 더 천천히 설명해 주시면 좋겠어요."
+      }
+    ],
+    "overview": {
+      "mainInterests": [
+        {
+          "text": "Web3 개념과 스마트 컨트랙트 코드 실습 중 무엇을 더 중점적으로 다룰지에 대해 서로 다른 선호가 나타났습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1201
+            },
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1202
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:30:00Z",
+              "endAt": "2026-11-18T00:31:00Z"
+            }
+          ],
+          "perspectives": [
+            {
+              "text": "Web3 설명을 줄이고 스마트 컨트랙트 코드 실습을 더 보고 싶다는 의견이 있었습니다.",
+              "evidence": [
+                {
+                  "type": "CHAT_MESSAGE",
+                  "id": 1201
+                }
+              ],
+              "relatedWindows": [
+                {
+                  "startAt": "2026-11-18T00:30:00Z",
+                  "endAt": "2026-11-18T00:31:00Z"
+                }
+              ],
+              "limitations": []
+            },
+            {
+              "text": "코드 실습 전에 Web3 개념을 더 천천히 설명해 달라는 의견이 있었습니다.",
+              "evidence": [
+                {
+                  "type": "CHAT_MESSAGE",
+                  "id": 1202
+                }
+              ],
+              "relatedWindows": [
+                {
+                  "startAt": "2026-11-18T00:30:00Z",
+                  "endAt": "2026-11-18T00:31:00Z"
+                }
+              ],
+              "limitations": []
+            }
+          ],
+          "limitations": []
+        }
+      ],
+      "reviewPoints": [],
+      "suggestions": [
+        {
+          "text": "다음 강연에서는 Web3 개념 설명과 스마트 컨트랙트 실습을 모두 포함하되, 개념 설명 뒤 짧은 실습 예시를 배치하는 구성을 검토할 수 있습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1201
+            },
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1202
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:30:00Z",
+              "endAt": "2026-11-18T00:31:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": []
+        }
+      ]
+    }
+  },
+  "missing-data": {
+    "chats": [
+      {
+        "id": 1301,
+        "participantId": "p1",
+        "offsetSeconds": 1150,
+        "text": "가스 한도를 초과하면 상태 변경도 취소되는지 궁금해요."
+      }
+    ],
+    "overview": {
+      "mainInterests": [],
+      "reviewPoints": [
+        {
+          "text": "가스 한도를 초과했을 때 상태 변경이 취소되는지에 대한 질문이 있었습니다. 후속 설명이나 이해도 확인에서 이 경우를 다룰지 검토할 수 있습니다.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1301
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:19:00Z",
+              "endAt": "2026-11-18T00:20:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": [
+            "2026-11-18T00:18:00Z ~ 2026-11-18T00:24:00Z: 발언 기록이 없어 설명·답변 여부를 확인하기 어렵습니다.",
+            "2026-11-18T00:19:00Z ~ 2026-11-18T00:19:30Z: 청중 의견 AI 분석 실패. 남아 있는 원문 기록을 활용했습니다."
+          ]
+        }
+      ],
+      "suggestions": [
+        {
+          "text": "다음 강연에서 가스 한도 초과 상황을 구체적인 트랜잭션 예시로 설명하고, 상태 변경이 어떻게 처리되는지 짚어보세요.",
+          "evidence": [
+            {
+              "type": "CHAT_MESSAGE",
+              "id": 1301
+            }
+          ],
+          "relatedWindows": [
+            {
+              "startAt": "2026-11-18T00:19:00Z",
+              "endAt": "2026-11-18T00:20:00Z"
+            }
+          ],
+          "perspectives": [],
+          "limitations": [
+            "2026-11-18T00:18:00Z ~ 2026-11-18T00:24:00Z: 발언 기록이 없어 설명·답변 여부를 확인하기 어렵습니다.",
+            "2026-11-18T00:19:00Z ~ 2026-11-18T00:19:30Z: 청중 의견 AI 분석 실패. 남아 있는 원문 기록을 활용했습니다."
+          ]
+        }
+      ]
+    }
+  }
+}
