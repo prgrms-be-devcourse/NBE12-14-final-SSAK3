@@ -1,7 +1,6 @@
 package com.react.ai.service;
 
 import com.react.ai.config.AiAnalysisSchedulerProperties;
-import com.react.ai.repository.AiAnalysisRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,17 +15,12 @@ public class AiAnalysisFinalizationScheduler {
     private static final Logger log = LoggerFactory.getLogger(AiAnalysisFinalizationScheduler.class);
 
     private final AiAnalysisFinalizationService finalizations;
-    private final AiAnalysisRepository analyses;
     private final AiAnalysisSchedulerProperties properties;
 
     @Scheduled(fixedDelayString = "${app.ai.audience.scheduler.fixed-delay:5000}",
             scheduler = "aiFinalizationTaskScheduler")
     public void processPendingFinalizations() {
         try {
-            int recovered = analyses.abortStaleInFlight(properties.staleAnalysisThreshold());
-            if (recovered > 0) {
-                log.warn("중단된 AI 분석 작업을 FAILED로 종결했습니다. count={}", recovered);
-            }
             finalizations.processPendingRooms(properties.maxFinalizationRoomsPerRun(),
                     properties.maxWindowsPerRun(), properties.finalizationLeaseDuration());
         } catch (RuntimeException e) {

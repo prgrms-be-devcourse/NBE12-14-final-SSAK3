@@ -39,6 +39,7 @@ app:
     audience:
       scheduler:
         fixed-delay: ${AI_ANALYSIS_SCHEDULER_DELAY:5000}
+        recovery-fixed-delay: ${AI_ANALYSIS_RECOVERY_DELAY:60000}
         max-windows-per-run: ${AI_ANALYSIS_SCHEDULER_MAX_WINDOWS_PER_RUN:3}
         max-finalization-rooms-per-run: ${AI_FINALIZATION_MAX_ROOMS_PER_RUN:5}
         finalization-lease-duration: ${AI_FINALIZATION_LEASE_DURATION:90s}
