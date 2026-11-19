@@ -24,7 +24,6 @@ public class AudienceAnalysisScheduler {
     private final AiAnalysisWindowCalculator calculator;
     private final Clock clock;
     private final AiAnalysisSchedulerProperties properties;
-
     public AudienceAnalysisScheduler(AiAnalysisTargetRoomRepository rooms, AiAnalysisRepository analyses,
                                      AudienceAnalysisService service, AiAnalysisWindowCalculator calculator,
                                      Clock clock, AiAnalysisSchedulerProperties properties) {
@@ -36,7 +35,8 @@ public class AudienceAnalysisScheduler {
         this.properties = properties;
     }
 
-    @Scheduled(fixedDelayString = "${app.ai.audience.scheduler.fixed-delay:5000}")
+    @Scheduled(fixedDelayString = "${app.ai.audience.scheduler.fixed-delay:5000}",
+            scheduler = "aiLiveAnalysisTaskScheduler")
     public void processCompletedRegularWindows() {
         LocalDateTime now = LocalDateTime.now(clock);
         for (AiAnalysisTargetRoomRepository.LiveRoom room : rooms.findLiveRoomsWithStartedAt()) {

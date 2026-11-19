@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.time.Clock;
 import java.time.ZoneId;
@@ -23,5 +24,22 @@ public class AiAnalysisSchedulingConfiguration {
     @Bean
     AiAnalysisWindowCalculator aiAnalysisWindowCalculator() {
         return new AiAnalysisWindowCalculator();
+    }
+
+    @Bean(name = "aiLiveAnalysisTaskScheduler")
+    ThreadPoolTaskScheduler aiLiveAnalysisTaskScheduler() {
+        return taskScheduler("ai-live-analysis-");
+    }
+
+    @Bean(name = "aiFinalizationTaskScheduler")
+    ThreadPoolTaskScheduler aiFinalizationTaskScheduler() {
+        return taskScheduler("ai-finalization-");
+    }
+
+    private ThreadPoolTaskScheduler taskScheduler(String threadNamePrefix) {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix(threadNamePrefix);
+        return scheduler;
     }
 }

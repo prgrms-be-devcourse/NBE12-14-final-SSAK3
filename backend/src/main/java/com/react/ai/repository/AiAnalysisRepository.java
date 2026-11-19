@@ -16,6 +16,7 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -88,6 +89,16 @@ public class AiAnalysisRepository {
                 FROM ai_analyses
                 WHERE lecture_room_id = ? AND window_start_at = ? AND window_end_at = ?
                 """).params(roomId, windowStartAt, windowEndAt).query(Analysis.class).optional();
+    }
+
+    public List<Analysis> findWithin(long roomId, LocalDateTime fromInclusive, LocalDateTime toInclusive) {
+        return jdbc.sql("""
+                SELECT id, lecture_room_id AS room_id, window_start_at, window_end_at, status
+                FROM ai_analyses
+                WHERE lecture_room_id = ?
+                  AND window_start_at >= ?
+                  AND window_end_at <= ?
+                """).params(roomId, fromInclusive, toInclusive).query(Analysis.class).list();
     }
 
     /** 이미 생성된 상태(PENDING/PROCESSING/COMPLETED/FAILED)를 모두 반환해 스케줄러 재호출을 막는다. */

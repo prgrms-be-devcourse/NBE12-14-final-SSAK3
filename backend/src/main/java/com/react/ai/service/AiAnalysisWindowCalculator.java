@@ -23,6 +23,22 @@ public class AiAnalysisWindowCalculator {
         return List.copyOf(windows);
     }
 
+    /** 강연 종료 시각까지의 정규 구간과, 필요할 때만 마지막 잔여 구간을 계산한다. */
+    public List<AnalysisWindow> finalizationWindows(LocalDateTime startedAt, LocalDateTime endedAt) {
+        if (startedAt == null || endedAt == null || endedAt.isBefore(startedAt)) {
+            throw new IllegalArgumentException("강연 종료 시각이 올바르지 않습니다.");
+        }
+
+        List<AnalysisWindow> windows = new ArrayList<>(completedWindows(startedAt, endedAt));
+        LocalDateTime residualStartAt = windows.isEmpty()
+                ? startedAt
+                : windows.getLast().endAt();
+        if (residualStartAt.isBefore(endedAt)) {
+            windows.add(new AnalysisWindow(residualStartAt, endedAt));
+        }
+        return List.copyOf(windows);
+    }
+
     public record AnalysisWindow(LocalDateTime startAt, LocalDateTime endAt) {
     }
 }
