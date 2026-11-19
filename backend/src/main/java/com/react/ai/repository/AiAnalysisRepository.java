@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -81,6 +82,16 @@ public class AiAnalysisRepository {
                 SET status = 'FAILED', error_message = ?, completed_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND status = 'PROCESSING'
                 """).params(errorMessage, analysisId).update() == 1;
+    }
+
+    /** 서버 중단 등으로 남은 미완료 분석은 재호출하지 않고 종결해 후속 처리를 막지 않는다. */
+    public int abortStaleInFlight(Duration staleThreshold) {
+        return jdbc.sql("""
+                UPDATE ai_analyses
+                SET status = 'FAILED', error_message = 'STALE_ANALYSIS_ABORTED', completed_at = CURRENT_TIMESTAMP
+                WHERE status IN ('PENDING', 'PROCESSING')
+                  AND created_at <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND)
+                """).param(staleThreshold.toSeconds()).update();
     }
 
     public Optional<Analysis> find(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {

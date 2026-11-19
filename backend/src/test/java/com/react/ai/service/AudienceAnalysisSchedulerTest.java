@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -43,6 +44,15 @@ class AudienceAnalysisSchedulerTest {
         order.verify(service).process(10L, startedAt.plusSeconds(60), startedAt.plusSeconds(90));
         order.verify(service).process(10L, startedAt.plusSeconds(90), startedAt.plusSeconds(120));
         verifyNoMoreInteractions(service);
+    }
+
+    @Test
+    void 정규_구간_처리_전에_stale_분석을_복구한다() {
+        when(rooms.findLiveRoomsWithStartedAt()).thenReturn(List.of());
+
+        scheduler.processCompletedRegularWindows();
+
+        verify(analyses).abortStaleInFlight(Duration.ofMinutes(2));
     }
 
     @Test

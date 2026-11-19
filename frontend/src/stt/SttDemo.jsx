@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react'
 import { request } from './api.js'
 import { SttPanel } from './SttPanel.jsx'
+import { returnPath } from '../room/state.js'
 
 export function SttDemo() {
+  const returnTo = returnPath(new URLSearchParams(location.search).get('returnTo'))
   const [user, setUser] = useState(null)
   const [room, setRoom] = useState('')
   const [roomInput, setRoomInput] = useState(new URLSearchParams(location.search).get('roomId') || '')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [authRevision, setAuthRevision] = useState(0)
-  useEffect(() => { request('/auth/me').then(setUser).catch(() => {}) }, [])
+  useEffect(() => { request('/auth/me').then(value => {
+    if (returnTo) location.replace(returnTo)
+    else setUser(value)
+  }).catch(() => {}) }, [returnTo])
   async function login(event) {
     event.preventDefault()
     setBusy(true)
@@ -19,6 +24,7 @@ export function SttDemo() {
     try {
       await request('/auth/login', { method: 'POST', body: { email: data.get('email'), password: data.get('password') } })
       const authenticated = await request('/auth/me')
+      if (returnTo) { location.replace(returnTo); return }
       if (user && String(user.userId) !== String(authenticated.userId)) setRoom('')
       setUser(authenticated)
       setAuthRevision(value => value + 1)
@@ -27,7 +33,8 @@ export function SttDemo() {
     finally { setBusy(false) }
   }
   return <main className="stt-demo">
-    <header className="stt-brand"><h1>RE:ACT</h1><p>강연자 STT 연결 확인</p></header>
+    <header className="stt-brand"><h1>RE:ACT</h1><p>{returnTo ? '강연방에 접근하려면 로그인해 주세요.' : '강연자 STT 연결 확인'}</p></header>
+    {!returnTo && <p><a href="/host/rooms/new">새 강연방 만들기</a></p>}
     <details className="stt-login" open={!user}>
       <summary>{user ? `${user.name} · 로그인 갱신` : '강연자 로그인'}</summary>
       <form onSubmit={login}>
