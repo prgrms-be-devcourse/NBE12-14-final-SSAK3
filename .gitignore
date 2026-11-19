@@ -32,3 +32,14 @@ CLAUDE.local.md
 # Local report experiments (source text and model responses)
 /.report-experiments/
 __pycache__/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+*.tfplan
+crash.log
+crash.*.log
