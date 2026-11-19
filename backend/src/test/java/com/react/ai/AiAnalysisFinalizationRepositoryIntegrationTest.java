@@ -3,6 +3,7 @@ package com.react.ai;
 import com.react.ai.domain.AiAnalysisFinalizationStatus;
 import com.react.ai.repository.AiAnalysisFinalizationRepository;
 import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,11 +26,17 @@ class AiAnalysisFinalizationRepositoryIntegrationTest {
     @Autowired AiAnalysisFinalizationRepository finalizations;
 
     private AiAnalysisFinalizationRepository.EndedRoom room;
+    private Flyway flyway;
 
     @BeforeEach
     void prepareDatabase() {
-        assertThat(jdbc.sql("SELECT DATABASE()").query(String.class).single()).endsWith("_test");
-        Flyway.configure().dataSource(dataSource).load().migrate();
+        assertThat(jdbc.sql("SELECT DATABASE()").query(String.class).single())
+                .as("전체 후보 조회 테스트의 초기화는 react_test에서만 실행한다")
+                .isEqualTo("react_test");
+        flyway = Flyway.configure().dataSource(dataSource).cleanDisabled(false).load();
+        // 후보 조회는 방 ID가 아닌 전체 종료 방을 대상으로 하므로 이전 실행의 데이터도 제거한다.
+        flyway.clean();
+        flyway.migrate();
 
         String key = UUID.randomUUID().toString();
         jdbc.sql("INSERT INTO users(email, password_hash, name, created_at) VALUES (?, 'hash', 'host', NOW())")
@@ -44,6 +51,13 @@ class AiAnalysisFinalizationRepositoryIntegrationTest {
                 """).params(hostId, key, startedAt, endedAt).update();
         long roomId = jdbc.sql("SELECT id FROM lecture_rooms WHERE join_code = ?").param(key).query(Long.class).single();
         room = new AiAnalysisFinalizationRepository.EndedRoom(roomId, startedAt, endedAt);
+    }
+
+    @AfterEach
+    void cleanUp() {
+        if (flyway != null) {
+            flyway.clean();
+        }
     }
 
     @Test
