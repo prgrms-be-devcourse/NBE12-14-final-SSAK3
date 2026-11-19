@@ -38,21 +38,9 @@ public class AudienceAnalysisScheduler {
     @Scheduled(fixedDelayString = "${app.ai.audience.scheduler.fixed-delay:5000}",
             scheduler = "aiLiveAnalysisTaskScheduler")
     public void processCompletedRegularWindows() {
-        recoverStaleAnalyses();
         LocalDateTime now = LocalDateTime.now(clock);
         for (AiAnalysisTargetRoomRepository.LiveRoom room : rooms.findLiveRoomsWithStartedAt()) {
             processRoom(room, now);
-        }
-    }
-
-    private void recoverStaleAnalyses() {
-        try {
-            int recovered = analyses.abortStaleInFlight(properties.staleAnalysisThreshold());
-            if (recovered > 0) {
-                log.warn("중단된 AI 분석 작업을 FAILED로 종결했습니다. count={}", recovered);
-            }
-        } catch (RuntimeException e) {
-            log.warn("중단된 AI 분석 작업 복구에 실패했습니다.", e);
         }
     }
 
