@@ -40,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import org.springframework.http.MediaType;
 
 @SpringBootTest
@@ -153,6 +154,31 @@ class AudienceAnalysisIntegrationTest {
         assertThat(truncated.status()).isEqualTo(AiAnalysisStatus.FAILED);
         assertThat(jdbc.sql("SELECT status FROM ai_analyses WHERE id = ?").param(truncated.analysisId())
                 .query(String.class).single()).isEqualTo("FAILED");
+    }
+
+    @Test
+    void Gemini_429_재시도_성공은_하나의_분석과_주제_그룹만_저장한다() {
+        long messageId = insertAudienceMessage("재시도할 질문", start);
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS));
+        server.expect(requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"))
+                .andRespond(withSuccess(geminiResponse("""
+                        {"topics":[{"topic":"재시도 주제","summary":"재시도 후 정상 요약","category":"QUESTION","sourceMessageIds":[%d]}]}
+                        """.formatted(messageId)), MediaType.APPLICATION_JSON));
+
+        var completed = service(geminiClient(builder.build())).process(roomId, start, end);
+
+        assertThat(completed.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_analyses WHERE lecture_room_id = ? AND window_start_at = ?")
+                .params(roomId, start).query(Long.class).single()).isEqualTo(1L);
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?")
+                .param(completed.analysisId()).query(Long.class).single()).isEqualTo(1L);
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_group_messages m "
+                        + "JOIN ai_topic_groups g ON g.id = m.topic_group_id WHERE g.analysis_id = ?")
+                .param(completed.analysisId()).query(Long.class).single()).isEqualTo(1L);
+        server.verify();
     }
 
     @Test
@@ -467,6 +493,17 @@ class AudienceAnalysisIntegrationTest {
 
     private AudienceAnalysisLlmResponse response(String content) {
         return new AudienceAnalysisLlmResponse(content, "fake-model");
+    }
+
+    private String geminiResponse(String text) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return """
+                    {"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":%s}]}}]}
+                    """.formatted(mapper.writeValueAsString(text));
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
     }
 
     private long insertAudienceMessage(String content, LocalDateTime receivedAt) {

@@ -2,6 +2,8 @@ package com.react.ai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.domain.AiAnalysisStatus;
+import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
+import com.react.ai.exception.GeminiAudienceAnalysisException;
 import com.react.ai.dto.AudienceMessage;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.repository.AiAnalysisRepository;
@@ -9,6 +11,7 @@ import com.react.ai.repository.AudienceMessageRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -82,6 +85,90 @@ class AudienceAnalysisServiceTest {
 
         assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
         verify(analyses).markFailed(eq(1L), any());
+    }
+
+    @Test
+    void 요청_제한_후_한번_재시도해_성공하면_결과를_한번만_저장한다() {
+        retryableFailureThenSuccess(GeminiAudienceAnalysisErrorCode.RATE_LIMIT);
+    }
+
+    @Test
+    void Gemini_5xx_후_한번_재시도해_성공한다() {
+        retryableFailureThenSuccess(GeminiAudienceAnalysisErrorCode.HTTP_5XX);
+    }
+
+    @Test
+    void 타임아웃_후_한번_재시도해_성공한다() {
+        retryableFailureThenSuccess(GeminiAudienceAnalysisErrorCode.TIMEOUT);
+    }
+
+    @Test
+    void 재시도_한도를_초과하면_오류_코드와_함께_FAILED로_기록한다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.analyze(any())).thenThrow(retryable(GeminiAudienceAnalysisErrorCode.HTTP_5XX));
+
+        var result = service.process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        verify(llm, times(2)).analyze(any());
+        verify(analyses).markFailed(1L, "HTTP_5XX");
+        verify(analyses, never()).saveCompleted(anyLong(), any(), any());
+    }
+
+    @Test
+    void 인증_오류는_재시도하지_않고_AUTH로_기록한다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.analyze(any())).thenThrow(nonRetryable(GeminiAudienceAnalysisErrorCode.AUTH));
+
+        var result = service.process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        verify(llm).analyze(any());
+        verify(analyses).markFailed(1L, "AUTH");
+    }
+
+    @Test
+    void 잘못된_LLM_JSON은_재시도하지_않고_INVALID_LLM_RESPONSE로_기록한다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.analyze(any())).thenReturn(response("{topics:[]}"));
+
+        var result = service.process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        verify(llm).analyze(any());
+        verify(analyses).markFailed(1L, "INVALID_LLM_RESPONSE");
+    }
+
+    private void retryableFailureThenSuccess(GeminiAudienceAnalysisErrorCode errorCode) {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.analyze(any()))
+                .thenThrow(retryable(errorCode))
+                .thenReturn(response("""
+                        {"topics":[{"topic":"주제","summary":"요약","category":"QUESTION","sourceMessageIds":[100]}]}
+                        """));
+
+        var result = service.process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        verify(llm, times(2)).analyze(any());
+        verify(analyses, times(1)).saveCompleted(eq(1L), any(), eq("fake-model"));
+        verify(analyses, never()).markFailed(anyLong(), any());
+    }
+
+    private GeminiAudienceAnalysisException retryable(GeminiAudienceAnalysisErrorCode errorCode) {
+        return new GeminiAudienceAnalysisException(errorCode, true, Duration.ZERO, "retryable failure");
+    }
+
+    private GeminiAudienceAnalysisException nonRetryable(GeminiAudienceAnalysisErrorCode errorCode) {
+        return new GeminiAudienceAnalysisException(errorCode, false, null, "non-retryable failure");
+    }
+
+    private AudienceMessage message() {
+        return new AudienceMessage(100L, 10L, "질문", start);
     }
 
     private void acquireCreated(long analysisId) {
