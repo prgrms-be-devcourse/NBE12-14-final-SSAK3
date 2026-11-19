@@ -26,6 +26,7 @@ async function setup(page) {
       state.calls.push(Number(url.searchParams.get('limit')))
       if (state.error === 'offline') return route.abort()
       if (state.error) return fail(state.error)
+      if (state.analysisResponseGate) await state.analysisResponseGate
       return ok({ roomId: 10, analyses: url.searchParams.get('limit') === '50' && state.expanded ? state.expanded : state.analyses,
         lastCompletedAt: null })
     }
@@ -191,8 +192,18 @@ for (const error of [500, 'offline']) test(`list error ${error} retains evidence
   await expect(page.getByRole('button', { name: '다시 연결' })).toBeVisible()
   await expect(page.getByText('실제 사용 예시가 궁금해요 (21)')).toBeVisible()
   const count = state.calls.length; await page.clock.runFor(15000); expect(state.calls.length).toBe(count)
+  // Hold the recovery response to reproduce CI latency without relying on a fixed sleep.
+  let releaseResponse
+  state.analysisResponseGate = new Promise(resolve => { releaseResponse = resolve })
   state.error = 0; await page.getByRole('button', { name: '다시 연결' }).click()
-  await expect(page.getByRole('button', { name: '다시 연결' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '연결 중…' })).toBeVisible()
+  await expect.poll(() => state.calls.length).toBe(count + 1)
+  await tick(page)
+  expect(state.calls.length).toBe(count + 1)
+  await expect(page.getByText('최신 분석 결과를 확인하지 못했습니다.')).toBeVisible()
+  releaseResponse()
+  // The button changes its name before the response arrives. Only successful recovery clears this warning.
+  await expect(page.getByText('최신 분석 결과를 확인하지 못했습니다.')).toHaveCount(0)
   await tick(page); await expect.poll(() => state.calls.length).toBe(count + 2)
 })
 
