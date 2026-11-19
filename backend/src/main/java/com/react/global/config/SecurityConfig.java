@@ -90,10 +90,19 @@ public class SecurityConfig {
                                 "/actuator/info"
                         ).permitAll()
 
-                        // 청중 입장 API: 후속 구현 예정
+                        // 청중 입장 API: SCRUM-128
+                        // HOST 로그인 없이 입장 가능하지만 CSRF 토큰은 필요
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/public/rooms/*/participants"
+                        ).permitAll()
+
+                        // SCRUM-128:
+                        // 방별 PARTICIPANT_SESSION 쿠키는 Service에서 검증한다.
+                        // HOST_SESSION 로그인이 없어도 요청이 Controller에 도달해야 한다.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/rooms/*/participants/me"
                         ).permitAll()
 
                         // 강연자 인증 API
@@ -184,6 +193,7 @@ public class SecurityConfig {
                 List.of(
                         "Content-Type",
                         "X-CSRF-TOKEN",
+                        "Idempotency-Key",
                         "Accept",
                         "X-Requested-With"
                 )

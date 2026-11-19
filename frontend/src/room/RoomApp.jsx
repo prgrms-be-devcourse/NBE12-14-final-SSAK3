@@ -157,6 +157,7 @@ function RoomDetail({ id }) {
     {error && <div className="room-warning" role="alert">최신 상태를 확인하지 못했습니다. 참여 안내를 잠시 숨겼습니다. <button className="room-secondary" onClick={() => setRevision(v => v + 1)}>다시 확인</button></div>}
     {!room ? !error && <p role="status">강연 정보를 불러오고 있습니다.</p> : <>
       <div className="room-heading"><span className={`room-badge room-${room.status}`}>{statusNames[room.status] || '상태 확인 필요'}</span><h1>{room.title}</h1><p>{room.status === 'ENDED' ? '종료된 강연입니다. 새로운 참여는 불가능합니다.' : room.status === 'LIVE' ? '강연이 진행 중입니다.' : '청중에게 참여 링크를 공유하세요.'}</p></div>
+      {import.meta.env.DEV && <p><a href={`/dev/rooms/${id}/ai`}>AI 요약 확인</a></p>}
       <div className={`room-grid ${room.status === 'ENDED' ? 'room-ended' : ''}`}>
         <section className="room-card"><span className="room-kicker">LECTURE</span><h2>강연 정보</h2><p className="room-description">{room.description || '등록된 강연 설명이 없습니다.'}</p><dl>
           <dt>생성 시각</dt><dd>{time(room.createdAt)}</dd>
