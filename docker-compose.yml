@@ -1,3 +1,4 @@
+
 # 배포(EC2)용 기본 구성. DB·Redis 포트는 외부에 열지 않는다.
 #   배포:  docker compose -f docker-compose.yml up -d --build
 # 로컬에서 `docker compose up` 을 쓰면 docker-compose.override.yml 이 자동으로 함께 적용된다.
@@ -49,6 +50,12 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       REDIS_HOST: redis
       ROOM_JOIN_BASE_URL: ${ROOM_JOIN_BASE_URL:-http://localhost:5173}
+
+      # SCRUM-128: 청중 최초 입장의 중복 요청 처리
+      # 실제 비밀키는 Git에 저장하지 않고 .env에서 주입한다.
+      PARTICIPANT_JOIN_SECRET: ${PARTICIPANT_JOIN_SECRET:-}
+      PARTICIPANT_SESSION_TTL: ${PARTICIPANT_SESSION_TTL:-PT24H}
+
       TZ: Asia/Seoul
     expose:
       - "8080"
