@@ -36,6 +36,11 @@ public class AiAnalysisSchedulingConfiguration {
         return taskScheduler("ai-finalization-");
     }
 
+    @Bean(name = "aiStaleRecoveryTaskScheduler")
+    ThreadPoolTaskScheduler aiStaleRecoveryTaskScheduler() {
+        return taskScheduler("ai-stale-recovery-");
+    }
+
     private ThreadPoolTaskScheduler taskScheduler(String threadNamePrefix) {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(1);
