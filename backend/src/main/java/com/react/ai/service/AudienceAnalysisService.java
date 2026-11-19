@@ -1,5 +1,6 @@
 package com.react.ai.service;
 
+import com.react.ai.config.AudienceAnalysisRetryProperties;
 import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.dto.AiAnalysisProcessResult;
 import com.react.ai.dto.AiAnalysisResult;
@@ -7,10 +8,13 @@ import com.react.ai.dto.AiTopicResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.dto.AudienceMessage;
 import com.react.ai.exception.InvalidAiAnalysisResultException;
+import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
+import com.react.ai.exception.GeminiAudienceAnalysisException;
 import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AudienceMessageRepository;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,13 +27,22 @@ public class AudienceAnalysisService {
     private final AudienceMessageRepository messages;
     private final AudienceAnalysisLlmClient llmClient;
     private final AiAnalysisJsonParser jsonParser;
+    private final AudienceAnalysisRetryProperties retryProperties;
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                    AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser) {
+        this(analyses, messages, llmClient, jsonParser,
+                new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)));
+    }
+
+    public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
+                                   AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser,
+                                   AudienceAnalysisRetryProperties retryProperties) {
         this.analyses = analyses;
         this.messages = messages;
         this.llmClient = llmClient;
         this.jsonParser = jsonParser;
+        this.retryProperties = retryProperties;
     }
 
     public AiAnalysisProcessResult process(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {
@@ -51,7 +64,7 @@ public class AudienceAnalysisService {
                 return new AiAnalysisProcessResult(acquired.analysis().id(), AiAnalysisStatus.COMPLETED, true, 0);
             }
 
-            AudienceAnalysisLlmResponse response = llmClient.analyze(candidates);
+            AudienceAnalysisLlmResponse response = analyzeWithRetry(candidates);
             if (response == null || response.content() == null || response.modelName() == null
                     || response.modelName().isBlank() || response.modelName().length() > 100) {
                 throw new InvalidAiAnalysisResultException("LLM 응답에 모델 정보 또는 결과가 없습니다.");
@@ -75,6 +88,44 @@ public class AudienceAnalysisService {
         }
     }
 
+    private AudienceAnalysisLlmResponse analyzeWithRetry(List<AudienceMessage> candidates) {
+        int retryCount = 0;
+        while (true) {
+            try {
+                return llmClient.analyze(candidates);
+            } catch (GeminiAudienceAnalysisException e) {
+                if (!e.retryable() || retryCount >= retryProperties.maxRetries()) {
+                    throw e;
+                }
+                retryCount++;
+                waitBeforeRetry(e);
+            }
+        }
+    }
+
+    private void waitBeforeRetry(GeminiAudienceAnalysisException failure) {
+        Duration delay = retryDelay(failure);
+        if (delay.isZero()) {
+            return;
+        }
+        try {
+            Thread.sleep(delay.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new GeminiAudienceAnalysisException(GeminiAudienceAnalysisErrorCode.INTERRUPTED, false, null,
+                    "Gemini 분석 재시도 대기 중 인터럽트되었습니다.");
+        }
+    }
+
+    private Duration retryDelay(GeminiAudienceAnalysisException failure) {
+        Duration retryAfter = failure.retryAfter();
+        if (retryAfter != null && !retryAfter.isNegative()) {
+            return retryAfter.compareTo(retryProperties.maxRetryAfter()) > 0
+                    ? retryProperties.maxRetryAfter() : retryAfter;
+        }
+        return retryProperties.retryDelay();
+    }
+
     private void validateSourceMessages(List<AudienceMessage> candidates, AiAnalysisResult result) {
         Set<Long> candidateIds = new HashSet<>();
         for (AudienceMessage message : candidates) {
@@ -94,6 +145,9 @@ public class AudienceAnalysisService {
     }
 
     private String safeErrorMessage(Exception e) {
+        if (e instanceof GeminiAudienceAnalysisException geminiException) {
+            return geminiException.errorCode().name();
+        }
         if (e instanceof InvalidAiAnalysisResultException) {
             return "INVALID_LLM_RESPONSE";
         }
