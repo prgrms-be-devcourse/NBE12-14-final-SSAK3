@@ -42,6 +42,7 @@ app:
         max-windows-per-run: ${AI_ANALYSIS_SCHEDULER_MAX_WINDOWS_PER_RUN:3}
         max-finalization-rooms-per-run: ${AI_FINALIZATION_MAX_ROOMS_PER_RUN:5}
         finalization-lease-duration: ${AI_FINALIZATION_LEASE_DURATION:90s}
+        stale-analysis-threshold: ${AI_ANALYSIS_STALE_THRESHOLD:2m}
       gemini:
         api-key: ${GEMINI_API_KEY:}
         model: ${GEMINI_MODEL:}

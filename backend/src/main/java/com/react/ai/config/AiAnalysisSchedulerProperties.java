@@ -7,7 +7,7 @@ import java.time.Duration;
 
 @ConfigurationProperties("app.ai.audience.scheduler")
 public record AiAnalysisSchedulerProperties(int maxWindowsPerRun, int maxFinalizationRoomsPerRun,
-                                            Duration finalizationLeaseDuration) {
+                                            Duration finalizationLeaseDuration, Duration staleAnalysisThreshold) {
     @ConstructorBinding
     public AiAnalysisSchedulerProperties {
         if (maxWindowsPerRun <= 0) {
@@ -19,9 +19,17 @@ public record AiAnalysisSchedulerProperties(int maxWindowsPerRun, int maxFinaliz
         if (finalizationLeaseDuration == null || finalizationLeaseDuration.toSeconds() < 1) {
             throw new IllegalArgumentException("AI finalization lease 시간은 1초 이상이어야 합니다.");
         }
+        if (staleAnalysisThreshold == null || staleAnalysisThreshold.toSeconds() < 1) {
+            throw new IllegalArgumentException("AI stale 분석 작업 기준 시간은 1초 이상이어야 합니다.");
+        }
+    }
+
+    public AiAnalysisSchedulerProperties(int maxWindowsPerRun, int maxFinalizationRoomsPerRun,
+                                         Duration finalizationLeaseDuration) {
+        this(maxWindowsPerRun, maxFinalizationRoomsPerRun, finalizationLeaseDuration, Duration.ofMinutes(2));
     }
 
     public AiAnalysisSchedulerProperties(int maxWindowsPerRun) {
-        this(maxWindowsPerRun, 5, Duration.ofSeconds(90));
+        this(maxWindowsPerRun, 5, Duration.ofSeconds(90), Duration.ofMinutes(2));
     }
 }

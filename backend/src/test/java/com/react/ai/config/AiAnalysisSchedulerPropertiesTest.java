@@ -24,4 +24,14 @@ class AiAnalysisSchedulerPropertiesTest {
         assertThatThrownBy(() -> new AiAnalysisSchedulerProperties(3, 5, Duration.ofMillis(999)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void stale_분석_기준_시간은_양수여야_한다() {
+        assertThatThrownBy(() -> new AiAnalysisSchedulerProperties(
+                3, 5, Duration.ofSeconds(90), Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new AiAnalysisSchedulerProperties(
+                3, 5, Duration.ofSeconds(90), Duration.ofMillis(999)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }
