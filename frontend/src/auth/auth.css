@@ -1,0 +1,11 @@
+.auth-app .auth-main { max-width:520px; padding-top:28px; }
+.auth-app .room-heading h1 { font-size:30px; }
+.auth-field-error { color:#b3261e; font-size:13px; margin:5px 0 12px; min-height:21px; }
+.auth-app input[aria-invalid=true] { border-color:#b3261e; }
+.auth-password-hint { font-size:12px; color:#666c75; margin:-8px 0 18px; }
+.auth-submit { width:100%; margin-top:12px; }
+.auth-switch { text-align:center; color:#666c75; font-size:14px; margin:20px 0 0; }
+.room-app .auth-text-button { background:transparent; color:#087f5b; padding:4px 6px; text-decoration:underline; font-size:14px; }
+.room-user-menu { display:flex; align-items:center; gap:16px; }
+.room-user-menu button { font-size:13px; padding:7px 12px; }
+@media(max-width:700px) { .room-top > .room-user-menu { display:flex; }.room-user-menu > span { display:none; } }
