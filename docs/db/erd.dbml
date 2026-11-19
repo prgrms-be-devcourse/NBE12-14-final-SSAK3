@@ -135,6 +135,24 @@ Table ai_analyses {
   }
 }
 
+Table ai_analysis_finalizations {
+  lecture_room_id bigint [pk, not null, ref: > lecture_rooms.id]
+  started_at datetime [not null]
+  ended_at datetime [not null]
+  status varchar(20) [not null, note: 'PENDING, PROCESSING, COMPLETED, FAILED']
+  claim_token varchar(36)
+  lease_until datetime
+  failed_analysis_count int [not null, default: 0]
+  last_error varchar(500)
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  completed_at datetime
+  indexes {
+    (status, lease_until) [name: 'idx_ai_analysis_finalizations_status_lease']
+    ended_at [name: 'idx_ai_analysis_finalizations_ended_at']
+  }
+}
+
 Table ai_topic_groups {
   id bigint [pk, increment]
   analysis_id bigint [not null, ref: > ai_analyses.id]

@@ -33,6 +33,7 @@ class FlywayMigrationTest {
             "polls", "poll_options", "poll_responses",
             "stt_sessions", "stt_segments", "stt_gaps",
             "ai_analyses", "ai_topic_groups", "ai_topic_group_messages",
+            "ai_analysis_finalizations",
             "lecture_reports");
 
     @Autowired
@@ -63,7 +64,7 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void ERD의_16개_테이블이_생성된다() {
+    void ERD의_17개_테이블이_생성된다() {
         List<String> tables = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables "
                         + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'",

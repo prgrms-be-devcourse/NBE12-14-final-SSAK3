@@ -32,4 +32,35 @@ class AiAnalysisWindowCalculatorTest {
                 new AiAnalysisWindowCalculator.AnalysisWindow(startedAt.plusSeconds(30), startedAt.plusSeconds(60))
         );
     }
+
+    @Test
+    void 종료_시_정규_구간과_30초_미만_잔여_구간을_함께_계산한다() {
+        var endedAt = startedAt.plusSeconds(75);
+
+        assertThat(calculator.finalizationWindows(startedAt, endedAt)).containsExactly(
+                new AiAnalysisWindowCalculator.AnalysisWindow(startedAt, startedAt.plusSeconds(30)),
+                new AiAnalysisWindowCalculator.AnalysisWindow(startedAt.plusSeconds(30), startedAt.plusSeconds(60)),
+                new AiAnalysisWindowCalculator.AnalysisWindow(startedAt.plusSeconds(60), endedAt)
+        );
+    }
+
+    @Test
+    void 정확히_30초_경계에서_종료하면_잔여_구간을_만들지_않는다() {
+        assertThat(calculator.finalizationWindows(startedAt, startedAt.plusSeconds(60))).containsExactly(
+                new AiAnalysisWindowCalculator.AnalysisWindow(startedAt, startedAt.plusSeconds(30)),
+                new AiAnalysisWindowCalculator.AnalysisWindow(startedAt.plusSeconds(30), startedAt.plusSeconds(60))
+        );
+    }
+
+    @Test
+    void 삼십초_미만_강연은_하나의_잔여_구간으로_계산한다() {
+        assertThat(calculator.finalizationWindows(startedAt, startedAt.plusSeconds(29))).containsExactly(
+                new AiAnalysisWindowCalculator.AnalysisWindow(startedAt, startedAt.plusSeconds(29))
+        );
+    }
+
+    @Test
+    void 시작과_종료_시각이_같은_빈_강연은_분석_구간을_만들지_않는다() {
+        assertThat(calculator.finalizationWindows(startedAt, startedAt)).isEmpty();
+    }
 }
