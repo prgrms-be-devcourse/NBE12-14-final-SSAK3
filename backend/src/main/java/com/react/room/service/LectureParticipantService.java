@@ -8,7 +8,6 @@ import com.react.room.dto.JoinParticipantResponse;
 import com.react.room.dto.ParticipantMeResponse;
 import com.react.room.entity.LectureParticipant;
 import com.react.room.entity.LectureRoom;
-import com.react.room.entity.LectureRoomStatus;
 import com.react.room.repository.LectureParticipantRepository;
 import com.react.room.repository.LectureRoomRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,12 +31,14 @@ import java.util.regex.Pattern;
 public class LectureParticipantService {
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
     private static final Pattern TOKEN_PATTERN =
             Pattern.compile("[A-Za-z0-9_-]{43}");
 
     private final LectureRoomRepository roomRepository;
     private final LectureParticipantRepository participantRepository;
     private final ParticipantSessionPolicy sessionPolicy;
+    private final ParticipantJoinWriteService joinWriteService;
 
     private final IdempotencyKeyValidator idempotencyKeyValidator;
     private final IdempotencyTokenGenerator idempotencyTokenGenerator;
@@ -49,8 +50,11 @@ public class LectureParticipantService {
      * 쿠키가 없는 최초 입장에서는 Idempotency-Key로 중복 생성을 방지한다.
      *
      * 이 메서드 바깥에는 @Transactional을 적용하지 않는다.
-     * INSERT UNIQUE 충돌이 발생하면 Repository의 저장 트랜잭션이
+     * INSERT UNIQUE 충돌이 발생하면 쓰기 서비스의 트랜잭션이
      * 종료된 후 기존 참여자 정보를 다시 조회해야 하기 때문이다.
+     *
+     * 최초 저장의 방 행 잠금과 상태 검사는
+     * ParticipantJoinWriteService에서 처리한다.
      */
     public JoinResult join(
             String joinCode,
@@ -71,6 +75,7 @@ public class LectureParticipantService {
 
         if (existing.isPresent()
                 && existing.get().getLectureRoom().getId().equals(room.getId())) {
+
             // 동일 방의 재입장: 새 참여자를 만들거나 새 토큰을 발급하지 않는다.
             return new JoinResult(
                     toJoinResponse(existing.get()),
@@ -105,29 +110,32 @@ public class LectureParticipantService {
             );
         }
 
-        if (room.getStatus() == LectureRoomStatus.ENDED) {
-            throw new BusinessException(ErrorCode.ROOM_ENDED);
-        }
-
         try {
-            // Repository의 저장 트랜잭션이 여기서 커밋된다.
-            LectureParticipant saved = participantRepository.saveAndFlush(
-                    new LectureParticipant(
-                            room,
+            // 방 잠금, ENDED 검사, INSERT를 별도 트랜잭션에서 처리한다.
+            ParticipantJoinWriteService.SaveResult result =
+                    joinWriteService.saveIfAbsent(
+                            room.getId(),
                             validNickname,
                             tokenHash
-                    )
-            );
+                    );
+
+            if (!result.created()) {
+                return repeatedJoin(
+                        result.participant(),
+                        room.getId(),
+                        rawToken
+                );
+            }
 
             return new JoinResult(
-                    toJoinResponse(saved),
+                    toJoinResponse(result.participant()),
                     rawToken,
                     true
             );
 
         } catch (DataIntegrityViolationException e) {
-            // 동일 키의 동시 요청은 DB UNIQUE 제약으로 한 건만 저장된다.
-            // 충돌한 요청은 먼저 저장된 참여자를 다시 조회한다.
+            // UNIQUE 충돌이 발생해도 쓰기 트랜잭션은 이미 롤백되었다.
+            // 따라서 별도 조회로 기존 참여자를 복원할 수 있다.
             return participantRepository.findByParticipantTokenHash(tokenHash)
                     .map(participant ->
                             repeatedJoin(

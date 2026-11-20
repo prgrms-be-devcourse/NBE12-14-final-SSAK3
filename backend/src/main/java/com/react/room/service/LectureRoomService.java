@@ -4,15 +4,20 @@ import com.react.auth.entity.User;
 import com.react.auth.repository.UserRepository;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
-import com.react.room.entity.LectureRoom;
-import com.react.room.entity.LectureRoomStatus;
+import com.react.poll.service.PollService;
 import com.react.room.dto.CreateRoomRequest;
 import com.react.room.dto.CreateRoomResponse;
+import com.react.room.dto.EndRoomResponse;
 import com.react.room.dto.PublicRoomResponse;
 import com.react.room.dto.RoomDetailResponse;
 import com.react.room.dto.RoomInvitationResponse;
+import com.react.room.dto.StartRoomResponse;
+import com.react.room.entity.LectureRoom;
+import com.react.room.entity.LectureRoomStatus;
+import com.react.room.event.RoomStatusChangedEvent;
 import com.react.room.repository.LectureRoomRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -24,27 +29,38 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 
 @Service
+@Transactional(readOnly = true)
 public class LectureRoomService {
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String JOIN_CODE_CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final String JOIN_CODE_CHARACTERS =
+            "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int JOIN_CODE_LENGTH = 12;
     private static final int MAX_CODE_ATTEMPTS = 10;
+
     private final LectureRoomRepository lectureRoomRepository;
     private final UserRepository userRepository;
+    private final PollService pollService;
+    private final ApplicationEventPublisher eventPublisher;
     private final String joinBaseUrl;
 
     public LectureRoomService(
             LectureRoomRepository lectureRoomRepository,
             UserRepository userRepository,
-            @Value("${ROOM_JOIN_BASE_URL:http://localhost:5173}") String joinBaseUrl
+            PollService pollService,
+            ApplicationEventPublisher eventPublisher,
+            @Value("${ROOM_JOIN_BASE_URL:http://localhost:5173}")
+            String joinBaseUrl
     ) {
         this.lectureRoomRepository = lectureRoomRepository;
         this.userRepository = userRepository;
+        this.pollService = pollService;
+        this.eventPublisher = eventPublisher;
         this.joinBaseUrl = joinBaseUrl;
     }
 
+    // 강연방 생성
     @Transactional
     public CreateRoomResponse create(
             CreateRoomRequest request,
@@ -72,7 +88,7 @@ public class LectureRoomService {
         );
     }
 
-    @Transactional(readOnly = true)
+    // 강연방 초대 정보 조회
     public RoomInvitationResponse invitation(
             Long roomId,
             Authentication authentication
@@ -92,7 +108,7 @@ public class LectureRoomService {
         );
     }
 
-    @Transactional(readOnly = true)
+    // 강연방 상세 조회
     public RoomDetailResponse detail(
             Long roomId,
             Authentication authentication
@@ -111,7 +127,7 @@ public class LectureRoomService {
         );
     }
 
-    @Transactional(readOnly = true)
+    // 공개 강연방 정보 조회
     public PublicRoomResponse publicDetail(String joinCode) {
 
         LectureRoom room = lectureRoomRepository.findByJoinCode(joinCode)
@@ -131,6 +147,83 @@ public class LectureRoomService {
         );
     }
 
+    // SCRUM-130: 강연 시작
+    @Transactional
+    public StartRoomResponse start(
+            Long roomId,
+            Authentication authentication
+    ) {
+        LectureRoom room = findOwnedRoomForUpdate(
+                roomId,
+                authentication
+        );
+
+        // READY -> LIVE
+        room.start();
+
+        lectureRoomRepository.flush();
+
+        Instant startedAt = toInstant(room.getStartedAt());
+
+        eventPublisher.publishEvent(
+                new RoomStatusChangedEvent(
+                        room.getId(),
+                        room.getStatus(),
+                        startedAt
+                )
+        );
+
+        return new StartRoomResponse(
+                room.getId(),
+                room.getStatus().name(),
+                startedAt
+        );
+    }
+
+    // SCRUM-130: 강연 종료
+    @Transactional
+    public EndRoomResponse end(
+            Long roomId,
+            Authentication authentication
+    ) {
+        LectureRoom room = findOwnedRoomForUpdate(
+                roomId,
+                authentication
+        );
+
+        // LIVE -> ENDED
+        // 다른 상태에서는 INVALID_ROOM_STATUS 예외 발생
+        room.end();
+
+        lectureRoomRepository.flush();
+
+        // 기존 투표 서비스의 종료 처리 메서드 재사용
+        // 강연 종료와 동일한 트랜잭션에서 진행
+        pollService.closeOpenPollsOnRoomEnded(room.getId());
+
+        Instant endedAt = toInstant(room.getEndedAt());
+
+        // 트랜잭션 커밋 이후 WebSocket 이벤트 발행
+        eventPublisher.publishEvent(
+                new RoomStatusChangedEvent(
+                        room.getId(),
+                        room.getStatus(),
+                        endedAt
+                )
+        );
+
+        // 종료 직후 상태를 반환한다.
+        // AI 후처리는 기존 스케줄러에서 진행한다.
+        return new EndRoomResponse(
+                room.getId(),
+                room.getStatus().name(),
+                endedAt,
+                false,
+                true
+        );
+    }
+
+    // 강연방 소유자 확인 (조회용)
     private LectureRoom findOwnedRoom(
             Long roomId,
             Authentication authentication
@@ -149,6 +242,26 @@ public class LectureRoomService {
         return room;
     }
 
+    // 상태 변경 요청 시 강연방 행 잠금 및 소유자 확인
+    private LectureRoom findOwnedRoomForUpdate(
+            Long roomId,
+            Authentication authentication
+    ) {
+        User host = requireHost(authentication);
+
+        LectureRoom room = lectureRoomRepository.findForUpdate(roomId)
+                .orElseThrow(() ->
+                        new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+                );
+
+        if (!room.getHost().getId().equals(host.getId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        return room;
+    }
+
+    // HOST 인증 확인
     private User requireHost(Authentication authentication) {
 
         if (authentication == null
@@ -174,6 +287,7 @@ public class LectureRoomService {
                 );
     }
 
+    // 중복되지 않는 강연방 참여 코드 생성
     private String generateUniqueJoinCode() {
 
         for (int attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
@@ -181,8 +295,13 @@ public class LectureRoomService {
             StringBuilder code = new StringBuilder(JOIN_CODE_LENGTH);
 
             for (int i = 0; i < JOIN_CODE_LENGTH; i++) {
-                int index = RANDOM.nextInt(JOIN_CODE_CHARACTERS.length());
-                code.append(JOIN_CODE_CHARACTERS.charAt(index));
+                int index = RANDOM.nextInt(
+                        JOIN_CODE_CHARACTERS.length()
+                );
+
+                code.append(
+                        JOIN_CODE_CHARACTERS.charAt(index)
+                );
             }
 
             String joinCode = code.toString();
@@ -195,6 +314,7 @@ public class LectureRoomService {
         throw new BusinessException(ErrorCode.CONFLICT);
     }
 
+    // DB LocalDateTime -> API Instant
     private Instant toInstant(LocalDateTime dateTime) {
 
         if (dateTime == null) {

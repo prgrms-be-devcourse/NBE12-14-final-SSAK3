@@ -3,8 +3,10 @@ package com.react.room.controller;
 import com.react.global.response.ApiResponse;
 import com.react.room.dto.CreateRoomRequest;
 import com.react.room.dto.CreateRoomResponse;
+import com.react.room.dto.EndRoomResponse;
 import com.react.room.dto.RoomDetailResponse;
 import com.react.room.dto.RoomInvitationResponse;
+import com.react.room.dto.StartRoomResponse;
 import com.react.room.service.LectureRoomService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -53,5 +55,25 @@ public class LectureRoomController {
                 lectureRoomService.detail(roomId, authentication);
 
         return ApiResponse.of(response);
+    }
+
+    @PostMapping("/{roomId}/start")
+    public ApiResponse<StartRoomResponse> start(
+            @PathVariable Long roomId,
+            Authentication authentication
+    ) {
+        return ApiResponse.of(
+                lectureRoomService.start(roomId, authentication)
+        );
+    }
+
+    @PostMapping("/{roomId}/end")
+    public ApiResponse<EndRoomResponse> end(
+            @PathVariable Long roomId,
+            Authentication authentication
+    ) {
+        return ApiResponse.of(
+                lectureRoomService.end(roomId, authentication)
+        );
     }
 }
