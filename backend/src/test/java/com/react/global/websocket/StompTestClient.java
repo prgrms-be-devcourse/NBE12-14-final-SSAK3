@@ -44,7 +44,11 @@ public final class StompTestClient {
                 .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
-    /** 구독하고, 받은 메시지를 도착 순서대로 큐에 쌓는다. */
+    /**
+     * 구독하고, 받은 메시지를 도착 순서대로 큐에 쌓는다.
+     * 서버의 내장 브로커는 구독 완료를 알려 주지 않으므로(영수증 미지원), 구독이 등록된 시점은
+     * awaitBroadcast 로 방송을 반복해 보내 보며 확인한다.
+     */
     public BlockingQueue<Map<String, Object>> subscribe(StompSession session, String destination) {
         BlockingQueue<Map<String, Object>> received = new LinkedBlockingQueue<>();
         session.subscribe(destination, new StompFrameHandler() {
@@ -65,5 +69,31 @@ public final class StompTestClient {
     /** 메시지가 올 때까지 기다린다. 시간 안에 안 오면 null. */
     public static Map<String, Object> next(BlockingQueue<Map<String, Object>> received) throws InterruptedException {
         return received.poll(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * 구독이 등록되어 방송이 닿을 때까지 broadcast 를 짧은 간격으로 반복하며 첫 메시지를 기다린다.
+     * 시간 안에 못 받으면 null. 중복 방송은 큐에 더 쌓일 수 있으므로, 이후 검사는 필요하면 큐를 비우고 한다.
+     */
+    public static Map<String, Object> awaitBroadcast(BlockingQueue<Map<String, Object>> received, Runnable broadcast)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            broadcast.run();
+            Map<String, Object> message = received.poll(100, TimeUnit.MILLISECONDS);
+            if (message != null) {
+                return message;
+            }
+        }
+        return null;
+    }
+
+    /** 서버가 연결을 끊을 때까지 기다린다. 구독이 거절되면 서버가 ERROR 를 보내고 연결을 닫는다. */
+    public static boolean awaitClosed(StompSession session) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+        while (session.isConnected() && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+        }
+        return !session.isConnected();
     }
 }
