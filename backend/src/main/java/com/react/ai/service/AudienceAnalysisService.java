@@ -1,20 +1,27 @@
 package com.react.ai.service;
 
 import com.react.ai.config.AudienceAnalysisRetryProperties;
+import com.react.ai.config.AudienceAnalysisCostProperties;
+import com.react.ai.domain.AiLlmCallStatus;
 import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.dto.AiAnalysisProcessResult;
 import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AiTopicResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.dto.AudienceMessage;
+import com.react.ai.dto.AiLlmCallUsage;
 import com.react.ai.exception.InvalidAiAnalysisResultException;
 import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
 import com.react.ai.exception.GeminiAudienceAnalysisException;
 import com.react.ai.repository.AiAnalysisRepository;
+import com.react.ai.repository.AiLlmCallUsageRepository;
 import com.react.ai.repository.AudienceMessageRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,26 +30,43 @@ import java.util.Set;
  * 스케줄러와 외부 LLM 제공자에 의존하지 않는 분석 처리 코어다.
  */
 public class AudienceAnalysisService {
+    private static final Logger log = LoggerFactory.getLogger(AudienceAnalysisService.class);
     private final AiAnalysisRepository analyses;
     private final AudienceMessageRepository messages;
     private final AudienceAnalysisLlmClient llmClient;
     private final AiAnalysisJsonParser jsonParser;
     private final AudienceAnalysisRetryProperties retryProperties;
+    private final AiLlmCallUsageRepository usages;
+    private final AudienceAnalysisCostProperties costProperties;
+    private final AiLlmCostCalculator costCalculator;
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                    AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser) {
         this(analyses, messages, llmClient, jsonParser,
-                new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)));
+                new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), null,
+                new AudienceAnalysisCostProperties(null, null));
     }
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                    AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser,
                                    AudienceAnalysisRetryProperties retryProperties) {
+        this(analyses, messages, llmClient, jsonParser, retryProperties, null,
+                new AudienceAnalysisCostProperties(null, null));
+    }
+
+    public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
+                                   AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser,
+                                   AudienceAnalysisRetryProperties retryProperties,
+                                   AiLlmCallUsageRepository usages,
+                                   AudienceAnalysisCostProperties costProperties) {
         this.analyses = analyses;
         this.messages = messages;
         this.llmClient = llmClient;
         this.jsonParser = jsonParser;
         this.retryProperties = retryProperties;
+        this.usages = usages;
+        this.costProperties = costProperties;
+        this.costCalculator = new AiLlmCostCalculator();
     }
 
     public AiAnalysisProcessResult process(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {
@@ -64,7 +88,7 @@ public class AudienceAnalysisService {
                 return new AiAnalysisProcessResult(acquired.analysis().id(), AiAnalysisStatus.COMPLETED, true, 0);
             }
 
-            AudienceAnalysisLlmResponse response = analyzeWithRetry(candidates);
+            AudienceAnalysisLlmResponse response = analyzeWithRetry(acquired.analysis().id(), candidates);
             if (response == null || response.content() == null || response.modelName() == null
                     || response.modelName().isBlank() || response.modelName().length() > 100) {
                 throw new InvalidAiAnalysisResultException("LLM 응답에 모델 정보 또는 결과가 없습니다.");
@@ -88,19 +112,91 @@ public class AudienceAnalysisService {
         }
     }
 
-    private AudienceAnalysisLlmResponse analyzeWithRetry(List<AudienceMessage> candidates) {
+    private AudienceAnalysisLlmResponse analyzeWithRetry(long analysisId, List<AudienceMessage> candidates) {
         int retryCount = 0;
         while (true) {
+            int attemptNumber = retryCount + 1;
+            long startedAtNanos = System.nanoTime();
             try {
-                return llmClient.analyze(candidates);
+                AudienceAnalysisLlmResponse response = llmClient.analyze(candidates);
+                recordSuccessfulCall(analysisId, attemptNumber, response, elapsedMillis(startedAtNanos));
+                return response;
             } catch (GeminiAudienceAnalysisException e) {
+                recordFailedCall(analysisId, attemptNumber, e.errorCode().name(), e.usage(),
+                        elapsedMillis(startedAtNanos));
                 if (!e.retryable() || retryCount >= retryProperties.maxRetries()) {
                     throw e;
                 }
                 retryCount++;
                 waitBeforeRetry(e);
+            } catch (RuntimeException e) {
+                recordFailedCall(analysisId, attemptNumber, "AI_ANALYSIS_PROCESSING_FAILED", null,
+                        elapsedMillis(startedAtNanos));
+                throw e;
             }
         }
+    }
+
+    private long elapsedMillis(long startedAtNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos);
+    }
+
+    private void recordSuccessfulCall(long analysisId, int attemptNumber, AudienceAnalysisLlmResponse response,
+                                      long durationMs) {
+        try {
+            AudienceAnalysisLlmResponse.Usage usage = response.usage();
+            var estimate = costCalculator.estimate(usage, costProperties).orElse(null);
+            saveUsage(new AiLlmCallUsage(
+                    analysisId, attemptNumber, safeModelName(response.modelName()), AiLlmCallStatus.SUCCESS, null,
+                    usage == null ? null : usage.promptTokenCount(),
+                    usage == null ? null : usage.outputTokenCount(),
+                    usage == null ? null : usage.totalTokenCount(),
+                    durationMs,
+                    estimate == null ? null : estimate.inputUsdPerMillionTokens(),
+                    estimate == null ? null : estimate.outputUsdPerMillionTokens(),
+                    estimate == null ? null : estimate.estimatedCostMicrousd()
+            ));
+        } catch (RuntimeException e) {
+            log.warn("AI Gemini 성공 호출 이력 생성에 실패했습니다. analysisId={}, attemptNumber={}",
+                    analysisId, attemptNumber, e);
+        }
+    }
+
+    private void recordFailedCall(long analysisId, int attemptNumber, String errorCode,
+                                  AudienceAnalysisLlmResponse.Usage usage, long durationMs) {
+        try {
+            var estimate = costCalculator.estimate(usage, costProperties).orElse(null);
+            saveUsage(new AiLlmCallUsage(
+                    analysisId, attemptNumber, safeModelName(llmClient.modelName()), AiLlmCallStatus.FAILED, errorCode,
+                    usage == null ? null : usage.promptTokenCount(),
+                    usage == null ? null : usage.outputTokenCount(),
+                    usage == null ? null : usage.totalTokenCount(),
+                    durationMs,
+                    estimate == null ? null : estimate.inputUsdPerMillionTokens(),
+                    estimate == null ? null : estimate.outputUsdPerMillionTokens(),
+                    estimate == null ? null : estimate.estimatedCostMicrousd()
+            ));
+        } catch (RuntimeException e) {
+            log.warn("AI Gemini 실패 호출 이력 생성에 실패했습니다. analysisId={}, attemptNumber={}",
+                    analysisId, attemptNumber, e);
+        }
+    }
+
+    /** 호출 이력은 관측용 부가 데이터다. 저장 장애가 분석 결과의 상태 전이를 방해하지 않는다. */
+    private void saveUsage(AiLlmCallUsage usage) {
+        if (usages == null) {
+            return;
+        }
+        try {
+            usages.save(usage);
+        } catch (RuntimeException e) {
+            log.warn("AI Gemini 호출 이력 저장에 실패했습니다. analysisId={}, attemptNumber={}",
+                    usage.analysisId(), usage.attemptNumber(), e);
+        }
+    }
+
+    private String safeModelName(String modelName) {
+        return modelName == null || modelName.isBlank() || modelName.length() > 100 ? null : modelName;
     }
 
     private void waitBeforeRetry(GeminiAudienceAnalysisException failure) {

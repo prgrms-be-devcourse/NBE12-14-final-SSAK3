@@ -2,11 +2,16 @@ package com.react.ai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.domain.AiAnalysisStatus;
+import com.react.ai.domain.AiLlmCallStatus;
+import com.react.ai.config.AudienceAnalysisCostProperties;
+import com.react.ai.config.AudienceAnalysisRetryProperties;
+import com.react.ai.dto.AiLlmCallUsage;
 import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
 import com.react.ai.exception.GeminiAudienceAnalysisException;
 import com.react.ai.dto.AudienceMessage;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.repository.AiAnalysisRepository;
+import com.react.ai.repository.AiLlmCallUsageRepository;
 import com.react.ai.repository.AudienceMessageRepository;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +28,7 @@ class AudienceAnalysisServiceTest {
     private final AiAnalysisRepository analyses = mock(AiAnalysisRepository.class);
     private final AudienceMessageRepository messages = mock(AudienceMessageRepository.class);
     private final AudienceAnalysisLlmClient llm = mock(AudienceAnalysisLlmClient.class);
+    private final AiLlmCallUsageRepository usages = mock(AiLlmCallUsageRepository.class);
     private final AudienceAnalysisService service = new AudienceAnalysisService(
             analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()));
     private final LocalDateTime start = LocalDateTime.of(2026, 11, 17, 10, 0);
@@ -142,6 +148,67 @@ class AudienceAnalysisServiceTest {
         verify(analyses).markFailed(1L, "INVALID_LLM_RESPONSE");
     }
 
+    @Test
+    void 재시도_호출은_시도별로_실패와_성공_이력을_각각_저장한다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.modelName()).thenReturn("gemini-test");
+        when(llm.analyze(any()))
+                .thenThrow(retryable(GeminiAudienceAnalysisErrorCode.RATE_LIMIT))
+                .thenReturn(new AudienceAnalysisLlmResponse(
+                        "{\"topics\":[{\"topic\":\"주제\",\"summary\":\"요약\",\"category\":\"QUESTION\",\"sourceMessageIds\":[100]}]}",
+                        "gemini-test", new AudienceAnalysisLlmResponse.Usage(120L, 80L, 200L)));
+
+        observedService().process(10L, start, end);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(AiLlmCallUsage.class);
+        verify(usages, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues()).extracting(AiLlmCallUsage::attemptNumber).containsExactly(1, 2);
+        assertThat(captor.getAllValues()).extracting(AiLlmCallUsage::callStatus)
+                .containsExactly(AiLlmCallStatus.FAILED, AiLlmCallStatus.SUCCESS);
+        assertThat(captor.getAllValues().getFirst().errorCode()).isEqualTo("RATE_LIMIT");
+        assertThat(captor.getAllValues().getFirst().promptTokenCount()).isNull();
+        assertThat(captor.getAllValues().get(1).estimatedCostMicrousd()).isEqualTo(150L);
+    }
+
+    @Test
+    void 호출_이력_저장_실패는_분석_완료를_막지_않는다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.analyze(any())).thenReturn(response("""
+                {"topics":[{"topic":"주제","summary":"요약","category":"QUESTION","sourceMessageIds":[100]}]}
+                """));
+        doThrow(new IllegalStateException("usage database failure")).when(usages).save(any());
+
+        var result = observedService().process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        verify(analyses).saveCompleted(eq(1L), any(), eq("fake-model"));
+    }
+
+    @Test
+    void usageMetadata가_있는_비정상_Gemini_응답은_FAILED_이력에_토큰을_기록한다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.modelName()).thenReturn("gemini-test");
+        when(llm.analyze(any())).thenThrow(new GeminiAudienceAnalysisException(
+                GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE, false, null,
+                new AudienceAnalysisLlmResponse.Usage(120L, 80L, 200L), "invalid response"));
+
+        var result = observedService().process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        verify(llm).analyze(any());
+        var captor = org.mockito.ArgumentCaptor.forClass(AiLlmCallUsage.class);
+        verify(usages).save(captor.capture());
+        assertThat(captor.getValue()).extracting(
+                AiLlmCallUsage::callStatus, AiLlmCallUsage::errorCode,
+                AiLlmCallUsage::promptTokenCount, AiLlmCallUsage::outputTokenCount,
+                AiLlmCallUsage::totalTokenCount, AiLlmCallUsage::estimatedCostMicrousd)
+                .containsExactly(AiLlmCallStatus.FAILED, "INVALID_RESPONSE", 120L, 80L, 200L, 150L);
+        verify(analyses).markFailed(1L, "INVALID_RESPONSE");
+    }
+
     private void retryableFailureThenSuccess(GeminiAudienceAnalysisErrorCode errorCode) {
         acquireCreated(1L);
         when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
@@ -181,5 +248,11 @@ class AudienceAnalysisServiceTest {
 
     private AudienceAnalysisLlmResponse response(String content) {
         return new AudienceAnalysisLlmResponse(content, "fake-model");
+    }
+
+    private AudienceAnalysisService observedService() {
+        return new AudienceAnalysisService(analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()),
+                new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), usages,
+                new AudienceAnalysisCostProperties("0.25", "1.50"));
     }
 }

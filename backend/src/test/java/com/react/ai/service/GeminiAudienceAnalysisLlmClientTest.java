@@ -2,6 +2,7 @@ package com.react.ai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.config.GeminiAudienceAnalysisProperties;
+import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.dto.AudienceMessage;
 import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
 import com.react.ai.exception.GeminiAudienceAnalysisException;
@@ -67,6 +68,22 @@ class GeminiAudienceAnalysisLlmClientTest {
 
         assertThat(result.modelName()).isEqualTo(MODEL);
         assertThat(result.content()).isEqualTo("{\"topics\":[]}");
+        assertThat(result.usage()).isEqualTo(new AudienceAnalysisLlmResponse.Usage(120L, 30L, 150L));
+        server.verify();
+    }
+
+    @Test
+    void usageMetadata가_없으면_토큰_사용량을_0으로_간주하지_않는다() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://gemini.test/v1beta/models/" + MODEL + ":generateContent"))
+                .andRespond(withSuccess("""
+                        {"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"{\\"topics\\":[]}"}]}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        var result = client(builder.build(), properties()).analyze(List.of(message(1001L, "질문 내용")));
+
+        assertThat(result.usage()).isEqualTo(new AudienceAnalysisLlmResponse.Usage(null, null, null));
         server.verify();
     }
 
@@ -112,7 +129,33 @@ class GeminiAudienceAnalysisLlmClientTest {
 
         assertThatThrownBy(() -> client(builder.build(), properties()).analyze(List.of(message(1L, "질문"))))
                 .isInstanceOf(GeminiAudienceAnalysisException.class)
-                .hasMessage("Gemini 분석 응답이 정상 종료되지 않았습니다.");
+                .hasMessage("Gemini 분석 응답이 정상 종료되지 않았습니다.")
+                .satisfies(error -> assertThat(((GeminiAudienceAnalysisException) error).usage())
+                        .isEqualTo(new AudienceAnalysisLlmResponse.Usage(120L, 30L, 150L)));
+    }
+
+    @Test
+    void candidate_또는_content가_누락된_HTTP_200_응답도_usageMetadata를_보존한다() {
+        assertInvalidResponseUsage("""
+                {"candidates":[],"usageMetadata":{"promptTokenCount":120,"candidatesTokenCount":30,"totalTokenCount":150}}
+                """);
+        assertInvalidResponseUsage("""
+                {"candidates":[{"finishReason":"STOP","content":{"parts":[]}}],
+                "usageMetadata":{"promptTokenCount":120,"candidatesTokenCount":30,"totalTokenCount":150}}
+                """);
+    }
+
+    @Test
+    void usageMetadata가_없는_비정상_HTTP_200_응답은_토큰을_추정하지_않는다() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://gemini.test/v1beta/models/" + MODEL + ":generateContent"))
+                .andRespond(withSuccess("{\"candidates\":[]}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client(builder.build(), properties()).analyze(List.of(message(1L, "질문"))))
+                .isInstanceOf(GeminiAudienceAnalysisException.class)
+                .satisfies(error -> assertThat(((GeminiAudienceAnalysisException) error).usage())
+                        .isEqualTo(new AudienceAnalysisLlmResponse.Usage(null, null, null)));
     }
 
     @Test
@@ -217,6 +260,23 @@ class GeminiAudienceAnalysisLlmClientTest {
         assertThat(error.getCause()).isNull();
     }
 
+    private void assertInvalidResponseUsage(String response) {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://gemini.test/v1beta/models/" + MODEL + ":generateContent"))
+                .andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client(builder.build(), properties()).analyze(List.of(message(1L, "질문"))))
+                .isInstanceOf(GeminiAudienceAnalysisException.class)
+                .satisfies(error -> {
+                    GeminiAudienceAnalysisException geminiError = (GeminiAudienceAnalysisException) error;
+                    assertThat(geminiError.errorCode()).isEqualTo(GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE);
+                    assertThat(geminiError.usage())
+                            .isEqualTo(new AudienceAnalysisLlmResponse.Usage(120L, 30L, 150L));
+                });
+        server.verify();
+    }
+
     private GeminiAudienceAnalysisLlmClient client(RestClient restClient, GeminiAudienceAnalysisProperties properties) {
         return new GeminiAudienceAnalysisLlmClient(restClient, objectMapper, properties);
     }
@@ -236,7 +296,8 @@ class GeminiAudienceAnalysisLlmClientTest {
 
     private String geminiResponse(String text, String finishReason) {
         return """
-                {"candidates":[{"finishReason":%s,"content":{"parts":[{"text":%s}]}}]}
+                {"candidates":[{"finishReason":%s,"content":{"parts":[{"text":%s}]}}],
+                "usageMetadata":{"promptTokenCount":120,"candidatesTokenCount":30,"totalTokenCount":150}}
                 """.formatted(toJsonString(finishReason), toJsonString(text));
     }
 

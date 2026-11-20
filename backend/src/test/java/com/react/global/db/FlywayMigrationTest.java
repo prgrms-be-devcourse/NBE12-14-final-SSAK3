@@ -34,6 +34,7 @@ class FlywayMigrationTest {
             "stt_sessions", "stt_segments", "stt_gaps",
             "ai_analyses", "ai_topic_groups", "ai_topic_group_messages",
             "ai_analysis_finalizations",
+            "ai_llm_call_usages",
             "lecture_reports");
 
     @Autowired
@@ -64,7 +65,7 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void ERD의_17개_테이블이_생성된다() {
+    void ERD의_16개_테이블이_생성된다() {
         List<String> tables = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables "
                         + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'",
@@ -146,6 +147,38 @@ class FlywayMigrationTest {
                 + "VALUES (?, '2026-11-17 10:00:00', '2026-11-17 10:00:30', 'PENDING', NOW())";
         jdbc.update(insertAnalysis, roomId);
         assertThatThrownBy(() -> jdbc.update(insertAnalysis, roomId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void AI_호출_이력은_필수_컬럼과_분석_FK와_시도별_UNIQUE_제약을_가진다() {
+        List<String> requiredColumns = List.of(
+                "id", "analysis_id", "attempt_number", "model_name", "call_status", "error_code",
+                "prompt_token_count", "output_token_count", "total_token_count", "duration_ms",
+                "input_usd_per_million_tokens", "output_usd_per_million_tokens",
+                "estimated_cost_microusd", "created_at");
+        List<String> columns = jdbc.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'ai_llm_call_usages'
+                """, String.class);
+        assertThat(columns).containsExactlyInAnyOrderElementsOf(requiredColumns);
+
+        long hostId = insertUser("usage-host@example.com");
+        long roomId = insertRoom(hostId, "USAGE01");
+        long analysisId = insertAndGetId("""
+                INSERT INTO ai_analyses(lecture_room_id, window_start_at, window_end_at, status, created_at)
+                VALUES (?, '2026-11-17 10:00:00', '2026-11-17 10:00:30', 'PENDING', NOW())
+                """, roomId);
+        String insertUsage = """
+                INSERT INTO ai_llm_call_usages(analysis_id, attempt_number, call_status, duration_ms, created_at)
+                VALUES (?, ?, 'FAILED', 0, NOW())
+                """;
+
+        assertThatThrownBy(() -> jdbc.update(insertUsage, 999_999L, 1))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatCode(() -> jdbc.update(insertUsage, analysisId, 1)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> jdbc.update(insertUsage, analysisId, 1))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
