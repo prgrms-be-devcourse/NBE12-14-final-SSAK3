@@ -122,6 +122,22 @@ class StompSubscribeAuthTest {
         assertThat(StompTestClient.awaitClosed(session)).isTrue();
     }
 
+    @Test
+    void 강연_상태_알림도_그_방_사람만_구독할_수_있다() throws Exception {
+        StompSession ownSession = client.connect(StompTestClient.ALLOWED_ORIGIN, participantCookie(roomA));
+        var received = client.subscribe(ownSession, "/topic/rooms/" + roomA.getId() + "/status");
+
+        assertThat(StompTestClient.awaitBroadcast(received, () -> broker.convertAndSend(
+                "/topic/rooms/" + roomA.getId() + "/status", Map.of("type", "ROOM_STATUS_CHANGED"))))
+                .containsEntry("type", "ROOM_STATUS_CHANGED");
+        ownSession.disconnect();
+
+        StompSession otherSession = client.connect(StompTestClient.ALLOWED_ORIGIN, participantCookie(roomA));
+        client.subscribe(otherSession, "/topic/rooms/" + roomB.getId() + "/status");
+
+        assertThat(StompTestClient.awaitClosed(otherSession)).isTrue();
+    }
+
     private void broadcast(LectureRoom room, String content) {
         broker.convertAndSend("/topic/rooms/" + room.getId() + "/chat",
                 Map.of("type", "CHAT_CREATED", "data", Map.of("content", content)));

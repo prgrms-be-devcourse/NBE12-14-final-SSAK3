@@ -279,6 +279,24 @@ class StompChatSendTest {
         session.disconnect();
     }
 
+    @Test
+    void 방송_주소로_직접_전송하면_거절되고_아무에게도_가지_않는다() throws Exception {
+        var attacker = join("청중A");
+        var listener = join("청중B");
+        StompSession attackerSession = client.connect(StompTestClient.ALLOWED_ORIGIN, attacker.cookie());
+        StompSession listenerSession = client.connect(StompTestClient.ALLOWED_ORIGIN, listener.cookie());
+        var queue = subscribeReady(listenerSession, room);
+
+        // 서버를 거치지 않고, 강연자가 보낸 것처럼 꾸민 CHAT_CREATED 를 방송 주소에 직접 보낸다.
+        attackerSession.send("/topic/rooms/" + room.getId() + "/chat", Map.of("type", "CHAT_CREATED",
+                "data", Map.of("content", "가짜 방송", "sender", Map.of("type", "HOST", "id", host.getId(), "name", "강연자"))));
+
+        assertThat(StompTestClient.awaitClosed(attackerSession)).isTrue();
+        assertThat(StompTestClient.nextOfType(queue, "CHAT_CREATED", 500)).isNull();
+        assertThat(savedCount(room)).isZero();
+        listenerSession.disconnect();
+    }
+
     /** 오류 우편함을 구독한 뒤, 거절될 메시지를 오류가 올 때까지 반복해 보내고 받은 오류 코드를 확인한다. */
     private void expectError(StompSession session, String destination, Object payload, ErrorCode expected)
             throws InterruptedException {
