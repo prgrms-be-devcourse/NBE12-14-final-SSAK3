@@ -37,7 +37,7 @@
 - 다른 강연방 채널에 전송하거나 구독할 수 없다.
 - 채팅 저장은 AI 분석 완료 여부와 독립적이다. AI 청중 의견 요약에는 청중 작성 메시지만 포함한다.
 
-오류 이벤트는 발신자 전용 채널 `/user/queue/errors` 로 전달하는 방식을 제안한다.
+오류 이벤트는 발신자 전용 채널 `/user/queue/errors` 로 전달한다. 코드는 REST 와 같다: `INVALID_INPUT`(빈 문자열·1,000자 초과·본문 형식 오류), `UNAUTHENTICATED`(이 방의 쿠키·로그인 없음), `FORBIDDEN`(다른 방 소속), `ROOM_NOT_LIVE`, `ROOM_ENDED`. 예상하지 못한 오류는 내부 내용 없이 `INTERNAL_ERROR` 만 알린다.
 
 ```json
 { "type": "ERROR", "code": "ROOM_NOT_LIVE", "message": "진행 중인 강연이 아닙니다." }

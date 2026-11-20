@@ -167,15 +167,10 @@ class SecurityConfigTest {
     }
 
     @Test
-    void 권한_구현_전까지_채팅_조회와_WebSocket을_차단한다()
+    void 권한_구현_전까지_채팅_조회를_차단한다()
             throws Exception {
 
         mvc.perform(get("/api/v1/rooms/1/messages")
-                        .with(user("host@example.com")
-                                .roles("HOST")))
-                .andExpect(status().isForbidden());
-
-        mvc.perform(get("/ws")
                         .with(user("host@example.com")
                                 .roles("HOST")))
                 .andExpect(status().isForbidden());

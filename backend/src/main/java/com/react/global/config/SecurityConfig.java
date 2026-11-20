@@ -149,12 +149,12 @@ public class SecurityConfig {
                                 "/api/v1/rooms/*/messages"
                         ).denyAll()
 
-                        // TODO(SCRUM-164):
-                        // STOMP 권한 구현 전 핸드셰이크 임시 차단
+                        // SCRUM-131: 연결은 열고, 방별 인증·인가는 STOMP 구독·전송 때 검증한다.
+                        // 허용된 Origin 만 연결할 수 있다(WebSocketConfig).
                         .requestMatchers(
                                 "/ws",
                                 "/ws/**"
-                        ).denyAll()
+                        ).permitAll()
 
                         .requestMatchers("/error").permitAll()
 
