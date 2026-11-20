@@ -45,6 +45,7 @@ class StompChatSendTest {
     @Autowired LectureRoomRepository rooms;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired LectureParticipantService participants;
+    @Autowired org.springframework.messaging.simp.SimpMessagingTemplate broker;
 
     private StompTestClient client;
     private String hostEmail;
@@ -108,6 +109,102 @@ class StompChatSendTest {
         assertThat(((Number) row.get("participant_id")).longValue()).isEqualTo(joined.response().participantId());
         assertThat(row.get("host_user_id")).isNull();
         session.disconnect();
+    }
+
+    @Test
+    void 한_명이_보내면_같은_방_구독자_전원이_받는다() throws Exception {
+        var a = join("청중A");
+        var b = join("청중B");
+        StompSession sessionA = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
+        StompSession sessionB = client.connect(StompTestClient.ALLOWED_ORIGIN, b.cookie());
+        StompSession hostSession = client.connect(StompTestClient.ALLOWED_ORIGIN, loginCookies());
+        var queueA = subscribeReady(sessionA, room);
+        var queueB = subscribeReady(sessionB, room);
+        var queueHost = subscribeReady(hostSession, room);
+
+        sessionA.send(chatDestination(), Map.of("content", "안녕하세요"));
+
+        // 보낸 사람을 포함해 같은 방 구독자 모두가 받는다.
+        for (var queue : java.util.List.of(queueA, queueB, queueHost)) {
+            Map<String, Object> event = StompTestClient.nextOfType(queue, "CHAT_CREATED", 5000);
+            assertThat(event).isNotNull();
+            assertThat(data(event).get("content")).isEqualTo("안녕하세요");
+        }
+        sessionA.disconnect();
+        sessionB.disconnect();
+        hostSession.disconnect();
+    }
+
+    @Test
+    void 다른_방_구독자는_방송을_받지_못한다() throws Exception {
+        LectureRoom otherRoom = liveRoom();
+        var a = join("청중A");
+        var other = join(otherRoom, "다른방청중");
+        StompSession sessionA = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
+        StompSession sessionOther = client.connect(StompTestClient.ALLOWED_ORIGIN, other.cookie());
+        var queueA = subscribeReady(sessionA, room);
+        var queueOther = subscribeReady(sessionOther, otherRoom);
+
+        sessionA.send(chatDestination(), Map.of("content", "우리 방 이야기"));
+
+        // 우리 방에는 방송이 갔고(= 방송이 실제로 일어났고), 다른 방에는 오지 않는다.
+        assertThat(StompTestClient.nextOfType(queueA, "CHAT_CREATED", 5000)).isNotNull();
+        assertThat(StompTestClient.nextOfType(queueOther, "CHAT_CREATED", 1000)).isNull();
+        sessionA.disconnect();
+        sessionOther.disconnect();
+    }
+
+    @Test
+    void 방송은_명세의_CHAT_CREATED_모양이다() throws Exception {
+        var a = join("청중A");
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
+        var queue = subscribeReady(session, room);
+
+        session.send(chatDestination(), Map.of("content", "모양 확인"));
+
+        Map<String, Object> data = data(StompTestClient.nextOfType(queue, "CHAT_CREATED", 5000));
+        assertThat(((Number) data.get("messageId")).longValue()).isPositive();
+        assertThat(((Number) data.get("roomId")).longValue()).isEqualTo(room.getId());
+        assertThat(data.get("content")).isEqualTo("모양 확인");
+        assertThat(data.get("sender")).isEqualTo(Map.of("type", "PARTICIPANT", "id", (int) a.participantId(), "name", "청중A"));
+        // 시각은 숫자가 아니라 명세처럼 ISO-8601 UTC 문자열이어야 한다.
+        assertThat(data.get("receivedAt")).isInstanceOf(String.class);
+        assertThat(java.time.Instant.parse((String) data.get("receivedAt"))).isNotNull();
+        session.disconnect();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> data(Map<String, Object> event) {
+        return (Map<String, Object>) event.get("data");
+    }
+
+    /** 구독한 뒤, 서버가 그 구독을 등록해 방송이 닿는 것을 워밍업 방송으로 확인하고 큐를 돌려준다. */
+    private java.util.concurrent.BlockingQueue<Map<String, Object>> subscribeReady(StompSession session,
+            LectureRoom target) throws InterruptedException {
+        String topic = "/topic/rooms/" + target.getId() + "/chat";
+        var queue = client.subscribe(session, topic);
+        assertThat(StompTestClient.awaitBroadcast(queue, () -> broker.convertAndSend(topic, Map.of("type", "WARMUP"))))
+                .as("구독이 등록되어야 한다").isNotNull();
+        return queue;
+    }
+
+    private LectureRoom liveRoom() {
+        String code = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        LectureRoom created = rooms.saveAndFlush(new LectureRoom(host, "전송 테스트", "테스트 강연", code));
+        jdbc.sql("UPDATE lecture_rooms SET status = 'LIVE' WHERE id = ?").param(created.getId()).update();
+        return created;
+    }
+
+    private record Joined(String cookie, long participantId) { }
+
+    private Joined join(String nickname) {
+        return join(room, nickname);
+    }
+
+    private Joined join(LectureRoom target, String nickname) {
+        var joined = participants.join(target.getJoinCode(), nickname, UUID.randomUUID().toString(), Map.of());
+        return new Joined("PARTICIPANT_SESSION_" + target.getId() + "=" + joined.rawToken(),
+                joined.response().participantId());
     }
 
     private String chatDestination() {

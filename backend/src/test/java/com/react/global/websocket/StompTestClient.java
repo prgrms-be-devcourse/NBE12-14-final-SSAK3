@@ -88,6 +88,28 @@ public final class StompTestClient {
         return null;
     }
 
+    /**
+     * 큐에서 지정한 type 의 메시지가 올 때까지 기다린다. 다른 type(예: 워밍업)은 건너뛴다.
+     * 시간 안에 못 받으면 null. "오면 안 되는 메시지"를 확인할 때는 짧은 제한시간을 준다.
+     */
+    public static Map<String, Object> nextOfType(BlockingQueue<Map<String, Object>> received, String type,
+            long timeoutMillis) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        while (true) {
+            long remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+            if (remainingMillis <= 0) {
+                return null;
+            }
+            Map<String, Object> message = received.poll(remainingMillis, TimeUnit.MILLISECONDS);
+            if (message == null) {
+                return null;
+            }
+            if (type.equals(message.get("type"))) {
+                return message;
+            }
+        }
+    }
+
     /** 서버가 연결을 끊을 때까지 기다린다. 구독이 거절되면 서버가 ERROR 를 보내고 연결을 닫는다. */
     public static boolean awaitClosed(StompSession session) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
