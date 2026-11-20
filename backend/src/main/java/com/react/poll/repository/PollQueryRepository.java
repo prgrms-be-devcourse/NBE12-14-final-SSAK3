@@ -33,6 +33,14 @@ public class PollQueryRepository {
                 .single() > 0;
     }
 
+    /** 강연방의 누적 고유 참여자 수. 현재 접속 인원이 아니라 지금까지 입장한 청중 전체다. */
+    public long countParticipants(long roomId) {
+        return jdbc.sql("SELECT COUNT(*) FROM lecture_participants WHERE lecture_room_id = ?")
+                .param(roomId)
+                .query(Long.class)
+                .single();
+    }
+
     /**
      * 쓰기 잠금 읽기. 같은 강연방의 투표 생성이 한 줄로 처리되어 열린 투표가 둘이 되지 않고,
      * 강연 종료의 UPDATE 와도 순서가 갈린다. 잠금 순서는 강연방 → 투표.

@@ -4,7 +4,10 @@ import com.react.poll.entity.PollResponse;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface PollResponseRepository extends JpaRepository<PollResponse, Long> {
@@ -19,4 +22,18 @@ public interface PollResponseRepository extends JpaRepository<PollResponse, Long
 
     /** 잠금 없는 읽기. 재접속 복원처럼 쓰기 없이 마지막 선택만 확인할 때 쓴다. */
     Optional<PollResponse> findFirstByPollIdAndParticipantId(Long pollId, Long participantId);
+
+    /**
+     * 선택지별 응답 인원. 응답은 청중당 1건(최종 선택)이라 중복 없이 센다. 응답이 없는 선택지는 결과에 나오지 않는다.
+     * 잠그지 않는 읽기라 응답 저장을 막지 않는다.
+     */
+    @Query("select r.pollOptionId as optionId, count(r) as count from PollResponse r "
+            + "where r.pollId = :pollId group by r.pollOptionId")
+    List<OptionCount> countByOption(@Param("pollId") Long pollId);
+
+    interface OptionCount {
+        Long getOptionId();
+
+        long getCount();
+    }
 }
