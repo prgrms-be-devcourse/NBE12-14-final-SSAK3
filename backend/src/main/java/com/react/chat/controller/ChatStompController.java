@@ -1,19 +1,25 @@
 package com.react.chat.controller;
 
 import com.react.chat.dto.ChatCreatedEvent;
+import com.react.chat.dto.ChatErrorEvent;
 import com.react.chat.dto.ChatMessageView;
 import com.react.chat.dto.ChatSendRequest;
 import com.react.chat.service.ChatMessageService;
+import com.react.global.exception.BusinessException;
+import com.react.global.exception.ErrorCode;
 import com.react.global.websocket.StompActor;
 import com.react.global.websocket.StompActorResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
+import org.springframework.messaging.converter.MessageConversionException;
+import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
@@ -42,5 +48,27 @@ public class ChatStompController {
         } catch (RuntimeException e) {
             log.warn("채팅 전송 실패. roomId={}, messageId={}", roomId, saved.messageId(), e);
         }
+    }
+
+    /** 거절 사유(LIVE 아님, 길이, 권한 등)를 보낸 사람의 개인 우편함으로만 알린다. */
+    @MessageExceptionHandler(BusinessException.class)
+    @SendToUser(destinations = "/queue/errors", broadcast = false)
+    public ChatErrorEvent handleBusiness(BusinessException e) {
+        return ChatErrorEvent.of(e.getErrorCode());
+    }
+
+    /** 본문이 { "content": ... } 형태가 아니면 변환 단계에서 실패한다. */
+    @MessageExceptionHandler(MessageConversionException.class)
+    @SendToUser(destinations = "/queue/errors", broadcast = false)
+    public ChatErrorEvent handleMalformed(MessageConversionException e) {
+        return ChatErrorEvent.of(ErrorCode.INVALID_INPUT);
+    }
+
+    /** 예상하지 못한 예외는 내부 내용을 알리지 않고, 원인은 서버 로그에만 남긴다. */
+    @MessageExceptionHandler(Exception.class)
+    @SendToUser(destinations = "/queue/errors", broadcast = false)
+    public ChatErrorEvent handleUnexpected(Exception e) {
+        log.error("STOMP 채팅 처리 중 예상하지 못한 오류", e);
+        return ChatErrorEvent.of(ErrorCode.INTERNAL_ERROR);
     }
 }

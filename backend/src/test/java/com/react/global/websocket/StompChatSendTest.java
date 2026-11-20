@@ -3,6 +3,7 @@ package com.react.global.websocket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.auth.entity.User;
 import com.react.auth.repository.UserRepository;
+import com.react.global.exception.ErrorCode;
 import com.react.room.entity.LectureRoom;
 import com.react.room.repository.LectureRoomRepository;
 import com.react.room.service.LectureParticipantService;
@@ -171,6 +172,133 @@ class StompChatSendTest {
         assertThat(data.get("receivedAt")).isInstanceOf(String.class);
         assertThat(java.time.Instant.parse((String) data.get("receivedAt"))).isNotNull();
         session.disconnect();
+    }
+
+    @Test
+    void 오류는_보낸_사람에게만_가고_다른_사람에게는_새지_않는다() throws Exception {
+        LectureRoom readyRoom = rooms.saveAndFlush(new LectureRoom(host, "준비 중", "테스트 강연", newCode()));
+        var a = join(readyRoom, "청중A");   // LIVE 가 아닌 방의 청중: ROOM_NOT_LIVE 를 받는다
+        var b = join("청중B");              // LIVE 방의 청중: 자기 오류(INVALID_INPUT)만 받는다
+        StompSession sessionA = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
+        StompSession sessionB = client.connect(StompTestClient.ALLOWED_ORIGIN, b.cookie());
+        var errorsA = client.subscribe(sessionA, "/user/queue/errors");
+        var errorsB = client.subscribe(sessionB, "/user/queue/errors");
+        // B 의 오류 우편함이 등록되었는지는 B 가 자기 오류를 받아 보는 것으로 확인한다.
+        assertThat(StompTestClient.awaitBroadcast(errorsB,
+                () -> sessionB.send(chatDestination(), Map.of("content", " ")))).containsEntry("code", "INVALID_INPUT");
+
+        Map<String, Object> error = StompTestClient.awaitBroadcast(errorsA,
+                () -> sessionA.send("/app/rooms/" + readyRoom.getId() + "/chat", Map.of("content", "안녕")));
+
+        assertThat(error).containsEntry("type", "ERROR").containsEntry("code", "ROOM_NOT_LIVE")
+                .containsEntry("message", ErrorCode.ROOM_NOT_LIVE.getMessage());
+        // A 의 오류(ROOM_NOT_LIVE)는 B 에게 오지 않는다.
+        assertThat(StompTestClient.nextOfType(errorsB, "ERROR", 500)).satisfiesAnyOf(
+                leaked -> assertThat(leaked).isNull(),
+                leaked -> assertThat(leaked.get("code")).isEqualTo("INVALID_INPUT"));
+        sessionA.disconnect();
+        sessionB.disconnect();
+    }
+
+    @Test
+    void 빈_메시지는_거절되고_저장도_방송도_되지_않는다() throws Exception {
+        var a = join("청중A");
+        var b = join("청중B");
+        StompSession sessionA = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
+        StompSession sessionB = client.connect(StompTestClient.ALLOWED_ORIGIN, b.cookie());
+        var roomQueue = subscribeReady(sessionB, room);
+
+        expectError(sessionA, chatDestination(), Map.of("content", "   "), ErrorCode.INVALID_INPUT);
+
+        assertThat(savedCount(room)).isZero();
+        assertThat(StompTestClient.nextOfType(roomQueue, "CHAT_CREATED", 300)).isNull();
+        sessionA.disconnect();
+        sessionB.disconnect();
+    }
+
+    @Test
+    void 천자를_넘는_메시지는_거절된다() throws Exception {
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, join("청중A").cookie());
+
+        expectError(session, chatDestination(), Map.of("content", "가".repeat(1001)), ErrorCode.INVALID_INPUT);
+
+        assertThat(savedCount(room)).isZero();
+        session.disconnect();
+    }
+
+    @Test
+    void 준비_중이거나_종료된_방에는_보낼_수_없다() throws Exception {
+        LectureRoom readyRoom = rooms.saveAndFlush(new LectureRoom(host, "준비 중", "테스트 강연", newCode()));
+        LectureRoom endedRoom = liveRoom();
+        StompSession readySession = client.connect(StompTestClient.ALLOWED_ORIGIN, join(readyRoom, "청중A").cookie());
+        // 종료된 방에는 새로 입장할 수 없으므로, 입장한 뒤에 방을 종료 상태로 바꾼다.
+        StompSession endedSession = client.connect(StompTestClient.ALLOWED_ORIGIN, join(endedRoom, "청중B").cookie());
+        jdbc.sql("UPDATE lecture_rooms SET status = 'ENDED' WHERE id = ?").param(endedRoom.getId()).update();
+
+        expectError(readySession, "/app/rooms/" + readyRoom.getId() + "/chat", Map.of("content", "안녕"),
+                ErrorCode.ROOM_NOT_LIVE);
+        expectError(endedSession, "/app/rooms/" + endedRoom.getId() + "/chat", Map.of("content", "안녕"),
+                ErrorCode.ROOM_ENDED);
+
+        assertThat(savedCount(readyRoom)).isZero();
+        assertThat(savedCount(endedRoom)).isZero();
+        readySession.disconnect();
+        endedSession.disconnect();
+    }
+
+    @Test
+    void 다른_방_토큰을_이_방_쿠키로_위조하면_거절된다() throws Exception {
+        LectureRoom otherRoom = liveRoom();
+        String otherToken = join(otherRoom, "다른방청중").cookie().split("=", 2)[1];
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN,
+                "PARTICIPANT_SESSION_" + room.getId() + "=" + otherToken);
+
+        expectError(session, chatDestination(), Map.of("content", "위조"), ErrorCode.FORBIDDEN);
+
+        assertThat(savedCount(room)).isZero();
+        session.disconnect();
+    }
+
+    @Test
+    void 쿠키도_로그인도_없으면_전송이_거절된다() throws Exception {
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN);
+
+        expectError(session, chatDestination(), Map.of("content", "누구세요"), ErrorCode.UNAUTHENTICATED);
+
+        assertThat(savedCount(room)).isZero();
+        session.disconnect();
+    }
+
+    @Test
+    void 본문이_객체가_아니면_거절된다() throws Exception {
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, join("청중A").cookie());
+
+        expectError(session, chatDestination(), java.util.List.of(1, 2, 3), ErrorCode.INVALID_INPUT);
+
+        assertThat(savedCount(room)).isZero();
+        session.disconnect();
+    }
+
+    /** 오류 우편함을 구독한 뒤, 거절될 메시지를 오류가 올 때까지 반복해 보내고 받은 오류 코드를 확인한다. */
+    private void expectError(StompSession session, String destination, Object payload, ErrorCode expected)
+            throws InterruptedException {
+        var errors = client.subscribe(session, "/user/queue/errors");
+
+        Map<String, Object> error = StompTestClient.awaitBroadcast(errors, () -> session.send(destination, payload));
+
+        assertThat(error).as("오류가 보낸 사람에게 도착해야 한다").isNotNull();
+        assertThat(error).containsEntry("type", "ERROR")
+                .containsEntry("code", expected.name())
+                .containsEntry("message", expected.getMessage());
+    }
+
+    private long savedCount(LectureRoom target) {
+        return jdbc.sql("SELECT COUNT(*) FROM chat_messages WHERE lecture_room_id = ?")
+                .param(target.getId()).query(Long.class).single();
+    }
+
+    private static String newCode() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     }
 
     @SuppressWarnings("unchecked")
