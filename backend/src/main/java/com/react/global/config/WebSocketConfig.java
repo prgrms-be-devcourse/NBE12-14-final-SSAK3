@@ -1,5 +1,6 @@
 package com.react.global.config;
 
+import com.react.global.websocket.StompHandshakeInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -38,6 +39,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
+                .addInterceptors(new StompHandshakeInterceptor())
                 .setAllowedOriginPatterns(allowedOrigins);
     }
 
