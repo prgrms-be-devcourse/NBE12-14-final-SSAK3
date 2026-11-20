@@ -11,7 +11,6 @@ import com.react.global.websocket.StompActor;
 import com.react.global.websocket.StompActorResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Profile;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.converter.MessageConversionException;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
@@ -26,7 +25,6 @@ import java.security.Principal;
 
 @Slf4j
 @Controller
-@Profile("!prod") // WebSocketConfig 와 같은 조건. 임시: 운영 환경 노출 차단
 @RequiredArgsConstructor
 public class ChatStompController {
     private final StompActorResolver actors;

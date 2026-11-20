@@ -111,7 +111,7 @@
 | 메시지 구독 | `/topic`, `/queue` |
 | 사용자별 메시지 | `/user` |
 | 허용 Origin | `app.cors.allowed-origins` |
-| 운영 환경 | `prod` 프로파일에서 비활성화(인증·권한 검사 검증 후 해제 예정) |
+| 운영 환경 | 모든 프로파일에서 활성화. 운영 도메인은 `CORS_ALLOWED_ORIGINS` 로 허용해야 연결된다 |
 
 - `/topic/`, `/queue/`, `/user/`로 직접 SEND하는 요청은 차단한다.
 - 로컬 테스트용 `/app/_dev/ping` → `/topic/_dev/pong`을 지원한다.

@@ -3,7 +3,6 @@ package com.react.global.config;
 import com.react.global.websocket.StompHandshakeInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -21,7 +20,6 @@ import java.util.Arrays;
 
 @Configuration
 @EnableWebSocketMessageBroker
-@Profile("!prod") // 임시: 인증·인가 구현 전 운영 환경 노출 차단
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final String[] allowedOrigins;

@@ -3,7 +3,6 @@ package com.react.global.config;
 import com.react.global.websocket.StompSubscribeInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
@@ -12,7 +11,6 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  * 같은 설정 인터페이스를 여러 개 둘 수 있어 WebSocketConfig 의 생성 방식을 바꾸지 않는다.
  */
 @Configuration
-@Profile("!prod") // WebSocketConfig 와 같은 조건. 임시: 운영 환경 노출 차단
 @RequiredArgsConstructor
 public class StompSecurityConfig implements WebSocketMessageBrokerConfigurer {
     private final StompSubscribeInterceptor subscribeInterceptor;
