@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import javax.sql.DataSource;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -202,44 +203,50 @@ class LectureRoomLifecycleIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+
     @Test
     void 강연_종료시_진행중인_투표도_마감한다()
             throws Exception {
         long roomId = createRoom();
         startRoom(roomId);
 
+        // 실행 환경에 관계없이 한국 시간 기준으로 테스트 데이터 생성
+        LocalDateTime nowSeoul =
+                LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+
         jdbc.sql("""
-                INSERT INTO polls (
-                    lecture_room_id,
-                    question,
-                    status,
-                    created_at,
-                    closes_at
-                ) VALUES (?, '진행 중인 투표', 'OPEN', ?, ?)
-                """)
+            INSERT INTO polls (
+                lecture_room_id,
+                question,
+                status,
+                created_at,
+                closes_at
+            ) VALUES (?, '진행 중인 투표', 'OPEN', ?, ?)
+            """)
                 .params(
                         roomId,
-                        LocalDateTime.now().minusSeconds(10),
-                        LocalDateTime.now().plusMinutes(2)
+                        nowSeoul.minusSeconds(10),
+                        nowSeoul.plusMinutes(2)
                 )
                 .update();
 
         endRoom(roomId);
 
         assertThat(jdbc.sql("""
-                SELECT status FROM polls
-                WHERE lecture_room_id = ?
-                """).param(roomId)
+            SELECT status FROM polls
+            WHERE lecture_room_id = ?
+            """).param(roomId)
                 .query(String.class)
                 .single()).isEqualTo("CLOSED");
 
         assertThat(jdbc.sql("""
-                SELECT close_reason FROM polls
-                WHERE lecture_room_id = ?
-                """).param(roomId)
+            SELECT close_reason FROM polls
+            WHERE lecture_room_id = ?
+            """).param(roomId)
                 .query(String.class)
                 .single()).isEqualTo("ROOM_ENDED");
     }
+
 
     @Test
     void 이미_만료된_투표는_TIMEOUT으로_마감한다()

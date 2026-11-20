@@ -163,9 +163,7 @@ class LectureParticipantRoomEndConcurrencyIntegrationTest {
 
             try {
                 // 종료 요청이 방 행 잠금을 먼저 획득할 때까지 대기
-                assertThat(
-                        endLocked.await(5, TimeUnit.SECONDS)
-                ).isTrue();
+                assertThat(endLocked.await(5, TimeUnit.SECONDS)).isTrue();
 
                 // 두 번째 스레드: 같은 방에 신규 청중 입장 요청
                 Future<MvcResult> joinFuture = executor.submit(() -> {
@@ -189,9 +187,7 @@ class LectureParticipantRoomEndConcurrencyIntegrationTest {
                     ).andReturn();
                 });
 
-                assertThat(
-                        joinStarted.await(5, TimeUnit.SECONDS)
-                ).isTrue();
+                assertThat(joinStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
                 // 종료 트랜잭션이 잠금을 유지하는 동안
                 // 신규 참여자 저장 요청은 완료될 수 없어야 한다.
@@ -212,12 +208,8 @@ class LectureParticipantRoomEndConcurrencyIntegrationTest {
                         TimeUnit.SECONDS
                 );
 
-                assertThat(result.getResponse().getStatus())
-                        .isEqualTo(409);
-
-                assertThat(
-                        result.getResponse().getContentAsString()
-                ).contains("ROOM_ENDED");
+                assertThat(result.getResponse().getStatus()).isEqualTo(409);
+                assertThat(result.getResponse().getContentAsString()).contains("ROOM_ENDED");
 
                 // 종료된 방에 신규 참여자가 저장되지 않아야 한다.
                 Long participantCount = jdbc.sql("""
@@ -230,7 +222,6 @@ class LectureParticipantRoomEndConcurrencyIntegrationTest {
                         .single();
 
                 assertThat(participantCount).isZero();
-
                 assertThat(
                         jdbc.sql("""
                                 SELECT status
