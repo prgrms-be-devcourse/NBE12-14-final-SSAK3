@@ -1,0 +1,20 @@
+CREATE TABLE ai_llm_call_usages (
+    id                                  BIGINT         NOT NULL AUTO_INCREMENT,
+    analysis_id                         BIGINT         NOT NULL,
+    attempt_number                      INT            NOT NULL,
+    model_name                          VARCHAR(100)   NULL,
+    call_status                         VARCHAR(20)    NOT NULL COMMENT 'SUCCESS, FAILED',
+    error_code                          VARCHAR(50)    NULL,
+    prompt_token_count                  BIGINT         NULL,
+    output_token_count                  BIGINT         NULL,
+    total_token_count                   BIGINT         NULL,
+    duration_ms                         BIGINT         NOT NULL,
+    input_usd_per_million_tokens        DECIMAL(20, 8) NULL,
+    output_usd_per_million_tokens       DECIMAL(20, 8) NULL,
+    estimated_cost_microusd             BIGINT         NULL COMMENT '설정된 모델 단가 기반 추정치이며 실제 청구 비용이 아님',
+    created_at                          DATETIME       NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_llm_call_usages_analysis_attempt (analysis_id, attempt_number),
+    KEY idx_ai_llm_call_usages_analysis_created (analysis_id, created_at),
+    CONSTRAINT fk_ai_llm_call_usages_analysis FOREIGN KEY (analysis_id) REFERENCES ai_analyses (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

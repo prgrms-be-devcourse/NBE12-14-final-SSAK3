@@ -11,4 +11,8 @@ import java.util.List;
 @FunctionalInterface
 public interface AudienceAnalysisLlmClient {
     AudienceAnalysisLlmResponse analyze(List<AudienceMessage> messages);
+
+    default String modelName() {
+        return null;
+    }
 }
