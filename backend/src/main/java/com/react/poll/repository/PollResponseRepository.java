@@ -16,4 +16,7 @@ public interface PollResponseRepository extends JpaRepository<PollResponse, Long
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<PollResponse> findByPollIdAndParticipantId(Long pollId, Long participantId);
+
+    /** 잠금 없는 읽기. 재접속 복원처럼 쓰기 없이 마지막 선택만 확인할 때 쓴다. */
+    Optional<PollResponse> findFirstByPollIdAndParticipantId(Long pollId, Long participantId);
 }

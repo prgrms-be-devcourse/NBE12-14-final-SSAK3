@@ -273,8 +273,12 @@ class PollCreateCloseTest {
         for (var auth : List.of(stranger, participantRole)) {
             mvc.perform(createPoll(room, auth, "{ \"type\": \"UNDERSTANDING\" }")).andExpect(status().isForbidden());
             mvc.perform(closePoll(room, pollId, auth)).andExpect(status().isForbidden());
-            mvc.perform(get(listUrl(room)).with(authentication(auth))).andExpect(status().isForbidden());
+            if (auth == stranger) {
+                mvc.perform(get(listUrl(room)).with(authentication(auth))).andExpect(status().isForbidden());
+            }
         }
+        // 목록은 HOST 가 아니면 참여자 쿠키로만 조회하므로, 쿠키 없는 비HOST 는 401
+        mvc.perform(get(listUrl(room)).with(authentication(participantRole))).andExpect(status().isUnauthorized());
         // 없는 강연방은 404
         mvc.perform(createPoll(Long.MAX_VALUE, host(hostEmail), "{ \"type\": \"UNDERSTANDING\" }"))
                 .andExpect(status().isNotFound())

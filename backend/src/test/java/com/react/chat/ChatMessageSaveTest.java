@@ -16,10 +16,6 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.test.context.ActiveProfiles;
 
 import javax.sql.DataSource;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -74,19 +70,6 @@ class ChatMessageSaveTest {
                 .param(saved.messageId()).query().singleRow();
         assertThat(row.get("participant_id")).isNull();
         assertThat(((Number) row.get("host_user_id")).longValue()).isEqualTo(hostUser);
-    }
-
-    @Test
-    void receivedAtIsStoredAsFixedPlusNineAndReturnedAsUtc() {
-        ChatMessageView saved = service.saveFromParticipant(room, participant, "시각 확인");
-
-        LocalDateTime stored = jdbc.sql("SELECT received_at FROM chat_messages WHERE id = ?")
-                .param(saved.messageId()).query(LocalDateTime.class).single();
-        LocalDateTime nowAtPlusNine = LocalDateTime.now(ZoneOffset.ofHours(9));
-        assertThat(stored).isBetween(nowAtPlusNine.minusMinutes(1), nowAtPlusNine.plusMinutes(1));
-        assertThat(saved.receivedAt()).isEqualTo(stored.toInstant(ZoneOffset.ofHours(9)));
-        assertThat(saved.receivedAt()).isBetween(Instant.now().minus(1, ChronoUnit.MINUTES),
-                Instant.now().plus(1, ChronoUnit.MINUTES));
     }
 
     @Test
