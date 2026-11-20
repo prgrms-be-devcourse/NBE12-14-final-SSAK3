@@ -82,7 +82,7 @@ async function setup(context) {
 }
 
 async function connect(page) {
-  await page.goto('/')
+  await page.goto('/dev/stt')
   await page.getByLabel('강연방 ID', { exact: true }).fill('10')
   await page.getByRole('button', { name: '강연방 연결', exact: true }).click()
   await expect(page.getByRole('button', { name: '녹음 시작', exact: true })).toBeEnabled()
@@ -133,7 +133,7 @@ test('Web Locks prevent second tab recording and allow acquisition after first t
   await page.getByRole('button', { name: '녹음 시작', exact: true }).click()
   await expect(page.locator('.stt-live')).toBeVisible()
   const second = await context.newPage()
-  await second.goto('/')
+  await second.goto('/dev/stt')
   await second.getByLabel('강연방 ID', { exact: true }).fill('10')
   await second.getByRole('button', { name: '강연방 연결', exact: true }).click()
   await expect(second.getByRole('status')).toContainText('다른 탭')
@@ -153,7 +153,7 @@ test('mobile layout shows controls without horizontal overflow', async ({ page, 
 
 test('CSRF token is sent with POST and PATCH and refreshed after 403', async ({ page, context }) => {
   const state = await setup(context)
-  await page.goto('/')
+  await page.goto('/dev/stt')
 
   const login = await page.evaluate(async () => {
     const { request } = await import('/src/stt/api.js')

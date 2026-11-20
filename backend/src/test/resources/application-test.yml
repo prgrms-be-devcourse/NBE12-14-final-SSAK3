@@ -1,3 +1,7 @@
+# SCRUM-128 통합 테스트에서만 사용하는 고정 비밀키.
+# 운영 환경에서는 이 값을 사용하지 않는다.
+PARTICIPANT_JOIN_SECRET: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+
 spring:
   config:
     import: optional:file:../.env.test[.properties]

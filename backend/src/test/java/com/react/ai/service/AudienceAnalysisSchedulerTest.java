@@ -46,6 +46,15 @@ class AudienceAnalysisSchedulerTest {
     }
 
     @Test
+    void 정규_구간_처리는_stale_복구_SQL을_실행하지_않는다() {
+        when(rooms.findLiveRoomsWithStartedAt()).thenReturn(List.of());
+
+        scheduler.processCompletedRegularWindows();
+
+        verify(analyses, never()).abortStaleInFlight(any());
+    }
+
+    @Test
     void 이미_기록된_구간은_서비스와_LLM을_다시_호출하지_않는다() {
         when(rooms.findLiveRoomsWithStartedAt()).thenReturn(List.of(room(10L, startedAt)));
         when(analyses.findRecordedWindowStarts(10L, startedAt, now)).thenReturn(Set.of(

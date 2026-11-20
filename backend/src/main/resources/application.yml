@@ -39,9 +39,11 @@ app:
     audience:
       scheduler:
         fixed-delay: ${AI_ANALYSIS_SCHEDULER_DELAY:5000}
+        recovery-fixed-delay: ${AI_ANALYSIS_RECOVERY_DELAY:60000}
         max-windows-per-run: ${AI_ANALYSIS_SCHEDULER_MAX_WINDOWS_PER_RUN:3}
         max-finalization-rooms-per-run: ${AI_FINALIZATION_MAX_ROOMS_PER_RUN:5}
         finalization-lease-duration: ${AI_FINALIZATION_LEASE_DURATION:90s}
+        stale-analysis-threshold: ${AI_ANALYSIS_STALE_THRESHOLD:2m}
       gemini:
         api-key: ${GEMINI_API_KEY:}
         model: ${GEMINI_MODEL:}
@@ -52,3 +54,7 @@ app:
         max-input-characters: ${GEMINI_MAX_INPUT_CHARACTERS:32000}
         max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:2048}
         max-response-characters: ${GEMINI_MAX_RESPONSE_CHARACTERS:128000}
+      retry:
+        max-retries: ${AI_GEMINI_MAX_RETRIES:1}
+        retry-delay: ${AI_GEMINI_RETRY_DELAY:500ms}
+        max-retry-after: ${AI_GEMINI_MAX_RETRY_AFTER:5s}

@@ -14,7 +14,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@EnableConfigurationProperties(GeminiAudienceAnalysisProperties.class)
+@EnableConfigurationProperties({GeminiAudienceAnalysisProperties.class, AudienceAnalysisRetryProperties.class})
 public class AiAnalysisConfiguration {
 
     @Bean
@@ -39,7 +39,8 @@ public class AiAnalysisConfiguration {
     @Bean
     AudienceAnalysisService audienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                                     AudienceAnalysisLlmClient llmClient,
-                                                    AiAnalysisJsonParser jsonParser) {
-        return new AudienceAnalysisService(analyses, messages, llmClient, jsonParser);
+                                                    AiAnalysisJsonParser jsonParser,
+                                                    AudienceAnalysisRetryProperties retryProperties) {
+        return new AudienceAnalysisService(analyses, messages, llmClient, jsonParser, retryProperties);
     }
 }
