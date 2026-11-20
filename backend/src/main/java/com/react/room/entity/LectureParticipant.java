@@ -38,6 +38,6 @@ public class LectureParticipant {
         this.lectureRoom = lectureRoom;
         this.nickname = nickname;
         this.participantTokenHash = participantTokenHash;
-        this.joinedAt = LocalDateTime.now(SEOUL);
+        this.joinedAt = LocalDateTime.now(SEOUL).withNano(0);
     }
 }

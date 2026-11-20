@@ -51,6 +51,9 @@ public class Poll {
     @Column(name = "close_reason", length = 20)
     private PollCloseReason closeReason;
 
+    @Column(name = "closed_total_participants")
+    private Long closedTotalParticipants;
+
     @OneToMany(mappedBy = "poll", cascade = CascadeType.PERSIST)
     @OrderBy("displayOrder")
     private List<PollOption> options = new ArrayList<>();
@@ -92,21 +95,24 @@ public class Poll {
         return status == PollStatus.OPEN && isExpired(now) ? PollStatus.CLOSED : status;
     }
 
-    public void closeByHost(Instant now) {
+    public void closeByHost(Instant now, long totalParticipants) {
+        this.closedTotalParticipants = totalParticipants;
         this.status = PollStatus.CLOSED;
         this.closedAt = now;
         this.closeReason = PollCloseReason.HOST;
     }
 
     /** 강연이 종료되어 마감한다. 호출하는 쪽이 이미 제한 시간이 지난 투표는 expire() 로 처리한다. */
-    public void closeByRoomEnded(Instant now) {
+    public void closeByRoomEnded(Instant now, long totalParticipants) {
+        this.closedTotalParticipants = totalParticipants;
         this.status = PollStatus.CLOSED;
         this.closedAt = now;
         this.closeReason = PollCloseReason.ROOM_ENDED;
     }
 
     /** 제한 시간이 지나 마감한다. 마감 시각은 실제 처리 시각이 아니라 closesAt 이다. */
-    public void expire() {
+    public void expire(long totalParticipants) {
+        this.closedTotalParticipants = totalParticipants;
         this.status = PollStatus.CLOSED;
         this.closedAt = closesAt;
         this.closeReason = PollCloseReason.TIMEOUT;

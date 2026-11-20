@@ -165,14 +165,42 @@ class PollResultTest {
         service.close(room, poll.pollId(), hostEmail);
         PollResultView before = service.results(room, poll.pollId(), hostEmail);
 
+        newParticipants(room, 5);
         assertThatThrownBy(() -> service.respond(room, poll.pollId(), participants.get(1), optionId(poll, 1)))
                 .isInstanceOfSatisfying(BusinessException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.POLL_CLOSED));
         PollResultView after = service.results(room, poll.pollId(), hostEmail);
 
+        assertThat(after.totalParticipants()).isEqualTo(3);
+        assertThat(after.unrespondedParticipants()).isEqualTo(2);
         assertThat(before.status()).isEqualTo(PollStatus.CLOSED);
         assertThat(after.respondedParticipants()).isEqualTo(before.respondedParticipants()).isEqualTo(1);
         assertThat(after.options()).isEqualTo(before.options());
+    }
+
+    @Test
+    void 제한시간에_도달하면_마감_처리가_늦어져도_같은_인원을_반환한다() {
+        LocalDateTime deadline = LocalDateTime.now(SEOUL).minusMinutes(1).withNano(0);
+        jdbc.sql("UPDATE polls SET closes_at = ? WHERE id = ?").params(deadline, poll.pollId()).update();
+        long early = newParticipant(room);
+        long late = newParticipant(room);
+        jdbc.sql("UPDATE lecture_participants SET joined_at = ? WHERE id = ?")
+                .params(deadline.minusSeconds(1), early).update();
+        jdbc.sql("UPDATE lecture_participants SET joined_at = ? WHERE id = ?")
+                .params(deadline, late).update();
+
+        assertThat(service.results(room, poll.pollId(), hostEmail).totalParticipants()).isEqualTo(1);
+        service.closeOpenPollsOnRoomEnded(room);
+        newParticipant(room);
+        assertThat(service.currentResults(room, poll.pollId()).totalParticipants()).isEqualTo(1);
+    }
+
+    @Test
+    void 강연_종료로_마감한_투표도_참여자_수를_보존한다() {
+        newParticipants(room, 2);
+        service.closeOpenPollsOnRoomEnded(room);
+        newParticipant(room);
+        assertThat(service.results(room, poll.pollId(), hostEmail).totalParticipants()).isEqualTo(2);
     }
 
     @Test
