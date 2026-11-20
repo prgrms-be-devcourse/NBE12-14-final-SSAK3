@@ -2,32 +2,52 @@ package com.react.global.websocket;
 
 import com.react.global.exception.BusinessException;
 import com.react.room.service.LectureParticipantService;
+import com.react.room.service.ParticipantSessionPolicy;
 import jakarta.servlet.http.HttpSession;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 @Component
-@RequiredArgsConstructor
 public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
     private static final String CONNECTED_HOST =
             "stompConnectedHost";
 
+    private static final String CONNECTED =
+            "stompAuthenticated";
+
+    private static final String PARTICIPANT_EXPIRES_AT =
+            "stompParticipantExpiresAt";
+
     private final LectureParticipantService participantService;
+    private final ParticipantSessionPolicy sessionPolicy;
+    private final TaskScheduler expiryScheduler;
+
+    public StompSessionAuthInterceptor(
+            LectureParticipantService participantService,
+            ParticipantSessionPolicy sessionPolicy,
+            @Qualifier("stompExpiryScheduler") TaskScheduler expiryScheduler
+    ) {
+        this.participantService = participantService;
+        this.sessionPolicy = sessionPolicy;
+        this.expiryScheduler = expiryScheduler;
+    }
 
     @Override
     public Message<?> preSend(
@@ -62,6 +82,9 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
         HttpSession session = requireCurrentSession(attributes);
 
+        HttpSessionWebSocketLinks links =
+                requireActiveLinks(accessor, attributes);
+
         String expectedToken = (String) attributes.get(
                 StompHandshakeInterceptor.CSRF_TOKEN
         );
@@ -91,6 +114,10 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
             );
         }
 
+        // 유효한 청중 쿠키 중 가장 빠른 만료 시각 확인
+        Instant earliestExpiry =
+                earliestParticipantExpiry(attributes);
+
         Authentication authentication;
 
         if (currentHost != null) {
@@ -105,12 +132,12 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
             attributes.put(CONNECTED_HOST, currentHost);
 
-        } else if (hasValidParticipant(attributes)) {
-            String sessionId = accessor.getSessionId();
+        } else if (earliestExpiry != null) {
+            String socketId = accessor.getSessionId();
 
             authentication =
                     UsernamePasswordAuthenticationToken.authenticated(
-                            "participant-ws:" + sessionId,
+                            "participant-ws:" + socketId,
                             null,
                             List.of(
                                     new SimpleGrantedAuthority(
@@ -127,13 +154,64 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
         // 이후 STOMP 메시지와 개인 오류 큐에서 사용할 사용자
         accessor.setUser(authentication);
+
+        // 유효한 청중 쿠키가 있다면 가장 빠른 만료 시각에
+        // 기존 구독을 포함한 WebSocket 연결 전체를 종료한다.
+        if (earliestExpiry != null) {
+            attributes.put(
+                    PARTICIPANT_EXPIRES_AT,
+                    earliestExpiry
+            );
+
+            try {
+                links.expireAt(
+                        accessor.getSessionId(),
+                        earliestExpiry,
+                        expiryScheduler
+                );
+            } catch (RuntimeException exception) {
+                links.closeSocket(accessor.getSessionId());
+
+                throw new AccessDeniedException(
+                        "청중 인증 만료 작업을 등록할 수 없습니다.",
+                        exception
+                );
+            }
+        }
+
+        attributes.put(CONNECTED, Boolean.TRUE);
     }
 
-    private void validateConnection(StompHeaderAccessor accessor) {
+    private void validateConnection(
+            StompHeaderAccessor accessor
+    ) {
         Map<String, Object> attributes =
                 requireAttributes(accessor);
 
+        if (!Boolean.TRUE.equals(attributes.get(CONNECTED))) {
+            throw new AccessDeniedException(
+                    "STOMP CONNECT 인증이 필요합니다."
+            );
+        }
+
         HttpSession session = requireCurrentSession(attributes);
+
+        HttpSessionWebSocketLinks links =
+                requireActiveLinks(accessor, attributes);
+
+        // 청중 인증 만료 후 스케줄러의 종료 작업이 실행되기 전에도
+        // 새로운 구독이나 전송을 허용하지 않는다.
+        Object expiresAt = attributes.get(PARTICIPANT_EXPIRES_AT);
+
+        if (expiresAt instanceof Instant expiry
+                && !Instant.now().isBefore(expiry)) {
+
+            links.closeSocket(accessor.getSessionId());
+
+            throw new AccessDeniedException(
+                    "청중 인증이 만료되었습니다."
+            );
+        }
 
         String connectedHost =
                 (String) attributes.get(CONNECTED_HOST);
@@ -142,6 +220,8 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
         if (connectedHost != null) {
             if (!connectedHost.equals(currentHost)) {
+                links.closeSocket(accessor.getSessionId());
+
                 throw new AccessDeniedException(
                         "강연자 로그인 세션이 변경되었습니다."
                 );
@@ -152,11 +232,34 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
         // 청중으로 연결했다면 후속 요청에서도
         // 적어도 하나 이상의 유효한 참여 인증이 있어야 한다.
-        if (currentHost != null || !hasValidParticipant(attributes)) {
+        if (currentHost != null
+                || earliestParticipantExpiry(attributes) == null) {
+
+            links.closeSocket(accessor.getSessionId());
+
             throw new AccessDeniedException(
                     "청중 인증이 만료되었거나 세션이 변경되었습니다."
             );
         }
+    }
+
+    private HttpSessionWebSocketLinks requireActiveLinks(
+            StompHeaderAccessor accessor,
+            Map<String, Object> attributes
+    ) {
+        Object stored = attributes.get(
+                HttpSessionWebSocketLinks.HANDSHAKE_ATTRIBUTE
+        );
+
+        if (!(stored instanceof HttpSessionWebSocketLinks links)
+                || !links.isActive(accessor.getSessionId())) {
+
+            throw new AccessDeniedException(
+                    "WebSocket 연결이 종료되었거나 무효화되었습니다."
+            );
+        }
+
+        return links;
     }
 
     private HttpSession requireCurrentSession(
@@ -172,6 +275,7 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
         if (!(stored instanceof HttpSession session)
                 || !(expectedId instanceof String sessionId)) {
+
             throw new AccessDeniedException(
                     "HTTP 세션이 필요합니다."
             );
@@ -206,7 +310,11 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
         }
     }
 
-    private boolean hasValidParticipant(
+    /**
+     * 유효한 참여 쿠키 중 가장 먼저 만료되는 시각을 반환한다.
+     * 유효한 참여 쿠키가 없다면 null을 반환한다.
+     */
+    private Instant earliestParticipantExpiry(
             Map<String, Object> attributes
     ) {
         Object stored = attributes.get(
@@ -214,8 +322,11 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
         );
 
         if (!(stored instanceof Map<?, ?> tokens)) {
-            return false;
+            return null;
         }
+
+        Instant earliest = null;
+        Instant now = Instant.now();
 
         for (Map.Entry<?, ?> entry : tokens.entrySet()) {
             if (!(entry.getKey() instanceof Long roomId)
@@ -224,14 +335,25 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
             }
 
             try {
-                participantService.me(roomId, token);
-                return true;
+                Instant expiresAt = participantService
+                        .me(roomId, token)
+                        .joinedAt()
+                        .plus(sessionPolicy.ttl());
+
+                if (!expiresAt.isAfter(now)) {
+                    continue;
+                }
+
+                if (earliest == null || expiresAt.isBefore(earliest)) {
+                    earliest = expiresAt;
+                }
+
             } catch (BusinessException ignored) {
                 // 다른 방의 유효한 쿠키가 있을 수 있으므로 계속 확인
             }
         }
 
-        return false;
+        return earliest;
     }
 
     private Map<String, Object> requireAttributes(

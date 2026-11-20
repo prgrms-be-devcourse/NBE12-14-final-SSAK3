@@ -16,12 +16,21 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
+import java.security.Principal;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
+/**
+ * WebSocket 연결 요청(핸드셰이크)에 실려 온 방별 참여자 쿠키를 세션 속성에 보관한다.
+ * 쿠키는 이 순간에만 오고, 연결이 열린 뒤의 STOMP 메시지에는 붙지 않는다.
+ * 청중은 방마다 쿠키가 따로라 연결 시점에는 어느 방에 쓸지 알 수 없으므로, 여기서는 보관만 하고
+ * 방별 검증은 구독·전송 때 한다. 원문 쿠키 값은 로그에 남기지 않는다.
+ */
 @Component
 public class StompHandshakeInterceptor implements HandshakeInterceptor {
 
+    /** 세션 속성 키. 값은 방 ID → 그 방의 참여자 쿠키 값(Map<Long, String>)이다. */
     public static final String PARTICIPANT_TOKENS =
             "participantTokens";
 
@@ -43,6 +52,7 @@ public class StompHandshakeInterceptor implements HandshakeInterceptor {
     private final HttpSessionCsrfTokenRepository csrfRepository =
             new HttpSessionCsrfTokenRepository();
 
+    // 핸드 쉐이크 전에 호출
     @Override
     public boolean beforeHandshake(
             ServerHttpRequest request,
@@ -71,27 +81,54 @@ public class StompHandshakeInterceptor implements HandshakeInterceptor {
         }
 
         try {
-            attributes.put(HTTP_SESSION, session);
-            attributes.put(HTTP_SESSION_ID, session.getId());
+            synchronized (session) {
+                // 실제 HTTP 요청에 담긴 HOST 인증 정보
+                String requestHost =
+                        hostName(httpRequest.getUserPrincipal());
 
-            String hostName = currentHostName(session);
+                // HTTP 세션에 저장된 현재 HOST 인증 정보
+                String sessionHost =
+                        currentHostName(session);
 
-            if (hostName != null) {
-                attributes.put(HTTP_HOST_NAME, hostName);
-            }
+                // 서로 다른 HOST 인증 정보가 섞이지 않도록 확인
+                if (!Objects.equals(requestHost, sessionHost)) {
+                    return false;
+                }
 
-            CsrfToken csrfToken =
-                    csrfRepository.loadToken(httpRequest);
+                HttpSessionWebSocketLinks links =
+                        findOrCreateLinks(session);
 
-            if (csrfToken != null) {
+                if (links == null) {
+                    return false;
+                }
+
+                attributes.put(HTTP_SESSION, session);
+                attributes.put(HTTP_SESSION_ID, session.getId());
+
+                if (sessionHost != null) {
+                    attributes.put(HTTP_HOST_NAME, sessionHost);
+                }
+
+                CsrfToken csrfToken =
+                        csrfRepository.loadToken(httpRequest);
+
+                if (csrfToken != null) {
+                    attributes.put(
+                            CSRF_TOKEN,
+                            csrfToken.getToken()
+                    );
+                }
+
+                // 실제 소켓은 afterConnectionEstablished에서 등록한다.
                 attributes.put(
-                        CSRF_TOKEN,
-                        csrfToken.getToken()
+                        HttpSessionWebSocketLinks.HANDSHAKE_ATTRIBUTE,
+                        links
                 );
-            }
 
-            return true;
+                return true;
+            }
         } catch (IllegalStateException exception) {
+            // 동시에 HTTP 세션이 무효화된 경우
             return false;
         }
     }
@@ -106,6 +143,32 @@ public class StompHandshakeInterceptor implements HandshakeInterceptor {
         // 별도 처리 없음
     }
 
+    private HttpSessionWebSocketLinks findOrCreateLinks(
+            HttpSession session
+    ) {
+        Object existing = session.getAttribute(
+                HttpSessionWebSocketLinks.SESSION_ATTRIBUTE
+        );
+
+        if (existing instanceof HttpSessionWebSocketLinks links) {
+            return links;
+        }
+
+        if (existing != null) {
+            return null;
+        }
+
+        HttpSessionWebSocketLinks links =
+                new HttpSessionWebSocketLinks();
+
+        session.setAttribute(
+                HttpSessionWebSocketLinks.SESSION_ATTRIBUTE,
+                links
+        );
+
+        return links;
+    }
+
     public static String currentHostName(HttpSession session) {
         Object stored = session.getAttribute(
                 HttpSessionSecurityContextRepository
@@ -116,12 +179,14 @@ public class StompHandshakeInterceptor implements HandshakeInterceptor {
             return null;
         }
 
-        Authentication authentication =
-                context.getAuthentication();
+        return hostName(context.getAuthentication());
+    }
 
-        if (authentication == null
+    private static String hostName(Principal principal) {
+        if (!(principal instanceof Authentication authentication)
                 || !authentication.isAuthenticated()
                 || authentication instanceof AnonymousAuthenticationToken) {
+
             return null;
         }
 
@@ -162,12 +227,13 @@ public class StompHandshakeInterceptor implements HandshakeInterceptor {
             try {
                 long roomId = Long.parseLong(suffix);
 
+                // 숫자로 된 방 ID 만 받고, 같은 방 쿠키가 여러 개면 먼저 온 것을 쓴다.
                 tokens.putIfAbsent(
                         roomId,
                         cookie.getValue()
                 );
             } catch (NumberFormatException ignored) {
-                // 숫자 범위를 벗어난 방 ID는 무시
+                // 숫자 범위를 초과한 방 ID는 무시
             }
         }
 
