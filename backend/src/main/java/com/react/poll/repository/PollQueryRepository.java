@@ -25,6 +25,14 @@ public class PollQueryRepository {
                 .optional();
     }
 
+    /** 참여자가 해당 강연방 소속인지. 다른 강연방의 참여자 ID 로는 응답할 수 없다. */
+    public boolean existsParticipant(long roomId, long participantId) {
+        return jdbc.sql("SELECT COUNT(*) FROM lecture_participants WHERE id = ? AND lecture_room_id = ?")
+                .params(participantId, roomId)
+                .query(Long.class)
+                .single() > 0;
+    }
+
     /**
      * 쓰기 잠금 읽기. 같은 강연방의 투표 생성이 한 줄로 처리되어 열린 투표가 둘이 되지 않고,
      * 강연 종료의 UPDATE 와도 순서가 갈린다. 잠금 순서는 강연방 → 투표.

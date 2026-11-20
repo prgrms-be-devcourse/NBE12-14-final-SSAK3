@@ -105,6 +105,13 @@ public class SecurityConfig {
                                 "/api/v1/rooms/*/participants/me"
                         ).permitAll()
 
+                        // 청중 투표 응답: 방별 PARTICIPANT_SESSION 쿠키는 Service 에서 검증한다.
+                        // CSRF 는 그대로 적용한다.
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/v1/rooms/*/polls/*/responses/me"
+                        ).permitAll()
+
                         // 강연자 인증 API
                         .requestMatchers(
                                 "/api/v1/auth/me",
