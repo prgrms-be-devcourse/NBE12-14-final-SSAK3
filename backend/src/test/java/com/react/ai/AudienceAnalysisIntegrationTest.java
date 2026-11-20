@@ -2,12 +2,15 @@ package com.react.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.config.GeminiAudienceAnalysisProperties;
+import com.react.ai.config.AudienceAnalysisCostProperties;
+import com.react.ai.config.AudienceAnalysisRetryProperties;
 import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.domain.TopicCategory;
 import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.dto.AiTopicResult;
 import com.react.ai.repository.AiAnalysisRepository;
+import com.react.ai.repository.AiLlmCallUsageRepository;
 import com.react.ai.repository.AudienceMessageRepository;
 import com.react.ai.service.AiAnalysisJsonParser;
 import com.react.ai.service.AudienceAnalysisService;
@@ -50,6 +53,7 @@ class AudienceAnalysisIntegrationTest {
     @Autowired JdbcClient jdbc;
     @Autowired DataSource dataSource;
     @Autowired AiAnalysisRepository analyses;
+    @Autowired AiLlmCallUsageRepository usages;
     @Autowired AudienceMessageRepository messages;
     @Autowired PlatformTransactionManager transactionManager;
 
@@ -154,6 +158,63 @@ class AudienceAnalysisIntegrationTest {
         assertThat(truncated.status()).isEqualTo(AiAnalysisStatus.FAILED);
         assertThat(jdbc.sql("SELECT status FROM ai_analyses WHERE id = ?").param(truncated.analysisId())
                 .query(String.class).single()).isEqualTo("FAILED");
+    }
+
+    @Test
+    void Gemini_호출_성공과_재시도_실패를_시도별_사용량_이력으로_저장한다() {
+        long messageId = insertAudienceMessage("Redis 사용 질문", start);
+        var calls = new AtomicInteger();
+        var service = new AudienceAnalysisService(analyses, messages, candidates -> {
+            if (calls.incrementAndGet() == 1) {
+                throw new com.react.ai.exception.GeminiAudienceAnalysisException(
+                        com.react.ai.exception.GeminiAudienceAnalysisErrorCode.RATE_LIMIT, true,
+                        Duration.ZERO, "rate limited");
+            }
+            return new AudienceAnalysisLlmResponse("""
+                    {"topics":[{"topic":"Redis","summary":"질문","category":"QUESTION","sourceMessageIds":[%d]}]}
+                    """.formatted(messageId), GEMINI_MODEL,
+                    new AudienceAnalysisLlmResponse.Usage(120L, 80L, 200L));
+        }, new AiAnalysisJsonParser(new ObjectMapper()),
+                new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), usages,
+                new AudienceAnalysisCostProperties("0.25", "1.50"));
+
+        var result = service.process(roomId, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        var records = jdbc.sql("""
+                SELECT attempt_number, model_name, call_status, error_code,
+                       prompt_token_count, output_token_count, total_token_count,
+                       input_usd_per_million_tokens, output_usd_per_million_tokens, estimated_cost_microusd
+                FROM ai_llm_call_usages
+                WHERE analysis_id = ?
+                ORDER BY attempt_number
+                """).param(result.analysisId()).query((rs, rowNum) -> new UsageRow(
+                rs.getInt("attempt_number"), rs.getString("model_name"), rs.getString("call_status"),
+                rs.getString("error_code"), (Long) rs.getObject("prompt_token_count"),
+                (Long) rs.getObject("output_token_count"), (Long) rs.getObject("total_token_count"),
+                rs.getBigDecimal("input_usd_per_million_tokens"), rs.getBigDecimal("output_usd_per_million_tokens"),
+                (Long) rs.getObject("estimated_cost_microusd"))).list();
+
+        assertThat(records).hasSize(2);
+        assertThat(records.get(0)).isEqualTo(new UsageRow(1, null, "FAILED", "RATE_LIMIT", null, null, null,
+                null, null, null));
+        assertThat(records.get(1)).isEqualTo(new UsageRow(2, GEMINI_MODEL, "SUCCESS", null, 120L, 80L, 200L,
+                new java.math.BigDecimal("0.25000000"), new java.math.BigDecimal("1.50000000"), 150L));
+    }
+
+    @Test
+    void usageMetadata가_있는_HTTP_200_검증_실패도_FAILED_호출_이력에_기록한다() {
+        assertInvalidGeminiResponseUsage(start, """
+                {"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"{\\"topics\\":[]}"}]}}],
+                "usageMetadata":{"promptTokenCount":120,"candidatesTokenCount":30,"totalTokenCount":150}}
+                """);
+        assertInvalidGeminiResponseUsage(start.plusSeconds(30), """
+                {"candidates":[],"usageMetadata":{"promptTokenCount":120,"candidatesTokenCount":30,"totalTokenCount":150}}
+                """);
+        assertInvalidGeminiResponseUsage(start.plusSeconds(60), """
+                {"candidates":[{"finishReason":"STOP","content":{"parts":[]}}],
+                "usageMetadata":{"promptTokenCount":120,"candidatesTokenCount":30,"totalTokenCount":150}}
+                """);
     }
 
     @Test
@@ -446,6 +507,35 @@ class AudienceAnalysisIntegrationTest {
         return new AudienceAnalysisService(analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()));
     }
 
+    private AudienceAnalysisService observedService(com.react.ai.service.AudienceAnalysisLlmClient llm) {
+        return new AudienceAnalysisService(analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()),
+                new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), usages,
+                new AudienceAnalysisCostProperties("0.25", "1.50"));
+    }
+
+    private void assertInvalidGeminiResponseUsage(LocalDateTime windowStart, String response) {
+        insertAudienceMessage("유효하지 않은 Gemini 응답 검증", windowStart);
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"))
+                .andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+
+        var result = observedService(geminiClient(builder.build()))
+                .process(roomId, windowStart, windowStart.plusSeconds(30));
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        assertThat(jdbc.sql("SELECT error_message FROM ai_analyses WHERE id = ?").param(result.analysisId())
+                .query(String.class).single()).isEqualTo("INVALID_RESPONSE");
+        var usage = jdbc.sql("""
+                SELECT prompt_token_count, output_token_count, total_token_count, estimated_cost_microusd
+                FROM ai_llm_call_usages WHERE analysis_id = ? AND attempt_number = 1
+                """).param(result.analysisId()).query((rs, rowNum) -> new FailedUsageRow(
+                (Long) rs.getObject("prompt_token_count"), (Long) rs.getObject("output_token_count"),
+                (Long) rs.getObject("total_token_count"), (Long) rs.getObject("estimated_cost_microusd"))).single();
+        assertThat(usage).isEqualTo(new FailedUsageRow(120L, 30L, 150L, 75L));
+        server.verify();
+    }
+
     private AiAnalysisResult resultFor(long messageId, String summary) {
         return new AiAnalysisResult(java.util.List.of(
                 new AiTopicResult("동시성 주제", summary, TopicCategory.QUESTION, java.util.List.of(messageId))));
@@ -493,6 +583,16 @@ class AudienceAnalysisIntegrationTest {
 
     private AudienceAnalysisLlmResponse response(String content) {
         return new AudienceAnalysisLlmResponse(content, "fake-model");
+    }
+
+    private record UsageRow(int attemptNumber, String modelName, String callStatus, String errorCode,
+                            Long promptTokenCount, Long outputTokenCount, Long totalTokenCount,
+                            java.math.BigDecimal inputPrice, java.math.BigDecimal outputPrice,
+                            Long estimatedCostMicrousd) {
+    }
+
+    private record FailedUsageRow(Long promptTokenCount, Long outputTokenCount, Long totalTokenCount,
+                                  Long estimatedCostMicrousd) {
     }
 
     private String geminiResponse(String text) {

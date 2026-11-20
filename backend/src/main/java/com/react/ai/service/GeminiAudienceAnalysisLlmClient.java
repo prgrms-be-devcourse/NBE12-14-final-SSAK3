@@ -68,12 +68,17 @@ public class GeminiAudienceAnalysisLlmClient implements AudienceAnalysisLlmClien
                                 responseBody(clientResponse));
                     })
                     .body(String.class);
-            return new AudienceAnalysisLlmResponse(extractContent(response), properties.model());
+            return extractResponse(response);
         } catch (GeminiAudienceAnalysisException e) {
             throw e;
         } catch (RestClientException e) {
             throw transportFailure(e);
         }
+    }
+
+    @Override
+    public String modelName() {
+        return properties.model();
     }
 
     private GeminiAudienceAnalysisException httpFailure(HttpStatusCode status, HttpHeaders headers,
@@ -268,32 +273,53 @@ public class GeminiAudienceAnalysisLlmClient implements AudienceAnalysisLlmClien
         return root;
     }
 
-    private String extractContent(String response) {
+    private AudienceAnalysisLlmResponse extractResponse(String response) {
         if (response == null || response.length() > properties.maxResponseCharacters()) {
             throw failure(GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE, false, null,
                     "Gemini 응답 본문이 없거나 크기 상한을 초과했습니다.");
         }
         try {
             JsonNode root = objectMapper.readTree(response);
+            AudienceAnalysisLlmResponse.Usage usage = extractUsage(root);
             JsonNode candidate = root.path("candidates").path(0);
             if (!"STOP".equals(candidate.path("finishReason").asText())) {
-                throw failure(GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE, false, null,
+                throw failure(GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE, false, null, usage,
                         "Gemini 분석 응답이 정상 종료되지 않았습니다.");
             }
             JsonNode text = candidate.path("content").path("parts").path(0).path("text");
             if (!text.isTextual() || text.textValue().isBlank()) {
-                throw failure(GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE, false, null,
+                throw failure(GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE, false, null, usage,
                         "Gemini 응답에 분석 결과가 없습니다.");
             }
-            return text.textValue();
+            return new AudienceAnalysisLlmResponse(text.textValue(), properties.model(), usage);
         } catch (JsonProcessingException e) {
             throw failure(GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE, false, null,
                     "Gemini 응답 형식이 올바르지 않습니다.");
         }
     }
 
+    private AudienceAnalysisLlmResponse.Usage extractUsage(JsonNode root) {
+        JsonNode usage = root.path("usageMetadata");
+        return new AudienceAnalysisLlmResponse.Usage(
+                nullableNonNegativeLong(usage.path("promptTokenCount")),
+                nullableNonNegativeLong(usage.path("candidatesTokenCount")),
+                nullableNonNegativeLong(usage.path("totalTokenCount"))
+        );
+    }
+
+    private Long nullableNonNegativeLong(JsonNode value) {
+        return value.isIntegralNumber() && value.canConvertToLong() && value.longValue() >= 0
+                ? value.longValue() : null;
+    }
+
     private GeminiAudienceAnalysisException failure(GeminiAudienceAnalysisErrorCode errorCode,
                                                     boolean retryable, Duration retryAfter, String message) {
         return new GeminiAudienceAnalysisException(errorCode, retryable, retryAfter, message);
+    }
+
+    private GeminiAudienceAnalysisException failure(GeminiAudienceAnalysisErrorCode errorCode,
+                                                    boolean retryable, Duration retryAfter,
+                                                    AudienceAnalysisLlmResponse.Usage usage, String message) {
+        return new GeminiAudienceAnalysisException(errorCode, retryable, retryAfter, usage, message);
     }
 }

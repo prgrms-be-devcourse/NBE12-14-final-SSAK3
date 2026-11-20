@@ -2,6 +2,7 @@ package com.react.ai.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.repository.AiAnalysisRepository;
+import com.react.ai.repository.AiLlmCallUsageRepository;
 import com.react.ai.repository.AudienceMessageRepository;
 import com.react.ai.service.AiAnalysisJsonParser;
 import com.react.ai.service.AudienceAnalysisLlmClient;
@@ -14,7 +15,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@EnableConfigurationProperties({GeminiAudienceAnalysisProperties.class, AudienceAnalysisRetryProperties.class})
+@EnableConfigurationProperties({GeminiAudienceAnalysisProperties.class, AudienceAnalysisRetryProperties.class,
+        AudienceAnalysisCostProperties.class})
 public class AiAnalysisConfiguration {
 
     @Bean
@@ -40,7 +42,10 @@ public class AiAnalysisConfiguration {
     AudienceAnalysisService audienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                                     AudienceAnalysisLlmClient llmClient,
                                                     AiAnalysisJsonParser jsonParser,
-                                                    AudienceAnalysisRetryProperties retryProperties) {
-        return new AudienceAnalysisService(analyses, messages, llmClient, jsonParser, retryProperties);
+                                                    AudienceAnalysisRetryProperties retryProperties,
+                                                    AiLlmCallUsageRepository usages,
+                                                    AudienceAnalysisCostProperties costProperties) {
+        return new AudienceAnalysisService(analyses, messages, llmClient, jsonParser, retryProperties,
+                usages, costProperties);
     }
 }
