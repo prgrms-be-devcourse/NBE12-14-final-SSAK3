@@ -3,6 +3,7 @@ package com.react.poll.service;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
 import com.react.poll.dto.CreatePollRequest;
+import com.react.poll.dto.MyPollResponseView;
 import com.react.poll.dto.PollCloseView;
 import com.react.poll.dto.PollListView;
 import com.react.poll.dto.PollOptionView;
@@ -150,7 +151,27 @@ public class PollService {
         var room = rooms.findRoom(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
         requireOwner(room, hostEmail);
+        return listOf(roomId, status);
+    }
 
+    /** 청중 조회. participantId 는 서버가 방별 쿠키로 확인한 값이며, 응답에는 질문·선택지·남은 시간만 있고 집계는 없다. */
+    public PollListView listForParticipant(long roomId, PollStatus status) {
+        rooms.findRoom(roomId).orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
+        return listOf(roomId, status);
+    }
+
+    /** 재접속한 청중이 자신의 선택을 복원한다. 응답이 없으면 선택을 비워서 돌려준다. */
+    public MyPollResponseView myResponse(long roomId, long pollId, long participantId) {
+        Poll poll = polls.findById(pollId)
+                .filter(found -> found.getLectureRoomId().equals(roomId))
+                .orElseThrow(() -> new BusinessException(ErrorCode.POLL_NOT_FOUND));
+        return responses.findFirstByPollIdAndParticipantId(poll.getId(), participantId)
+                .map(response -> new MyPollResponseView(poll.getId(), participantId,
+                        response.getPollOptionId(), response.getRespondedAt()))
+                .orElseGet(() -> new MyPollResponseView(poll.getId(), participantId, null, null));
+    }
+
+    private PollListView listOf(long roomId, PollStatus status) {
         Instant now = now();
         List<PollView> views = polls.findByLectureRoomIdOrderByIdDesc(roomId).stream()
                 .map(poll -> toView(poll, now))

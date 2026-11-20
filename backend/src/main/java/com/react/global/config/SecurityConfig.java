@@ -105,10 +105,15 @@ public class SecurityConfig {
                                 "/api/v1/rooms/*/participants/me"
                         ).permitAll()
 
-                        // 청중 투표 응답: 방별 PARTICIPANT_SESSION 쿠키는 Service 에서 검증한다.
-                        // CSRF 는 그대로 적용한다.
+                        // 청중 투표 응답·내 응답 조회·투표 목록: 방별 PARTICIPANT_SESSION 쿠키는
+                        // Controller 에서 검증한다(목록은 HOST 세션도 허용). CSRF 는 그대로 적용한다.
                         .requestMatchers(
                                 HttpMethod.PUT,
+                                "/api/v1/rooms/*/polls/*/responses/me"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/rooms/*/polls",
                                 "/api/v1/rooms/*/polls/*/responses/me"
                         ).permitAll()
 

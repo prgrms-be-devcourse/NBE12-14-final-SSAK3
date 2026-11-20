@@ -115,6 +115,67 @@ class PollRespondApiTest {
         assertThat(responses()).isZero();
     }
 
+    @Test
+    void participantListsPollsWithoutResultsAndOtherRoomCookieIsRejected() throws Exception {
+        Cookie cookie = join(joinCode, room);
+        respond(room, poll.pollId(), optionId(0), cookie);
+
+        MvcResult list = get(room, "/api/v1/rooms/{r}/polls", cookie);
+        assertThat(list.getResponse().getStatus()).isEqualTo(200);
+        JsonNode first = data(list).path("polls").get(0);
+        assertThat(first.path("pollId").asLong()).isEqualTo(poll.pollId());
+        assertThat(first.path("options")).hasSize(3);
+        assertThat(first.path("closesAt").asText()).isNotEmpty();
+        // 청중에게는 응답 인원·선택 결과를 내려주지 않는다.
+        assertThat(first.toString()).doesNotContain("count", "percentage", "totalParticipants");
+
+        assertThat(get(room, "/api/v1/rooms/{r}/polls").getResponse().getStatus()).isEqualTo(401);
+
+        long otherRoom = newRoom(jdbc.sql("SELECT host_user_id FROM lecture_rooms WHERE id = ?")
+                .param(room).query(Long.class).single());
+        Cookie other = join(joinCodeOf(otherRoom), otherRoom);
+        Cookie forged = new Cookie("PARTICIPANT_SESSION_" + room, other.getValue());
+        assertThat(get(room, "/api/v1/rooms/{r}/polls", forged).getResponse().getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void myResponseRestoresChoiceAndIsEmptyBeforeAnswering() throws Exception {
+        Cookie cookie = join(joinCode, room);
+        String path = "/api/v1/rooms/{r}/polls/" + poll.pollId() + "/responses/me";
+
+        JsonNode empty = data(get(room, path, cookie));
+        assertThat(empty.path("pollId").asLong()).isEqualTo(poll.pollId());
+        assertThat(empty.path("optionId").isNull()).isTrue();
+        assertThat(empty.path("respondedAt").isNull()).isTrue();
+
+        respond(room, poll.pollId(), optionId(1), cookie);
+        MvcResult restored = get(room, path, cookie);
+        assertThat(restored.getResponse().getStatus()).isEqualTo(200);
+        assertThat(data(restored).path("optionId").asLong()).isEqualTo(optionId(1));
+        assertThat(data(restored).path("respondedAt").asText()).isNotEmpty();
+
+        assertThat(get(room, path).getResponse().getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    void myResponseOfPollInAnotherRoomIsNotFound() throws Exception {
+        long otherRoom = newRoom(jdbc.sql("SELECT host_user_id FROM lecture_rooms WHERE id = ?")
+                .param(room).query(Long.class).single());
+        Cookie cookie = join(joinCodeOf(otherRoom), otherRoom);
+
+        MvcResult result = get(otherRoom, "/api/v1/rooms/{r}/polls/" + poll.pollId() + "/responses/me", cookie);
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(404);
+    }
+
+    private MvcResult get(long roomId, String path, Cookie... cookies) throws Exception {
+        var request = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path, roomId);
+        if (cookies.length > 0) {
+            request.cookie(cookies);
+        }
+        return mvc.perform(request).andReturn();
+    }
+
     private Cookie join(String code, long roomId) throws Exception {
         MvcResult result = mvc.perform(post("/api/v1/public/rooms/{joinCode}/participants", code)
                 .with(csrf())
