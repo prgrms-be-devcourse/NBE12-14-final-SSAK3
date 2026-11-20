@@ -6,8 +6,10 @@ import com.react.poll.dto.CreatePollRequest;
 import com.react.poll.dto.MyPollResponseView;
 import com.react.poll.dto.PollCloseView;
 import com.react.poll.dto.PollListView;
+import com.react.poll.dto.PollOptionResultView;
 import com.react.poll.dto.PollOptionView;
 import com.react.poll.dto.PollResponseView;
+import com.react.poll.dto.PollResultView;
 import com.react.poll.dto.PollView;
 import com.react.poll.entity.Poll;
 import com.react.poll.entity.PollCloseReason;
@@ -18,13 +20,17 @@ import com.react.poll.repository.PollQueryRepository;
 import com.react.poll.repository.PollRepository;
 import com.react.poll.repository.PollResponseRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -42,6 +48,7 @@ public class PollService {
     private final PollRepository polls;
     private final PollResponseRepository responses;
     private final PollQueryRepository rooms;
+    private final ApplicationEventPublisher events;
 
     @Transactional
     public PollView create(long roomId, String hostEmail, CreatePollRequest request) {
@@ -117,12 +124,15 @@ public class PollService {
         var existing = responses.findByPollIdAndParticipantId(pollId, participantId);
         if (existing.isEmpty()) {
             var saved = responses.save(new PollResponse(pollId, optionId, participantId, now));
+            events.publishEvent(new PollResponseSavedEvent(roomId, pollId));
             return responseView(saved, true, poll);
         }
         PollResponse response = existing.get();
         boolean changed = !response.getPollOptionId().equals(optionId);
         if (changed) {
             response.changeOption(optionId, now);
+            // 방송은 이 트랜잭션이 커밋된 뒤에 PollResultsBroadcaster 가 한다. 선택이 바뀌지 않았으면 알리지 않는다.
+            events.publishEvent(new PollResponseSavedEvent(roomId, pollId));
         }
         return responseView(response, changed, poll);
     }
@@ -169,6 +179,56 @@ public class PollService {
                 .map(response -> new MyPollResponseView(poll.getId(), participantId,
                         response.getPollOptionId(), response.getRespondedAt()))
                 .orElseGet(() -> new MyPollResponseView(poll.getId(), participantId, null, null));
+    }
+
+    /**
+     * 투표 결과 집계. 강연방 소유자만 조회하며 진행 중에도 볼 수 있다. 읽기 전용 트랜잭션 하나에서 모두 읽어
+     * 같은 시점의 데이터로 계산하므로, 읽는 도중 응답이 들어와도 인원 합계가 어긋나지 않는다. 잠그지 않아 응답 저장을 막지 않는다.
+     */
+    public PollResultView results(long roomId, long pollId, String hostEmail) {
+        var room = rooms.findRoom(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
+        requireOwner(room, hostEmail);
+        return aggregate(roomPoll(roomId, pollId), roomId);
+    }
+
+    /**
+     * 응답 저장이 커밋된 뒤 방송할 때 쓰는 집계. 소유자 확인은 응답 저장 쪽에서 이미 끝났다.
+     * 새 트랜잭션에서 읽으므로, 방금 커밋된 응답이 스냅샷에서 빠지는 일이 없다.
+     */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public PollResultView currentResults(long roomId, long pollId) {
+        return aggregate(roomPoll(roomId, pollId), roomId);
+    }
+
+    // 다른 강연방의 투표 번호로는 결과를 볼 수 없다.
+    private Poll roomPoll(long roomId, long pollId) {
+        return polls.findById(pollId)
+                .filter(found -> found.getLectureRoomId().equals(roomId))
+                .orElseThrow(() -> new BusinessException(ErrorCode.POLL_NOT_FOUND));
+    }
+
+    private PollResultView aggregate(Poll poll, long roomId) {
+        long pollId = poll.getId();
+        Map<Long, Long> counts = responses.countByOption(pollId).stream()
+                .collect(Collectors.toMap(PollResponseRepository.OptionCount::getOptionId,
+                        PollResponseRepository.OptionCount::getCount));
+        // 응답자 수는 따로 세지 않고 선택지별 인원을 더해 구한다. 그래서 인원 합계가 항상 일치한다.
+        long responded = counts.values().stream().mapToLong(Long::longValue).sum();
+        long total = rooms.countParticipants(roomId);
+
+        // 응답이 없는 선택지는 쿼리에 나오지 않으므로 선택지 목록을 기준으로 0 을 채운다.
+        List<PollOptionResultView> options = poll.getOptions().stream()
+                .map(option -> {
+                    long count = counts.getOrDefault(option.getId(), 0L);
+                    return new PollOptionResultView(option.getId(), option.getContent(), option.getUnderstandingStatus(),
+                            count, PollResultMath.percentage(count, responded), PollResultMath.percentage(count, total));
+                })
+                .toList();
+        Instant now = now();
+        return new PollResultView(poll.getId(), poll.getType(), poll.effectiveStatus(now), poll.getClosesAt(),
+                total, responded, PollResultMath.unresponded(total, responded),
+                PollResultMath.percentage(responded, total), options, now);
     }
 
     private PollListView listOf(long roomId, PollStatus status) {

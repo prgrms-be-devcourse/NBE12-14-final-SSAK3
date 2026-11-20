@@ -99,6 +99,52 @@ class StompSubscribeAuthTest extends StompIntegrationTestSupport {
         assertThat(StompTestClient.awaitClosed(otherSession)).isTrue();
     }
 
+    @Test
+    void 투표_결과_채널은_방_주인_강연자가_구독하고_방송을_받는다() throws Exception {
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, loginCookies(hostEmail));
+        var received = client.subscribe(session, resultsTopic(roomA));
+
+        assertThat(StompTestClient.awaitBroadcast(received, () -> broker.convertAndSend(
+                resultsTopic(roomA), Map.of("type", "POLL_RESULTS_UPDATED"))))
+                .containsEntry("type", "POLL_RESULTS_UPDATED");
+        session.disconnect();
+    }
+
+    @Test
+    void 투표_결과_채널은_청중이_구독할_수_없다() throws Exception {
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, participantCookie(roomA));
+        client.subscribe(session, resultsTopic(roomA));
+
+        assertThat(StompTestClient.awaitClosed(session)).isTrue();
+    }
+
+    @Test
+    void 투표_결과_채널은_다른_강연자도_구독할_수_없다() throws Exception {
+        String otherEmail = "other-" + UUID.randomUUID() + "@example.com";
+        newHost(otherEmail);
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, loginCookies(otherEmail));
+        client.subscribe(session, resultsTopic(roomA));
+
+        assertThat(StompTestClient.awaitClosed(session)).isTrue();
+    }
+
+    @Test
+    void 투표_결과_채널은_로그인_없이_구독할_수_없다() throws Exception {
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN);
+        client.subscribe(session, resultsTopic(roomA));
+
+        assertThat(StompTestClient.awaitClosed(session)).isTrue();
+    }
+
+    @Test
+    void 강연자라도_로그인과_청중_쿠키를_같이_보내도_다른_방의_결과_채널은_구독할_수_없다() throws Exception {
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN,
+                loginCookies(hostEmail), participantCookie(roomA));
+        client.subscribe(session, resultsTopic(otherRoom()));
+
+        assertThat(StompTestClient.awaitClosed(session)).isTrue();
+    }
+
     private void broadcast(LectureRoom room, String content) {
         broker.convertAndSend("/topic/rooms/" + room.getId() + "/chat",
                 Map.of("type", "CHAT_CREATED", "data", Map.of("content", content)));
@@ -106,6 +152,15 @@ class StompSubscribeAuthTest extends StompIntegrationTestSupport {
 
     private static String chatTopic(LectureRoom room) {
         return "/topic/rooms/" + room.getId() + "/chat";
+    }
+
+    private static String resultsTopic(LectureRoom room) {
+        return "/topic/rooms/" + room.getId() + "/polls/results";
+    }
+
+    /** 다른 강연자가 연 방. 이 테스트의 강연자는 소유자가 아니다. */
+    private LectureRoom otherRoom() {
+        return newRoom(newHost("owner-" + UUID.randomUUID() + "@example.com"), "남의 방");
     }
 
     /** 청중 입장 서비스로 실제 토큰을 발급받아, 브라우저가 보내는 것과 같은 모양의 쿠키 문자열을 만든다. */
