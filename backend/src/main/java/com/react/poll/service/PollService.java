@@ -6,13 +6,16 @@ import com.react.poll.dto.CreatePollRequest;
 import com.react.poll.dto.PollCloseView;
 import com.react.poll.dto.PollListView;
 import com.react.poll.dto.PollOptionView;
+import com.react.poll.dto.PollResponseView;
 import com.react.poll.dto.PollView;
 import com.react.poll.entity.Poll;
 import com.react.poll.entity.PollCloseReason;
+import com.react.poll.entity.PollResponse;
 import com.react.poll.entity.PollStatus;
 import com.react.poll.entity.PollType;
 import com.react.poll.repository.PollQueryRepository;
 import com.react.poll.repository.PollRepository;
+import com.react.poll.repository.PollResponseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +39,7 @@ public class PollService {
     private static final int MAX_OPTION_LENGTH = 255;
 
     private final PollRepository polls;
+    private final PollResponseRepository responses;
     private final PollQueryRepository rooms;
 
     @Transactional
@@ -86,6 +90,43 @@ public class PollService {
     }
 
     /**
+     * 청중이 투표에 응답하거나 마감 전에 선택을 바꾼다. participantId 는 서버가 확인한 값만 받는다.
+     * 잠금 순서는 강연방(공유) → 투표(쓰기)라 강연 종료·투표 마감과 같은 순서로 직렬화된다.
+     */
+    @Transactional
+    public PollResponseView respond(long roomId, long pollId, long participantId, long optionId) {
+        var room = rooms.lockRoomForShare(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
+        if (!rooms.existsParticipant(roomId, participantId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        requireLive(room.status());
+
+        Poll poll = polls.findForUpdate(roomId, pollId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POLL_NOT_FOUND));
+        Instant now = now();
+        // 마감 판단과 저장이 같은 트랜잭션이라 마감 시각이 지난 요청은 저장되지 않는다.
+        if (poll.effectiveStatus(now) == PollStatus.CLOSED) {
+            throw new BusinessException(ErrorCode.POLL_CLOSED);
+        }
+        if (poll.getOptions().stream().noneMatch(option -> option.getId().equals(optionId))) {
+            throw new BusinessException(ErrorCode.INVALID_POLL_OPTION);
+        }
+
+        var existing = responses.findByPollIdAndParticipantId(pollId, participantId);
+        if (existing.isEmpty()) {
+            var saved = responses.save(new PollResponse(pollId, optionId, participantId, now));
+            return responseView(saved, true, poll);
+        }
+        PollResponse response = existing.get();
+        boolean changed = !response.getPollOptionId().equals(optionId);
+        if (changed) {
+            response.changeOption(optionId, now);
+        }
+        return responseView(response, changed, poll);
+    }
+
+    /**
      * 강연 종료로 진행 중이던 투표를 마감한다. 강연 종료 API 가 방 상태를 ENDED 로 바꾸는 트랜잭션 안에서 호출한다
      * (방 행 UPDATE 가 쓰기 잠금이라 투표 생성·마감과 순서가 갈린다). 이미 제한 시간이 지난 투표는 TIMEOUT 으로 남긴다.
      *
@@ -116,6 +157,11 @@ public class PollService {
                 .filter(view -> status == null || view.status() == status)
                 .toList();
         return new PollListView(views, now);
+    }
+
+    private static PollResponseView responseView(PollResponse response, boolean changed, Poll poll) {
+        return new PollResponseView(poll.getId(), response.getParticipantId(), response.getPollOptionId(),
+                changed, response.getRespondedAt(), poll.getClosesAt());
     }
 
     private static PollView toView(Poll poll, Instant now) {
