@@ -1,59 +1,176 @@
 package com.react.global.websocket;
 
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
+import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * WebSocket 연결 요청(핸드셰이크)에 실려 온 방별 참여자 쿠키를 세션 속성에 보관한다.
- * 쿠키는 이 순간에만 오고, 연결이 열린 뒤의 STOMP 메시지에는 붙지 않는다.
- * 청중은 방마다 쿠키가 따로라 연결 시점에는 어느 방에 쓸지 알 수 없으므로, 여기서는 보관만 하고
- * 방별 검증은 구독·전송 때 한다. 원문 쿠키 값은 로그에 남기지 않는다.
- */
+@Component
 public class StompHandshakeInterceptor implements HandshakeInterceptor {
-    /** 세션 속성 키. 값은 방 ID → 그 방의 참여자 쿠키 값(Map&lt;Long, String&gt;)이다. */
-    public static final String PARTICIPANT_TOKENS = "participantTokens";
 
-    private static final String COOKIE_PREFIX = "PARTICIPANT_SESSION_";
-    // 핸드 쉐이크 전에 호출
+    public static final String PARTICIPANT_TOKENS =
+            "participantTokens";
+
+    public static final String HTTP_SESSION =
+            "stompHttpSession";
+
+    public static final String HTTP_SESSION_ID =
+            "stompHttpSessionId";
+
+    public static final String HTTP_HOST_NAME =
+            "stompHttpHostName";
+
+    public static final String CSRF_TOKEN =
+            "stompCsrfToken";
+
+    private static final String COOKIE_PREFIX =
+            "PARTICIPANT_SESSION_";
+
+    private final HttpSessionCsrfTokenRepository csrfRepository =
+            new HttpSessionCsrfTokenRepository();
+
     @Override
-    public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
-            WebSocketHandler wsHandler, Map<String, Object> attributes) {
-        attributes.put(PARTICIPANT_TOKENS, participantTokens(request));
-        return true;
-    }
-
-    @Override
-    public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
-            WebSocketHandler wsHandler, Exception exception) {
-    }
-
-    private static Map<Long, String> participantTokens(ServerHttpRequest request) {
-        Map<Long, String> tokens = new HashMap<>();
+    public boolean beforeHandshake(
+            ServerHttpRequest request,
+            ServerHttpResponse response,
+            WebSocketHandler wsHandler,
+            Map<String, Object> attributes
+    ) {
         if (!(request instanceof ServletServerHttpRequest servletRequest)) {
-            return tokens;
+            return false;
         }
-        Cookie[] cookies = servletRequest.getServletRequest().getCookies();
+
+        HttpServletRequest httpRequest =
+                servletRequest.getServletRequest();
+
+        // 기존 SCRUM-131의 방별 청중 쿠키 수집 기능 유지
+        attributes.put(
+                PARTICIPANT_TOKENS,
+                participantTokens(httpRequest)
+        );
+
+        HttpSession session = httpRequest.getSession(false);
+
+        // 실제 인증 거부는 STOMP CONNECT에서 수행한다.
+        if (session == null) {
+            return true;
+        }
+
+        try {
+            attributes.put(HTTP_SESSION, session);
+            attributes.put(HTTP_SESSION_ID, session.getId());
+
+            String hostName = currentHostName(session);
+
+            if (hostName != null) {
+                attributes.put(HTTP_HOST_NAME, hostName);
+            }
+
+            CsrfToken csrfToken =
+                    csrfRepository.loadToken(httpRequest);
+
+            if (csrfToken != null) {
+                attributes.put(
+                        CSRF_TOKEN,
+                        csrfToken.getToken()
+                );
+            }
+
+            return true;
+        } catch (IllegalStateException exception) {
+            return false;
+        }
+    }
+
+    @Override
+    public void afterHandshake(
+            ServerHttpRequest request,
+            ServerHttpResponse response,
+            WebSocketHandler wsHandler,
+            Exception exception
+    ) {
+        // 별도 처리 없음
+    }
+
+    public static String currentHostName(HttpSession session) {
+        Object stored = session.getAttribute(
+                HttpSessionSecurityContextRepository
+                        .SPRING_SECURITY_CONTEXT_KEY
+        );
+
+        if (!(stored instanceof SecurityContext context)) {
+            return null;
+        }
+
+        Authentication authentication =
+                context.getAuthentication();
+
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+
+        boolean isHost = authentication.getAuthorities()
+                .stream()
+                .anyMatch(authority ->
+                        "ROLE_HOST".equals(authority.getAuthority())
+                );
+
+        return isHost ? authentication.getName() : null;
+    }
+
+    private Map<Long, String> participantTokens(
+            HttpServletRequest request
+    ) {
+        Map<Long, String> tokens = new HashMap<>();
+
+        Cookie[] cookies = request.getCookies();
+
         if (cookies == null) {
-            return tokens;
+            return Map.of();
         }
+
         for (Cookie cookie : cookies) {
             String name = cookie.getName();
+
             if (!name.startsWith(COOKIE_PREFIX)) {
                 continue;
             }
-            String suffix = name.substring(COOKIE_PREFIX.length());
-            // 숫자로 된 방 ID 만 받고, 같은 방 쿠키가 여러 개면 먼저 온 것을 쓴다.
-            if (suffix.matches("[1-9][0-9]{0,17}")) {
-                tokens.putIfAbsent(Long.valueOf(suffix), cookie.getValue());
+
+            String suffix =
+                    name.substring(COOKIE_PREFIX.length());
+
+            if (!suffix.matches("[1-9][0-9]{0,17}")) {
+                continue;
+            }
+
+            try {
+                long roomId = Long.parseLong(suffix);
+
+                tokens.putIfAbsent(
+                        roomId,
+                        cookie.getValue()
+                );
+            } catch (NumberFormatException ignored) {
+                // 숫자 범위를 벗어난 방 ID는 무시
             }
         }
-        return tokens;
+
+        return Map.copyOf(tokens);
     }
 }

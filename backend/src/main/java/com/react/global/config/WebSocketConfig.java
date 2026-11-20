@@ -1,8 +1,12 @@
 package com.react.global.config;
 
 import com.react.global.websocket.StompHandshakeInterceptor;
+import com.react.global.websocket.StompSessionAuthInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -20,38 +24,49 @@ import java.util.Arrays;
 
 @Configuration
 @EnableWebSocketMessageBroker
+@Order(Ordered.HIGHEST_PRECEDENCE)
+@RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-    private final String[] allowedOrigins;
+    private final StompHandshakeInterceptor handshakeInterceptor;
+    private final StompSessionAuthInterceptor authInterceptor;
 
-    public WebSocketConfig(
-            @Value("${app.cors.allowed-origins}") String origins
-    ) {
+    private String[] allowedOrigins;
+
+    @Value("${app.cors.allowed-origins}")
+    public void setAllowedOrigins(String origins) {
         this.allowedOrigins = Arrays.stream(origins.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isBlank())
                 .toArray(String[]::new);
     }
 
-    // 클라이언트가 최초 연결할 주소
     @Override
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
+    public void registerStompEndpoints(
+            StompEndpointRegistry registry
+    ) {
         registry.addEndpoint("/ws")
-                .addInterceptors(new StompHandshakeInterceptor())
+                .addInterceptors(handshakeInterceptor)
                 .setAllowedOriginPatterns(allowedOrigins);
     }
 
-    // STOMP 메시지 경로 설정
     @Override
-    public void configureMessageBroker(MessageBrokerRegistry registry) {
+    public void configureMessageBroker(
+            MessageBrokerRegistry registry
+    ) {
         registry.setApplicationDestinationPrefixes("/app");
         registry.enableSimpleBroker("/topic", "/queue");
         registry.setUserDestinationPrefix("/user");
     }
 
-    // 클라이언트가 브로커 주소로 직접 메시지를 보내는 행위 차단
     @Override
-    public void configureClientInboundChannel(ChannelRegistration registration) {
+    public void configureClientInboundChannel(
+            ChannelRegistration registration
+    ) {
+        // 164: 연결 인증을 먼저 검사
+        registration.interceptors(authInterceptor);
+
+        // 기존 131의 브로커 직접 SEND 차단은 유지
         registration.interceptors(new ChannelInterceptor() {
 
             @Override
@@ -78,7 +93,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                         || destination.startsWith("/user/"))) {
 
                     throw new AccessDeniedException(
-                            "브로커 주소로 직접 메시지를 전송할 수 없습니다."
+                            "브로커 주소로 직접 전송할 수 없습니다."
                     );
                 }
 
