@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Optional;
 
 /** 엔티티가 없는 강연방 테이블을 확인하고 잠그는 저장소. */
@@ -37,6 +40,18 @@ public class PollQueryRepository {
     public long countParticipants(long roomId) {
         return jdbc.sql("SELECT COUNT(*) FROM lecture_participants WHERE lecture_room_id = ?")
                 .param(roomId)
+                .query(Long.class)
+                .single();
+    }
+
+    /** 제한 시간 정각부터는 투표에 참여할 수 없다. 기존 초 단위 입장 기록의 반올림을 고려해 실제 응답자는 포함한다. */
+    public long countParticipantsAtTimeout(long roomId, long pollId, Instant closesAt) {
+        return jdbc.sql("""
+                        SELECT COUNT(*) FROM lecture_participants p
+                        WHERE p.lecture_room_id = ? AND (p.joined_at < ? OR EXISTS (
+                            SELECT 1 FROM poll_responses r WHERE r.poll_id = ? AND r.participant_id = p.id))
+                        """)
+                .params(roomId, LocalDateTime.ofInstant(closesAt, ZoneId.of("Asia/Seoul")), pollId)
                 .query(Long.class)
                 .single();
     }

@@ -70,7 +70,7 @@ public class PollService {
             if (!open.isExpired(now)) {
                 throw new BusinessException(ErrorCode.POLL_ALREADY_OPEN);
             }
-            open.expire();
+            open.expire(rooms.countParticipantsAtTimeout(roomId, open.getId(), open.getClosesAt()));
         }
 
         Poll poll = type == PollType.UNDERSTANDING
@@ -93,7 +93,7 @@ public class PollService {
         if (poll.effectiveStatus(now) == PollStatus.CLOSED) {
             throw new BusinessException(ErrorCode.POLL_ALREADY_CLOSED);
         }
-        poll.closeByHost(now);
+        poll.closeByHost(now, rooms.countParticipants(roomId));
         return new PollCloseView(poll.getId(), poll.getStatus(), poll.getClosedAt(), poll.getCloseReason());
     }
 
@@ -149,9 +149,9 @@ public class PollService {
         List<Poll> open = polls.findByLectureRoomIdAndStatus(roomId, PollStatus.OPEN);
         for (Poll poll : open) {
             if (poll.isExpired(now)) {
-                poll.expire();
+                poll.expire(rooms.countParticipantsAtTimeout(roomId, poll.getId(), poll.getClosesAt()));
             } else {
-                poll.closeByRoomEnded(now);
+                poll.closeByRoomEnded(now, rooms.countParticipants(roomId));
             }
         }
         return open.size();
@@ -215,7 +215,8 @@ public class PollService {
                         PollResponseRepository.OptionCount::getCount));
         // 응답자 수는 따로 세지 않고 선택지별 인원을 더해 구한다. 그래서 인원 합계가 항상 일치한다.
         long responded = counts.values().stream().mapToLong(Long::longValue).sum();
-        long total = rooms.countParticipants(roomId);
+        Instant now = now();
+        long total = resultParticipantCount(poll, now);
 
         // 응답이 없는 선택지는 쿼리에 나오지 않으므로 선택지 목록을 기준으로 0 을 채운다.
         List<PollOptionResultView> options = poll.getOptions().stream()
@@ -225,10 +226,19 @@ public class PollService {
                             count, PollResultMath.percentage(count, responded), PollResultMath.percentage(count, total));
                 })
                 .toList();
-        Instant now = now();
         return new PollResultView(poll.getId(), poll.getType(), poll.effectiveStatus(now), poll.getClosesAt(),
                 total, responded, PollResultMath.unresponded(total, responded),
                 PollResultMath.percentage(responded, total), options, now);
+    }
+
+    private long resultParticipantCount(Poll poll, Instant now) {
+        if (poll.getClosedTotalParticipants() != null) {
+            return poll.getClosedTotalParticipants();
+        }
+        if (poll.isExpired(now)) {
+            return rooms.countParticipantsAtTimeout(poll.getLectureRoomId(), poll.getId(), poll.getClosesAt());
+        }
+        return rooms.countParticipants(poll.getLectureRoomId());
     }
 
     private PollListView listOf(long roomId, PollStatus status) {
