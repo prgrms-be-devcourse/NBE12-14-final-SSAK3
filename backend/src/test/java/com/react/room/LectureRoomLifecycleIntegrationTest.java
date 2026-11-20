@@ -211,8 +211,7 @@ class LectureRoomLifecycleIntegrationTest {
         startRoom(roomId);
 
         // 실행 환경에 관계없이 한국 시간 기준으로 테스트 데이터 생성
-        LocalDateTime nowSeoul =
-                LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+        LocalDateTime nowSeoul = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
 
         jdbc.sql("""
             INSERT INTO polls (
@@ -254,28 +253,31 @@ class LectureRoomLifecycleIntegrationTest {
         long roomId = createRoom();
         startRoom(roomId);
 
+        // CI와 로컬에서 동일하게 한국 시간 사용
+        LocalDateTime nowSeoul = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+
         jdbc.sql("""
-                INSERT INTO polls (
-                    lecture_room_id,
-                    question,
-                    status,
-                    created_at,
-                    closes_at
-                ) VALUES (?, '만료된 투표', 'OPEN', ?, ?)
-                """)
+            INSERT INTO polls (
+                lecture_room_id,
+                question,
+                status,
+                created_at,
+                closes_at
+            ) VALUES (?, '만료된 투표', 'OPEN', ?, ?)
+            """)
                 .params(
                         roomId,
-                        LocalDateTime.now().minusMinutes(2),
-                        LocalDateTime.now().minusMinutes(1)
+                        nowSeoul.minusMinutes(2),
+                        nowSeoul.minusMinutes(1)
                 )
                 .update();
 
         endRoom(roomId);
 
         assertThat(jdbc.sql("""
-                SELECT close_reason FROM polls
-                WHERE lecture_room_id = ?
-                """).param(roomId)
+            SELECT close_reason FROM polls
+            WHERE lecture_room_id = ?
+            """).param(roomId)
                 .query(String.class)
                 .single()).isEqualTo("TIMEOUT");
     }
