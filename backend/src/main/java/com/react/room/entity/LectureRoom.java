@@ -1,6 +1,8 @@
 package com.react.room.entity;
 
 import com.react.auth.entity.User;
+import com.react.global.exception.BusinessException;
+import com.react.global.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -8,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 
 @Entity
 @Table(name = "lecture_rooms")
@@ -61,5 +64,27 @@ public class LectureRoom {
         this.joinCode = joinCode;
         this.status = LectureRoomStatus.READY;
         this.createdAt = LocalDateTime.now(SEOUL);
+    }
+
+    // SCRUM-130: READY 상태에서만 강연 시작
+    public void start() {
+        if (status != LectureRoomStatus.READY) {
+            throw new BusinessException(ErrorCode.INVALID_ROOM_STATUS);
+        }
+
+        status = LectureRoomStatus.LIVE;
+        startedAt = LocalDateTime.now(SEOUL)
+                .truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    // SCRUM-130: LIVE 상태에서만 강연 종료
+    public void end() {
+        if (status != LectureRoomStatus.LIVE) {
+            throw new BusinessException(ErrorCode.INVALID_ROOM_STATUS);
+        }
+
+        status = LectureRoomStatus.ENDED;
+        endedAt = LocalDateTime.now(SEOUL)
+                .truncatedTo(ChronoUnit.SECONDS);
     }
 }
