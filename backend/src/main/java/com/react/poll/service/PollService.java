@@ -20,7 +20,9 @@ import com.react.poll.repository.PollQueryRepository;
 import com.react.poll.repository.PollRepository;
 import com.react.poll.repository.PollResponseRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
@@ -46,6 +48,7 @@ public class PollService {
     private final PollRepository polls;
     private final PollResponseRepository responses;
     private final PollQueryRepository rooms;
+    private final ApplicationEventPublisher events;
 
     @Transactional
     public PollView create(long roomId, String hostEmail, CreatePollRequest request) {
@@ -121,12 +124,15 @@ public class PollService {
         var existing = responses.findByPollIdAndParticipantId(pollId, participantId);
         if (existing.isEmpty()) {
             var saved = responses.save(new PollResponse(pollId, optionId, participantId, now));
+            events.publishEvent(new PollResponseSavedEvent(roomId, pollId));
             return responseView(saved, true, poll);
         }
         PollResponse response = existing.get();
         boolean changed = !response.getPollOptionId().equals(optionId);
         if (changed) {
             response.changeOption(optionId, now);
+            // 방송은 이 트랜잭션이 커밋된 뒤에 PollResultsBroadcaster 가 한다. 선택이 바뀌지 않았으면 알리지 않는다.
+            events.publishEvent(new PollResponseSavedEvent(roomId, pollId));
         }
         return responseView(response, changed, poll);
     }
@@ -183,11 +189,27 @@ public class PollService {
         var room = rooms.findRoom(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
         requireOwner(room, hostEmail);
-        // 다른 강연방의 투표 번호로는 결과를 볼 수 없다.
-        Poll poll = polls.findById(pollId)
+        return aggregate(roomPoll(roomId, pollId), roomId);
+    }
+
+    /**
+     * 응답 저장이 커밋된 뒤 방송할 때 쓰는 집계. 소유자 확인은 응답 저장 쪽에서 이미 끝났다.
+     * 새 트랜잭션에서 읽으므로, 방금 커밋된 응답이 스냅샷에서 빠지는 일이 없다.
+     */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public PollResultView currentResults(long roomId, long pollId) {
+        return aggregate(roomPoll(roomId, pollId), roomId);
+    }
+
+    // 다른 강연방의 투표 번호로는 결과를 볼 수 없다.
+    private Poll roomPoll(long roomId, long pollId) {
+        return polls.findById(pollId)
                 .filter(found -> found.getLectureRoomId().equals(roomId))
                 .orElseThrow(() -> new BusinessException(ErrorCode.POLL_NOT_FOUND));
+    }
 
+    private PollResultView aggregate(Poll poll, long roomId) {
+        long pollId = poll.getId();
         Map<Long, Long> counts = responses.countByOption(pollId).stream()
                 .collect(Collectors.toMap(PollResponseRepository.OptionCount::getOptionId,
                         PollResponseRepository.OptionCount::getCount));
