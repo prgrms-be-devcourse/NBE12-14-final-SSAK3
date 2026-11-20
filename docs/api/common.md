@@ -111,9 +111,11 @@
 | 메시지 구독 | `/topic`, `/queue` |
 | 사용자별 메시지 | `/user` |
 | 허용 Origin | `app.cors.allowed-origins` |
-| 운영 환경 | `prod` 프로파일에서 비활성화 |
+| 운영 환경 | `prod` 프로파일에서 비활성화(인증·권한 검사 검증 후 해제 예정) |
 
 - `/topic/`, `/queue/`, `/user/`로 직접 SEND하는 요청은 차단한다.
 - 로컬 테스트용 `/app/_dev/ping` → `/topic/_dev/pong`을 지원한다.
-- `HOST_SESSION`, `PARTICIPANT_SESSION` 인증 및 강연방별 권한 검사는 후속 작업이다.
-- 현재 구현은 STOMP 기본 연결 및 메시지 라우팅 검증 단계이며, 실제 채팅 기능은 포함하지 않는다.
+- 연결(`/ws`)은 허용된 Origin 에서만 받는다. 연결 시점의 `HOST_SESSION` 로그인 정보와 방별 `PARTICIPANT_SESSION_{roomId}` 쿠키를 서버가 보관하고, 구독·전송 때 그 방 기준으로 검사한다.
+- 구독은 허용 주소만 열려 있다: `/topic/rooms/{roomId}/chat`, `/topic/rooms/{roomId}/status`(해당 강연방의 강연자·청중만), `/user/queue/*`. 그 외는 거절한다. 구독이 거절되면 서버가 STOMP `ERROR` 를 보내고 연결을 닫는다.
+- 작성자는 서버가 쿠키·로그인으로 확인한다. 본문의 `userId`, `participantId`, `sender` 등은 읽지 않는다.
+- 전송 오류는 연결을 유지한 채 보낸 사람의 `/user/queue/errors` 로만 전달한다(`{ "type": "ERROR", "code", "message" }`).
