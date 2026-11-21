@@ -1,5 +1,5 @@
 import { Client } from '@stomp/stompjs'
-import { ApiError, request } from '../stt/api.js'
+import { ApiError, getCsrfToken, request } from '../stt/api.js'
 import { readHistory } from './history.js'
 
 export function openRoomChat({ roomId, live, role, since, onMessages, onConnection, onHistory, onLost, onAck, isCurrentAttempt, onError, onAccessError }) {
@@ -14,7 +14,7 @@ export function openRoomChat({ roomId, live, role, since, onMessages, onConnecti
 
   function included(message) {
     return Number.isSafeInteger(message?.messageId) && message.sender &&
-      (!Number.isFinite(earliestSecond) || Math.floor(Date.parse(message.receivedAt) / 1000) >= earliestSecond)
+        (!Number.isFinite(earliestSecond) || Math.floor(Date.parse(message.receivedAt) / 1000) >= earliestSecond)
   }
 
   async function refresh() {
@@ -25,7 +25,7 @@ export function openRoomChat({ roomId, live, role, since, onMessages, onConnecti
     onHistory('loading')
     try {
       const messages = await readHistory(cursor => request(cursor === null ? path : `${path}&cursor=${cursor}`,
-        { headers: roleHeaders }), knownThrough, current)
+          { headers: roleHeaders }), knownThrough, current)
       if (!current()) return
       onMessages(messages.filter(included))
       knownThrough = Math.max(knownThrough, messages.at(-1)?.messageId ?? 0)
@@ -82,6 +82,20 @@ export function openRoomChat({ roomId, live, role, since, onMessages, onConnecti
       brokerURL: `${scheme}://${location.host}/ws`,
       reconnectDelay: 3000,
       connectionTimeout: 8000,
+      beforeConnect: async () => {
+        try {
+          // SCRUM-164: 새 연결과 재연결마다 현재 HTTP 세션의 CSRF 토큰을 확인한다.
+          const { headerName, token } = await getCsrfToken(10000, true)
+          if (!active) return
+          client.connectHeaders = { ...roleHeaders, [headerName]: token }
+        } catch (error) {
+          if (active) {
+            disconnected()
+            if (error.status === 401 || error.status === 403) deny(error)
+          }
+          throw error
+        }
+      },
       onConnect() {
         if (!active) return
         client.subscribe(`/topic/rooms/${roomId}/chat`, handleMessage, roleHeaders)

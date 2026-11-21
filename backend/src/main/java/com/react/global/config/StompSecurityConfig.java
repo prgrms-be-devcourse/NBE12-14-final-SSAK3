@@ -1,5 +1,6 @@
 package com.react.global.config;
 
+import com.react.global.websocket.StompSendAuthorizationInterceptor;
 import com.react.global.websocket.StompSubscribeInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
@@ -14,9 +15,10 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @RequiredArgsConstructor
 public class StompSecurityConfig implements WebSocketMessageBrokerConfigurer {
     private final StompSubscribeInterceptor subscribeInterceptor;
+    private final StompSendAuthorizationInterceptor sendAuthorizationInterceptor;
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(subscribeInterceptor);
+        registration.interceptors(subscribeInterceptor, sendAuthorizationInterceptor);
     }
 }

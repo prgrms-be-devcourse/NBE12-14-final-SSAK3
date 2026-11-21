@@ -9,6 +9,7 @@ import com.react.auth.service.AuthService;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
 import com.react.global.response.ApiResponse;
+import com.react.global.websocket.HttpSessionWebSocketLinks;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -60,11 +61,6 @@ public class AuthController {
     ) {
         LoginResponse response = authService.login(request);
 
-        // 기존 세션이 있으면 로그인 시 세션 ID 변경
-        if (servletRequest.getSession(false) != null) {
-            servletRequest.changeSessionId();
-        }
-
         // 이메일을 인증 주체로 사용
         Authentication authentication =
                 UsernamePasswordAuthenticationToken.authenticated(
@@ -81,12 +77,35 @@ public class AuthController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
 
-        // 다음 요청에서도 인증 정보 유지
-        securityContextRepository.saveContext(
-                context,
-                servletRequest,
-                servletResponse
-        );
+        HttpSession existingSession = servletRequest.getSession(false);
+
+        if (existingSession != null) {
+            synchronized (existingSession) {
+                // 기존 WebSocket 연결 관리자를 제거한다.
+                // HttpSessionBindingListener가 호출되면서
+                // 이전 계정의 WebSocket 연결을 모두 종료한다.
+                existingSession.removeAttribute(
+                        HttpSessionWebSocketLinks.SESSION_ATTRIBUTE
+                );
+
+                // 기존 세션이 있으면 로그인 시 세션 ID 변경
+                servletRequest.changeSessionId();
+
+                // 다음 요청에서도 인증 정보 유지
+                securityContextRepository.saveContext(
+                        context,
+                        servletRequest,
+                        servletResponse
+                );
+            }
+        } else {
+            // 다음 요청에서도 인증 정보 유지
+            securityContextRepository.saveContext(
+                    context,
+                    servletRequest,
+                    servletResponse
+            );
+        }
 
         return ApiResponse.of(response);
     }
@@ -115,9 +134,12 @@ public class AuthController {
         HttpSession session = servletRequest.getSession(false);
 
         if (session != null) {
-            session.invalidate();
+            synchronized (session) {
+                session.invalidate();
+            }
         }
 
+        // HTTP 세션 무효화 시 등록된 WebSocket 연결도 종료된다.
         SecurityContextHolder.clearContext();
 
         // application.yml의 세션 쿠키 설정 사용

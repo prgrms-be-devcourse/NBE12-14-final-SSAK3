@@ -40,8 +40,41 @@ class StompHandshakeInterceptorTest {
         assertThat((Map<Long, String>) attributes.get(StompHandshakeInterceptor.PARTICIPANT_TOKENS)).isEmpty();
     }
 
+    @Test
+    void HTTP_세션이_없으면_핸드셰이크를_거절한다() {
+        var request = new MockHttpServletRequest();
+        Map<String, Object> attributes = new HashMap<>();
+
+        boolean allowed = interceptor.beforeHandshake(
+                new ServletServerHttpRequest(request),
+                new ServletServerHttpResponse(new MockHttpServletResponse()),
+                null,
+                attributes
+        );
+
+        assertThat(allowed).isFalse();
+    }
+
+    @Test
+    void HTTP_세션과_WebSocket_연결_관리자를_보관한다() {
+        var attributes = handshake();
+
+        assertThat(attributes)
+                .containsKey(StompHandshakeInterceptor.HTTP_SESSION)
+                .containsKey(StompHandshakeInterceptor.HTTP_SESSION_ID)
+                .containsKey(HttpSessionWebSocketLinks.HANDSHAKE_ATTRIBUTE);
+
+        assertThat(attributes.get(
+                HttpSessionWebSocketLinks.HANDSHAKE_ATTRIBUTE
+        )).isInstanceOf(HttpSessionWebSocketLinks.class);
+    }
+
     private Map<String, Object> handshake(Cookie... cookies) {
         var request = new MockHttpServletRequest();
+
+        // SCRUM-164: 핸드셰이크에 필요한 HTTP 세션 생성
+        request.getSession(true);
+
         if (cookies.length > 0) {
             request.setCookies(cookies);
         }

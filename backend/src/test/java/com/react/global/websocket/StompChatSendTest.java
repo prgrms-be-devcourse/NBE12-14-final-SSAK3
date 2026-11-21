@@ -11,10 +11,12 @@ import org.springframework.messaging.simp.stomp.StompSession;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** 채팅 전송: 작성자는 쿠키·로그인으로 서버가 정하고, 본문에서는 content 만 읽어 저장한다. */
 class StompChatSendTest extends StompIntegrationTestSupport {
@@ -229,9 +231,13 @@ class StompChatSendTest extends StompIntegrationTestSupport {
     @Test
     void 다른_방_토큰을_이_방_쿠키로_위조하면_거절된다() throws Exception {
         LectureRoom otherRoom = liveRoom();
-        String otherToken = join(otherRoom, "다른방청중").cookie().split("=", 2)[1];
+        String otherCookie = join(otherRoom, "다른방청중").cookie();
+        String otherToken = otherCookie.split("=", 2)[1];
+
+        // 유효한 다른 방 쿠키로 CONNECT는 허용하되,
+        // 현재 방에 대한 위조 쿠키는 SEND 권한 검증에서 거절해야 한다.
         StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN,
-                "PARTICIPANT_SESSION_" + room.getId() + "=" + otherToken);
+                otherCookie, "PARTICIPANT_SESSION_" + room.getId() + "=" + otherToken);
 
         expectError(session, chatDestination(), Map.of("content", "위조"), ErrorCode.FORBIDDEN);
 
@@ -240,13 +246,12 @@ class StompChatSendTest extends StompIntegrationTestSupport {
     }
 
     @Test
-    void 쿠키도_로그인도_없으면_전송이_거절된다() throws Exception {
-        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN);
-
-        expectError(session, chatDestination(), Map.of("content", "누구세요"), ErrorCode.UNAUTHENTICATED);
+    void 쿠키도_로그인도_없으면_CONNECT부터_거절된다() throws Exception {
+        // SCRUM-164: 인증이 없으면 전송 전 CONNECT 단계에서 거절한다.
+        assertThatThrownBy(() -> client.connect(StompTestClient.ALLOWED_ORIGIN))
+                .isInstanceOf(ExecutionException.class);
 
         assertThat(savedCount(room)).isZero();
-        session.disconnect();
     }
 
     @Test
@@ -277,7 +282,6 @@ class StompChatSendTest extends StompIntegrationTestSupport {
         listenerSession.disconnect();
     }
 
-
     /** 오류 우편함을 구독한 뒤, 거절될 메시지를 오류가 올 때까지 반복해 보내고 받은 오류 코드를 확인한다. */
     private void expectError(StompSession session, String destination, Object payload, ErrorCode expected)
             throws InterruptedException {
@@ -307,7 +311,7 @@ class StompChatSendTest extends StompIntegrationTestSupport {
 
     /** 구독한 뒤, 서버가 그 구독을 등록해 방송이 닿는 것을 워밍업 방송으로 확인하고 큐를 돌려준다. */
     private BlockingQueue<Map<String, Object>> subscribeReady(StompSession session,
-            LectureRoom target) throws InterruptedException {
+                                                              LectureRoom target) throws InterruptedException {
         String topic = "/topic/rooms/" + target.getId() + "/chat";
         var queue = client.subscribe(session, topic);
         assertThat(StompTestClient.awaitBroadcast(queue, () -> broker.convertAndSend(topic, Map.of("type", "WARMUP"))))
@@ -353,5 +357,4 @@ class StompChatSendTest extends StompIntegrationTestSupport {
         }
         throw new AssertionError("5초 안에 채팅 메시지가 저장되지 않았다");
     }
-
 }
