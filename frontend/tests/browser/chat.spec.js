@@ -9,10 +9,14 @@ const message = (id, content, sender = host) => ({
 })
 
 async function openChat(page, initial = []) {
-  const state = { saved: [...initial], sent: [], reads: [], blockHistory: false, chat: null }
+  const state = { saved: [...initial], sent: [], reads: [], csrfReads: 0, blockHistory: false, chat: null }
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url())
     const ok = data => route.fulfill({ json: { data } })
+    if (url.pathname.endsWith('/auth/csrf')) {
+      state.csrfReads++
+      return ok({ headerName: 'X-CSRF-TOKEN', token: 'test-csrf-token' })
+    }
     if (url.pathname.endsWith('/public/rooms/TEST')) return ok({ roomId, title: '실시간 질문', status: 'LIVE' })
     if (url.pathname.endsWith('/participants/me')) return ok({ roomId, participantId: guest.id, nickname: guest.name, joinedAt: '2026-11-21T02:00:00Z' })
     if (url.pathname.endsWith('/messages')) {
@@ -37,7 +41,11 @@ async function openChat(page, initial = []) {
         const i = field.indexOf(':')
         return [field.slice(0, i), field.slice(i + 1)]
       }))
-      if (command === 'CONNECT') socket.send('CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0')
+      if (command === 'CONNECT') {
+        expect(headers['X-CSRF-TOKEN']).toBe('test-csrf-token')
+        expect(headers['X-Chat-Role']).toBe('PARTICIPANT')
+        socket.send('CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0')
+      }
       if (command === 'SUBSCRIBE') {
         subscriptions.set(headers.destination, headers.id)
         if (headers.destination !== topic) return
@@ -64,6 +72,11 @@ async function openChat(page, initial = []) {
   await expect.poll(() => Boolean(state.chat)).toBe(true)
   return { state, panel }
 }
+
+test('STOMP CONNECT 전에 CSRF 토큰을 발급받고 청중 역할을 전달한다', async ({ page }) => {
+  const { state } = await openChat(page)
+  expect(state.csrfReads).toBeGreaterThan(0)
+})
 
 test('응답 유실 후 원문과 입력을 복구하고, 내역 갱신 후에만 수동 재전송한다', async ({ page }) => {
   const { state, panel } = await openChat(page)

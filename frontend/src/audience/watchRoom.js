@@ -1,4 +1,5 @@
 import { Client } from '@stomp/stompjs'
+import { getCsrfToken } from '../stt/api.js'
 import { endReason, readParticipation } from './participation.js'
 
 export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onConnection }) {
@@ -10,6 +11,16 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onCo
     brokerURL: `${wsProtocol}//${window.location.host}/ws`,
     reconnectDelay: 3000,
     connectionTimeout: 8000,
+    beforeConnect: async () => {
+      // SCRUM-164: 강연 상태 감시 연결에도 CSRF와 청중 역할을 전달한다.
+      // 자동 재연결 시에도 현재 HTTP 세션의 토큰을 다시 확인한다.
+      const { headerName, token } = await getCsrfToken(10000, true)
+      if (!active) return
+      client.connectHeaders = {
+        'X-Chat-Role': 'PARTICIPANT',
+        [headerName]: token,
+      }
+    },
     onConnect() {
       if (!active) return
       client.subscribe(`/topic/rooms/${roomId}/status`, message => {
@@ -75,9 +86,11 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onCo
     onConnection(false)
     client.forceDisconnect()
   }
+
   function refreshVisible() {
     if (!document.hidden) void reconcile()
   }
+
   // The simple broker does not acknowledge SUBSCRIBE or replay missed events.
   // A snapshot after subscribing and occasional visible-tab checks cover that gap.
   client.activate()
@@ -85,6 +98,7 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onCo
   document.addEventListener('visibilitychange', refreshVisible)
   window.addEventListener('online', reconcile)
   window.addEventListener('offline', offline)
+
   function close() {
     active = false
     window.clearInterval(timer)
@@ -93,5 +107,6 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onCo
     window.removeEventListener('offline', offline)
     void client.deactivate({ force: true })
   }
+
   return { reconcile, close }
 }

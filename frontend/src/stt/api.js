@@ -8,7 +8,9 @@ export class ApiError extends Error {
 
 let csrfPromise = null
 
-function getCsrfToken(timeout) {
+export function getCsrfToken(timeout = 10000, refresh = false) {
+  if (refresh) csrfPromise = null
+
   if (!csrfPromise) {
     csrfPromise = fetch('/api/v1/auth/csrf', {
       credentials: 'same-origin',
