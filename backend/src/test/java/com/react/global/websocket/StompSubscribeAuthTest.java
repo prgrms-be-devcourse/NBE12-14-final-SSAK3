@@ -13,8 +13,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 구독 권한: 그 방의 강연자와 청중만 방별 채널을 구독할 수 있다.
@@ -65,11 +67,10 @@ class StompSubscribeAuthTest extends StompIntegrationTestSupport {
     }
 
     @Test
-    void 쿠키도_로그인도_없으면_구독이_거절된다() throws Exception {
-        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN);
-        client.subscribe(session, chatTopic(roomA));
-
-        assertThat(StompTestClient.awaitClosed(session)).isTrue();
+    void 쿠키도_로그인도_없으면_CONNECT부터_거절된다() {
+        // SCRUM-164: 인증 정보가 없으면 구독 전 CONNECT 단계에서 거절한다.
+        assertThatThrownBy(() -> client.connect(StompTestClient.ALLOWED_ORIGIN))
+                .isInstanceOf(ExecutionException.class);
     }
 
     @Test
@@ -166,10 +167,9 @@ class StompSubscribeAuthTest extends StompIntegrationTestSupport {
 
     @Test
     void 투표_결과_채널은_로그인_없이_구독할_수_없다() throws Exception {
-        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN);
-        client.subscribe(session, resultsTopic(roomA));
-
-        assertThat(StompTestClient.awaitClosed(session)).isTrue();
+        // SCRUM-164: 무인증 연결은 CONNECT에서 거절한다.
+        assertThatThrownBy(() -> client.connect(StompTestClient.ALLOWED_ORIGIN))
+                .isInstanceOf(ExecutionException.class);
     }
 
     @Test
@@ -204,5 +204,4 @@ class StompSubscribeAuthTest extends StompIntegrationTestSupport {
         var joined = participants.join(room.getJoinCode(), "청중", UUID.randomUUID().toString(), Map.of());
         return "PARTICIPANT_SESSION_" + room.getId() + "=" + joined.rawToken();
     }
-
 }
