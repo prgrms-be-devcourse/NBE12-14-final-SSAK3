@@ -1,3 +1,4 @@
+
 package com.react.global.websocket;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
  * 쿠키는 브라우저가 해 주는 것처럼 연결 요청(핸드셰이크) 헤더에 직접 실어 보낸다.
  */
 public final class StompTestClient {
+
     public static final String ALLOWED_ORIGIN = "http://localhost:5173";
     private static final long TIMEOUT_SECONDS = 5;
     private static final String SESSION_COOKIE = "HOST_SESSION=";
@@ -52,20 +54,26 @@ public final class StompTestClient {
     }
 
     /** 연결에 성공하면 세션을 돌려주고, 서버가 거절하면 예외를 던진다. */
-    public StompSession connect(String origin, String... cookies) throws Exception {
-        return connectInternal(origin, null, true, cookies);
+    public StompSession connect(
+            String origin,
+            String... cookies
+    ) throws Exception {
+        return connectWithRole(origin, null, cookies);
     }
 
     /** CONNECT에서 HOST 또는 PARTICIPANT 역할을 명시한다. */
     public StompSession connectWithRole(
-            String origin, String role, String... cookies
+            String origin,
+            String role,
+            String... cookies
     ) throws Exception {
         return connectInternal(origin, role, true, cookies);
     }
 
     /** CSRF 헤더가 없으면 CONNECT가 거절되는지 확인하기 위한 테스트용 연결. */
     public StompSession connectWithoutCsrf(
-            String origin, String... cookies
+            String origin,
+            String... cookies
     ) throws Exception {
         return connectInternal(origin, null, false, cookies);
     }
@@ -76,6 +84,7 @@ public final class StompTestClient {
             boolean includeCsrf,
             String... cookies
     ) throws Exception {
+
         String existingCookies = Arrays.stream(cookies)
                 .filter(cookie -> cookie != null && !cookie.isBlank())
                 .collect(Collectors.joining("; "));
@@ -135,18 +144,25 @@ public final class StompTestClient {
             throw new IllegalStateException("HTTP 세션 쿠키가 없습니다.");
         }
 
+        // HTTP 핸드셰이크에 쿠키 전달
         WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
         handshakeHeaders.setOrigin(origin);
         handshakeHeaders.add(HttpHeaders.COOKIE, handshakeCookies);
 
+        // STOMP CONNECT 헤더 설정
         StompHeaders connectHeaders = new StompHeaders();
 
+        // CSRF 누락 테스트에서는 헤더를 추가하지 않는다.
         if (includeCsrf) {
             connectHeaders.add("X-CSRF-TOKEN", csrfToken);
         }
 
+        // 역할을 명시한 경우에만 CONNECT 헤더에 추가한다.
         if (role != null) {
-            connectHeaders.add(StompActorResolver.CHAT_ROLE_HEADER, role);
+            connectHeaders.add(
+                    StompActorResolver.CHAT_ROLE_HEADER,
+                    role
+            );
         }
 
         return client.connectAsync(
@@ -162,13 +178,20 @@ public final class StompTestClient {
      * 서버의 내장 브로커는 구독 완료를 알려 주지 않으므로(영수증 미지원), 구독이 등록된 시점은
      * awaitBroadcast 로 방송을 반복해 보내 보며 확인한다.
      */
-    public BlockingQueue<Map<String, Object>> subscribe(StompSession session, String destination) {
+    public BlockingQueue<Map<String, Object>> subscribe(
+            StompSession session,
+            String destination
+    ) {
         return subscribe(session, destination, (headers, body) -> {});
     }
 
-    public BlockingQueue<Map<String, Object>> subscribe(StompSession session, String destination,
-                                                        BiConsumer<StompHeaders, Map<String, Object>> inspect) {
+    public BlockingQueue<Map<String, Object>> subscribe(
+            StompSession session,
+            String destination,
+            BiConsumer<StompHeaders, Map<String, Object>> inspect
+    ) {
         BlockingQueue<Map<String, Object>> received = new LinkedBlockingQueue<>();
+
         session.subscribe(destination, new StompFrameHandler() {
             @Override
             public Type getPayloadType(StompHeaders headers) {
@@ -183,11 +206,14 @@ public final class StompTestClient {
                 received.add(body);
             }
         });
+
         return received;
     }
 
     /** 메시지가 올 때까지 기다린다. 시간 안에 안 오면 null. */
-    public static Map<String, Object> next(BlockingQueue<Map<String, Object>> received) throws InterruptedException {
+    public static Map<String, Object> next(
+            BlockingQueue<Map<String, Object>> received
+    ) throws InterruptedException {
         return received.poll(TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
@@ -195,47 +221,83 @@ public final class StompTestClient {
      * 구독이 등록되어 방송이 닿을 때까지 broadcast 를 짧은 간격으로 반복하며 첫 메시지를 기다린다.
      * 시간 안에 못 받으면 null. 중복 방송은 큐에 더 쌓일 수 있으므로, 이후 검사는 필요하면 큐를 비우고 한다.
      */
-    public static Map<String, Object> awaitBroadcast(BlockingQueue<Map<String, Object>> received, Runnable broadcast)
-            throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+    public static Map<String, Object> awaitBroadcast(
+            BlockingQueue<Map<String, Object>> received,
+            Runnable broadcast
+    ) throws InterruptedException {
+
+        long deadline = System.nanoTime()
+                + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+
         while (System.nanoTime() < deadline) {
             broadcast.run();
-            Map<String, Object> message = received.poll(100, TimeUnit.MILLISECONDS);
+
+            Map<String, Object> message = received.poll(
+                    100,
+                    TimeUnit.MILLISECONDS
+            );
+
             if (message != null) {
                 return message;
             }
         }
+
         return null;
     }
 
     /**
-     * 큐에서 지정한 type 의 메시지가 올 때까지 기다린다. 다른 type(예: 워밍업)은 건너뛴다.
+     * 큐에서 지정한 type 의 메시지가 올 때까지 기다린다.
+     * 다른 type(예: 워밍업)은 건너뛴다.
      * 시간 안에 못 받으면 null. "오면 안 되는 메시지"를 확인할 때는 짧은 제한시간을 준다.
      */
-    public static Map<String, Object> nextOfType(BlockingQueue<Map<String, Object>> received, String type,
-                                                 long timeoutMillis) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+    public static Map<String, Object> nextOfType(
+            BlockingQueue<Map<String, Object>> received,
+            String type,
+            long timeoutMillis
+    ) throws InterruptedException {
+
+        long deadline = System.nanoTime()
+                + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+
         while (true) {
-            long remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+            long remainingMillis = TimeUnit.NANOSECONDS.toMillis(
+                    deadline - System.nanoTime()
+            );
+
             if (remainingMillis <= 0) {
                 return null;
             }
-            Map<String, Object> message = received.poll(remainingMillis, TimeUnit.MILLISECONDS);
+
+            Map<String, Object> message = received.poll(
+                    remainingMillis,
+                    TimeUnit.MILLISECONDS
+            );
+
             if (message == null) {
                 return null;
             }
+
             if (type.equals(message.get("type"))) {
                 return message;
             }
         }
     }
 
-    /** 서버가 연결을 끊을 때까지 기다린다. 구독이 거절되면 서버가 ERROR 를 보내고 연결을 닫는다. */
-    public static boolean awaitClosed(StompSession session) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+    /**
+     * 서버가 연결을 끊을 때까지 기다린다.
+     * 구독이 거절되면 서버가 ERROR 를 보내고 연결을 닫는다.
+     */
+    public static boolean awaitClosed(
+            StompSession session
+    ) throws InterruptedException {
+
+        long deadline = System.nanoTime()
+                + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+
         while (session.isConnected() && System.nanoTime() < deadline) {
             Thread.sleep(50);
         }
+
         return !session.isConnected();
     }
 }
