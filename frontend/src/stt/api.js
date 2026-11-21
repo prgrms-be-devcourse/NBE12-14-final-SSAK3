@@ -102,3 +102,20 @@ export function sttApi(roomId) {
 }
 
 export const isTemporary = error => !error.status || error.status >= 500 || error.status === 429
+
+// SCRUM-164: STOMP beforeConnect 실패는 reconnectDelay가 적용되지 않을 수 있다.
+// CSRF 발급의 일시 오류는 재시도하고, 영구 오류 및 잘못된 토큰 응답은 그대로 전달한다.
+// 연결이 해제된 경우 추가 요청 없이 종료한다.
+export async function getCsrfTokenForStomp(isActive, onTemporaryError, retryDelay = 3000) {
+  while (isActive()) {
+    try {
+      return await getCsrfToken(10000, true)
+    } catch (error) {
+      if (!isActive()) return null
+      if (error.message === 'CSRF_TOKEN_MISSING' || !isTemporary(error)) throw error
+      onTemporaryError?.(error)
+      await new Promise(resolve => setTimeout(resolve, retryDelay))
+    }
+  }
+  return null
+}

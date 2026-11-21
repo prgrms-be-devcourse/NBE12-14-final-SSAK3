@@ -130,3 +130,56 @@ test('이전 질문을 읽는 중에는 위치를 유지하고 중복 없는 새
   await expect(jump).toHaveCount(0)
   await expect.poll(() => history.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(10)
 })
+
+// SCRUM-164: 최초 CSRF 발급 실패 후 WebSocket 연결 복구 검증
+test('채팅 CONNECT는 첫 CSRF 503 이후 새로고침 없이 재시도한다', async ({ page }) => {
+  let csrfReads = 0
+  let openedSockets = 0
+  let subscribed = false
+
+  await page.route('**/api/v1/**', route => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/v1/auth/csrf') {
+      csrfReads++
+      return route.fulfill({ status: csrfReads === 1 ? 503 : 200,
+        json: csrfReads === 1 ? { code: 'INTERNAL_ERROR' }
+            : { data: { headerName: 'X-CSRF-TOKEN', token: 'recovered' } } })
+    }
+    if (url.pathname === '/api/v1/auth/me') {
+      return route.fulfill({ status: 401, json: { code: 'UNAUTHENTICATED' } })
+    }
+    if (url.pathname === '/api/v1/rooms/42/messages') {
+      return route.fulfill({ json: { data: { messages: [], nextCursor: null, hasNext: false } } })
+    }
+    return route.fallback()
+  })
+  await page.routeWebSocket('**/ws', socket => {
+    openedSockets++
+    socket.onMessage(buffer => {
+      const frame = String(buffer)
+      if (frame.startsWith('CONNECT\n')) {
+        expect(frame).toContain('X-CSRF-TOKEN:recovered')
+        socket.send('CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0')
+      }
+      if (frame.startsWith('SUBSCRIBE\n') && frame.includes(`destination:${topic}`)) subscribed = true
+    })
+  })
+
+  // 로그인 화면은 WebSocket을 만들지 않으므로 채팅 연결만 검증할 수 있다.
+  await page.goto('/login')
+  await page.evaluate(async () => {
+    const { openRoomChat } = await import('/src/chat/roomChat.js')
+    window.__retryChat = openRoomChat({
+      roomId: 42, live: true, role: 'PARTICIPANT', since: '2026-11-21T00:00:00Z',
+      onMessages() {}, onConnection() {}, onHistory() {}, onLost() {},
+      onAck() {}, isCurrentAttempt: () => false, onError() {}, onAccessError() {},
+    })
+  })
+  try {
+    await expect.poll(() => csrfReads, { timeout: 15000 }).toBe(2)
+    await expect.poll(() => subscribed, { timeout: 15000 }).toBe(true)
+    expect(openedSockets).toBe(1)
+  } finally {
+    await page.evaluate(() => window.__retryChat?.close())
+  }
+})

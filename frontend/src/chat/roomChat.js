@@ -1,5 +1,5 @@
 import { Client } from '@stomp/stompjs'
-import { ApiError, getCsrfToken, request } from '../stt/api.js'
+import { ApiError, getCsrfTokenForStomp, request } from '../stt/api.js'
 import { readHistory } from './history.js'
 
 export function openRoomChat({ roomId, live, role, since, onMessages, onConnection, onHistory, onLost, onAck, isCurrentAttempt, onError, onAccessError }) {
@@ -85,9 +85,10 @@ export function openRoomChat({ roomId, live, role, since, onMessages, onConnecti
       beforeConnect: async () => {
         try {
           // SCRUM-164: 새 연결과 재연결마다 현재 HTTP 세션의 CSRF 토큰을 확인한다.
-          const { headerName, token } = await getCsrfToken(10000, true)
-          if (!active) return
-          client.connectHeaders = { ...roleHeaders, [headerName]: token }
+          // 일시적인 CSRF 요청 실패는 재시도한 뒤 연결한다.
+          const csrf = await getCsrfTokenForStomp(() => active, disconnected)
+          if (!active || !csrf) return
+          client.connectHeaders = { ...roleHeaders, [csrf.headerName]: csrf.token }
         } catch (error) {
           if (active) {
             disconnected()

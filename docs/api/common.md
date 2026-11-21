@@ -35,10 +35,10 @@
 | 강연자 역할 | HOST |
 | 청중 역할 | PARTICIPANT |
 | 강연 상태 | READY / LIVE / ENDED |
-| 인증 방식 | 강연자 세션 쿠키 + 청중 참여 쿠키 (제안) |
-| 실시간 메시지 | STOMP 주소 기준 예시 |
+| 인증 방식 | 강연자 세션 쿠키 + 청중 참여 쿠키 |
+| 실시간 메시지 | WebSocket + STOMP |
 
-> 실시간 통신은 STOMP 기반으로 개발 중이다. 강연자·청중의 세션 쿠키 인증 및 강연방별 권한 검증은 후속 작업에서 적용한다.
+> 실시간 통신은 STOMP 기반이며, 강연자·청중의 세션 쿠키 인증과 강연방별 권한 검증이 적용되어 있다. 자세한 정책은 §1-5를 따른다.
 
 ### 1-2. 공통 성공 응답
 
@@ -102,7 +102,7 @@
 
 강연자와 청중 모두 클라이언트에서 임의로 `userId`, `participantId`, `senderType` 을 지정해 권한을 획득할 수 없다.
 
-### 1-5. STOMP 공통 연결 — 개발 단계
+### 1-5. STOMP 인증·인가 및 연결 수명
 
 | 항목 | 설정 |
 | --- | --- |
@@ -113,9 +113,23 @@
 | 허용 Origin | `app.cors.allowed-origins` |
 | 운영 환경 | 모든 프로파일에서 활성화. 운영 도메인은 `CORS_ALLOWED_ORIGINS` 로 허용해야 연결된다 |
 
-- `/topic/`, `/queue/`, `/user/`로 직접 SEND하는 요청은 차단한다.
+**연결 인증**
+
+- 연결(`/ws`)은 허용된 Origin 에서만 받는다. 핸드셰이크에서 HTTP 세션과 강연자 인증 정보의 일치 여부를 확인하고, 방별 `PARTICIPANT_SESSION_{roomId}` 쿠키를 WebSocket 세션 속성에 보관한다.
+- 클라이언트는 `GET /api/v1/auth/csrf`로 발급받은 토큰을 STOMP `CONNECT`의 `X-CSRF-TOKEN` 헤더에 전달한다. 유효한 CSRF 토큰이 없으면 연결을 거절한다.
+- `CONNECT`에서 `X-Chat-Role: HOST` 또는 `PARTICIPANT`를 지정한다. 역할을 생략한 경우 기존 클라이언트 호환을 위해 `AUTO`로 처리한다.
+- 명시적 `HOST` 연결은 유효한 강연자 로그인 세션이 필요하며, 해당 소켓의 청중 인증 토큰을 제거하여 다른 방의 청중 권한으로 접근하지 못하도록 한다.
+- `PARTICIPANT` 연결은 유효한 청중 참여 쿠키가 필요하다. `AUTO`는 기존 요청별 역할 선택 규칙을 유지한다.
+- 로그아웃·재로그인·HTTP 세션 무효화 시 해당 HTTP 세션에 연결된 WebSocket을 종료한다. 청중 인증을 사용할 수 있는 연결은 인증 TTL 만료 시 종료한다. 명시적 `HOST` 연결은 청중 쿠키 만료만으로 종료되지 않는다.
+- STOMP `SUBSCRIBE`와 `SEND`에서도 연결 인증, HTTP 세션 및 선택한 역할의 유효성을 검증한다.
+- 클라이언트는 최초 연결·재연결 전에 CSRF 발급이 네트워크 오류·시간 초과·HTTP 429·5xx로 실패하면 약 3초 후 다시 요청한다. HTTP 401·403 등 영구 오류는 자동 재시도하지 않는다.
+
+**구독 및 전송 권한**
+
+- 해당 강연방의 강연자 또는 유효한 청중은 `/topic/rooms/{roomId}/chat`, `/topic/rooms/{roomId}/status`, `/topic/rooms/{roomId}/polls`를 구독할 수 있다.
+- `/topic/rooms/{roomId}/polls/results`, `/topic/rooms/{roomId}/ai`는 해당 강연방의 소유자 강연자만 구독할 수 있다.
+- `/user/queue/*` 및 개발용 `/topic/_dev/*` 구독을 허용한다. 그 외 주소는 거절한다. 구독이 거절되면 서버가 STOMP `ERROR`를 보내고 연결을 닫는다.
+- `/app/rooms/{roomId}/chat` 전송은 해당 방의 권한을 확인한다. `/topic/`, `/queue/`, `/user/`로 직접 SEND하는 요청은 차단한다.
 - 로컬 테스트용 `/app/_dev/ping` → `/topic/_dev/pong`을 지원한다.
-- 연결(`/ws`)은 허용된 Origin 에서만 받는다. 연결 시점의 `HOST_SESSION` 로그인 정보와 방별 `PARTICIPANT_SESSION_{roomId}` 쿠키를 서버가 보관하고, 구독·전송 때 그 방 기준으로 검사한다.
-- 구독은 허용 주소만 열려 있다: `/topic/rooms/{roomId}/chat`, `/topic/rooms/{roomId}/status`(해당 강연방의 강연자·청중만), `/topic/rooms/{roomId}/polls/results`(해당 강연방의 소유자 강연자만, 청중은 거절), `/user/queue/*`. 그 외는 거절한다. 구독이 거절되면 서버가 STOMP `ERROR` 를 보내고 연결을 닫는다.
 - 작성자는 서버가 쿠키·로그인으로 확인한다. 본문의 `userId`, `participantId`, `sender` 등은 읽지 않는다.
 - 전송 오류는 연결을 유지한 채 보낸 사람의 `/user/queue/errors` 로만 전달한다(`{ "type": "ERROR", "code", "message" }`).

@@ -1,5 +1,5 @@
 import { Client } from '@stomp/stompjs'
-import { getCsrfToken } from '../stt/api.js'
+import { getCsrfTokenForStomp } from '../stt/api.js'
 import { endReason, readParticipation } from './participation.js'
 
 export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onConnection }) {
@@ -14,11 +14,12 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onCo
     beforeConnect: async () => {
       // SCRUM-164: 강연 상태 감시 연결에도 CSRF와 청중 역할을 전달한다.
       // 자동 재연결 시에도 현재 HTTP 세션의 토큰을 다시 확인한다.
-      const { headerName, token } = await getCsrfToken(10000, true)
-      if (!active) return
+      // CSRF 요청이 일시적으로 실패하면 발급을 재시도한다.
+      const csrf = await getCsrfTokenForStomp(() => active, () => onConnection(false))
+      if (!active || !csrf) return
       client.connectHeaders = {
         'X-Chat-Role': 'PARTICIPANT',
-        [headerName]: token,
+        [csrf.headerName]: csrf.token,
       }
     },
     onConnect() {
