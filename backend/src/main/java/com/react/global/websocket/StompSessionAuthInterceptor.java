@@ -1,3 +1,4 @@
+
 package com.react.global.websocket;
 
 import com.react.global.exception.BusinessException;
@@ -162,6 +163,16 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
         // 이후 STOMP 메시지에서 사용할 인증 주체
         accessor.setUser(authentication);
+
+        // 명시적으로 HOST 역할을 선택한 연결에서는 청중 쿠키를 사용하지 않는다.
+        // 후속 SUBSCRIBE·SEND에서 역할 헤더가 생략되더라도
+        // 다른 강연방의 청중 권한으로 접근할 수 없게 한다.
+        // 실제 브라우저 쿠키나 HTTP 세션의 쿠키를 삭제하는 것은 아니다.
+        if (HOST.equals(connectedRole)) {
+            attributes.remove(
+                    StompHandshakeInterceptor.PARTICIPANT_TOKENS
+            );
+        }
 
         if (currentHost != null) {
             attributes.put(CONNECTED_HOST, currentHost);
