@@ -9,13 +9,21 @@ const live = page => page.getByRole('heading', { name: '강연 진행 중' })
 const retryJoin = page => page.getByRole('button', { name: '입장 다시 시도' })
 
 async function setup(page) {
-  const state = { status: 'READY', hasSession: false, participant, messages: [], joinResult: 'created', posts: [], subscriptions: [] }
+  const state = { status: 'READY', hasSession: false, participant, messages: [], joinResult: 'created', posts: [], subscriptions: [],
+    csrfReads: 0, csrfFailures: 0 }
   await page.route('**/api/v1/**', route => {
     const request = route.request()
     const path = new URL(request.url()).pathname
     const ok = (data, status = 200) => route.fulfill({ status, json: { data } })
     const fail = (status, code) => route.fulfill({ status, json: { code } })
-    if (path === '/api/v1/auth/csrf') return ok({ headerName: 'X-CSRF-TOKEN', token: 'public-token' })
+    if (path === '/api/v1/auth/csrf') {
+      state.csrfReads++
+      if (state.csrfFailures > 0) {
+        state.csrfFailures--
+        return fail(503, 'INTERNAL_ERROR')
+      }
+      return ok({ headerName: 'X-CSRF-TOKEN', token: 'public-token' })
+    }
     if (path === '/api/v1/public/rooms/WORKSHOP') {
       if (state.status === 'deleted') return fail(404, 'INVALID_JOIN_CODE')
       return ok({ roomId, title: '오후 워크숍', status: state.status, canJoin: state.status !== 'ENDED' })
@@ -172,3 +180,16 @@ for (const [status, reason, notice] of [
     expect(state.posts).toHaveLength(0)
   })
 }
+
+// SCRUM-164: 청중 상태 감시 연결의 CSRF 발급 실패 복구 검증
+test('청중 대기 상태 감시는 첫 CSRF 503 뒤 연결을 복구하고 강연 시작을 받는다', async ({ page }) => {
+  const state = await setup(page)
+  state.hasSession = true
+  state.csrfFailures = 1
+  await page.goto(invitation)
+  await expect(waiting(page)).toBeVisible()
+  await expect.poll(() => state.subscriptions.length, { timeout: 15000 }).toBeGreaterThan(0)
+  expect(state.csrfReads).toBe(2)
+  state.subscriptions.at(-1).send({ type: 'ROOM_STATUS_CHANGED', data: { roomId, status: 'LIVE' } })
+  await expect(live(page)).toBeVisible()
+})
