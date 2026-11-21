@@ -39,7 +39,7 @@ public class StompActorResolver {
             if (ownsRoom(roomId, host.get())) {
                 return StompActor.host(host.get().getId());
             }
-            forbidden = true;
+            throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
         String token = participantToken(sessionAttributes, roomId);

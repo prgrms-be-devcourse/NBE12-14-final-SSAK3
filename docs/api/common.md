@@ -35,10 +35,10 @@
 | 강연자 역할 | HOST |
 | 청중 역할 | PARTICIPANT |
 | 강연 상태 | READY / LIVE / ENDED |
-| 인증 방식 | 강연자 세션 쿠키 + 청중 참여 쿠키 (제안) |
+| 인증 방식 | 강연자 `HOST_SESSION` 세션 쿠키 + 청중 방별 `PARTICIPANT_SESSION_{roomId}` 쿠키 |
 | 실시간 메시지 | STOMP 주소 기준 예시 |
 
-> 실시간 통신은 STOMP 기반으로 개발 중이다. 강연자·청중의 세션 쿠키 인증 및 강연방별 권한 검증은 후속 작업에서 적용한다.
+> 실시간 통신은 STOMP를 사용한다. CONNECT에서 HTTP 세션·CSRF 토큰을 확인하고, SUBSCRIBE·SEND에서 강연방별 권한을 검증한다.
 
 ### 1-2. 공통 성공 응답
 
@@ -115,7 +115,7 @@
 
 - `/topic/`, `/queue/`, `/user/`로 직접 SEND하는 요청은 차단한다.
 - 로컬 테스트용 `/app/_dev/ping` → `/topic/_dev/pong`을 지원한다.
-- 연결(`/ws`)은 허용된 Origin 에서만 받는다. 연결 시점의 `HOST_SESSION` 로그인 정보와 방별 `PARTICIPANT_SESSION_{roomId}` 쿠키를 서버가 보관하고, 구독·전송 때 그 방 기준으로 검사한다.
-- 구독은 허용 주소만 열려 있다: `/topic/rooms/{roomId}/chat`, `/topic/rooms/{roomId}/status`(해당 강연방의 강연자·청중만), `/user/queue/*`. 그 외는 거절한다. 구독이 거절되면 서버가 STOMP `ERROR` 를 보내고 연결을 닫는다.
-- 작성자는 서버가 쿠키·로그인으로 확인한다. 본문의 `userId`, `participantId`, `sender` 등은 읽지 않는다.
-- 전송 오류는 연결을 유지한 채 보낸 사람의 `/user/queue/errors` 로만 전달한다(`{ "type": "ERROR", "code", "message" }`).
+- - 클라이언트는 `GET /api/v1/auth/csrf`로 받은 토큰을 STOMP `CONNECT` 헤더 `X-CSRF-TOKEN`에 담는다. 연결 시 유효한 HTTP 세션과 `HOST_SESSION` 로그인 또는 유효한 방별 `PARTICIPANT_SESSION_{roomId}` 쿠키가 필요하다.
+- `/topic/rooms/{roomId}/chat`, `/topic/rooms/{roomId}/status`, `/topic/rooms/{roomId}/polls`는 해당 방의 강연자와 청중이 구독할 수 있다. `/topic/rooms/{roomId}/polls/results`와 `/topic/rooms/{roomId}/ai`는 해당 방의 소유 강연자만 구독할 수 있다. `/user/queue/*`는 본인만 구독한다. 허용하지 않은 구독은 STOMP `ERROR` 후 연결을 닫는다.
+- SEND는 `/app/rooms/{roomId}/chat`에서만 허용하고 방별 권한을 검사한다. 로컬 개발에서는 `/app/_dev/ping`을 추가로 허용한다. `/topic/`, `/queue/`, `/user/`로 직접 SEND할 수 없다.
+- 채팅 작성자는 서버가 쿠키·로그인으로 확인한다. 본문의 `userId`, `participantId`, `sender` 등은 읽지 않는다. 채팅 내용·방별 권한 오류는 발신자의 `/user/queue/errors`로 전달한다(`{ "type": "ERROR", "code", "message" }`). CONNECT·SUBSCRIBE 인증 오류와 허용되지 않은 SEND 주소는 STOMP 오류로 처리되어 연결이 종료될 수 있다.

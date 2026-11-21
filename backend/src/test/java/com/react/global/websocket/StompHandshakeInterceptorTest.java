@@ -42,6 +42,7 @@ class StompHandshakeInterceptorTest {
 
     private Map<String, Object> handshake(Cookie... cookies) {
         var request = new MockHttpServletRequest();
+        request.getSession(true);
         if (cookies.length > 0) {
             request.setCookies(cookies);
         }

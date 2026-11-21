@@ -77,7 +77,7 @@ public class StompHandshakeInterceptor implements HandshakeInterceptor {
 
         // 실제 인증 거부는 STOMP CONNECT에서 수행한다.
         if (session == null) {
-            return true;
+            return false;
         }
 
         try {

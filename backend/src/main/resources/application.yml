@@ -19,6 +19,8 @@ server:
   shutdown: graceful
   servlet:
     session:
+      # HOST 세션 유휴 만료 시간, 기본 2시간
+      timeout: ${HOST_SESSION_TIMEOUT:2h}
       cookie:
         name: HOST_SESSION
         http-only: true

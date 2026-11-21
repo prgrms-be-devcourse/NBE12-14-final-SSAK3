@@ -26,14 +26,9 @@ import java.util.Objects;
 @Component
 public class StompSessionAuthInterceptor implements ChannelInterceptor {
 
-    private static final String CONNECTED_HOST =
-            "stompConnectedHost";
-
-    private static final String CONNECTED =
-            "stompAuthenticated";
-
-    private static final String PARTICIPANT_EXPIRES_AT =
-            "stompParticipantExpiresAt";
+    private static final String CONNECTED_HOST = "stompConnectedHost";
+    private static final String CONNECTED = "stompAuthenticated";
+    private static final String PARTICIPANT_EXPIRES_AT = "stompParticipantExpiresAt";
 
     private final LectureParticipantService participantService;
     private final ParticipantSessionPolicy sessionPolicy;
@@ -77,20 +72,16 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
     }
 
     private void authenticate(StompHeaderAccessor accessor) {
-        Map<String, Object> attributes =
-                requireAttributes(accessor);
 
+        Map<String, Object> attributes = requireAttributes(accessor);
         HttpSession session = requireCurrentSession(attributes);
-
-        HttpSessionWebSocketLinks links =
-                requireActiveLinks(accessor, attributes);
+        HttpSessionWebSocketLinks links = requireActiveLinks(accessor, attributes);
 
         String expectedToken = (String) attributes.get(
                 StompHandshakeInterceptor.CSRF_TOKEN
         );
 
-        String submittedToken =
-                accessor.getFirstNativeHeader("X-CSRF-TOKEN");
+        String submittedToken = accessor.getFirstNativeHeader("X-CSRF-TOKEN");
 
         if (expectedToken == null
                 || submittedToken == null
@@ -114,9 +105,11 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
             );
         }
 
-        // 유효한 청중 쿠키 중 가장 빠른 만료 시각 확인
-        Instant earliestExpiry =
-                earliestParticipantExpiry(attributes);
+        // HOST로 인증한 연결에는 청중 쿠키의 만료를 적용하지 않는다.
+        // 청중으로 연결할 때만 유효한 쿠키의 가장 빠른 만료 시각을 확인한다.
+        Instant earliestExpiry = currentHost == null
+                ? earliestParticipantExpiry(attributes)
+                : null;
 
         Authentication authentication;
 
@@ -195,9 +188,7 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
         }
 
         HttpSession session = requireCurrentSession(attributes);
-
-        HttpSessionWebSocketLinks links =
-                requireActiveLinks(accessor, attributes);
+        HttpSessionWebSocketLinks links = requireActiveLinks(accessor, attributes);
 
         // 청중 인증 만료 후 스케줄러의 종료 작업이 실행되기 전에도
         // 새로운 구독이나 전송을 허용하지 않는다.
@@ -213,9 +204,7 @@ public class StompSessionAuthInterceptor implements ChannelInterceptor {
             );
         }
 
-        String connectedHost =
-                (String) attributes.get(CONNECTED_HOST);
-
+        String connectedHost = (String) attributes.get(CONNECTED_HOST);
         String currentHost = currentHost(session);
 
         if (connectedHost != null) {
