@@ -7,6 +7,12 @@ import { TranscriptTracker, createSpeech } from '../src/stt/speech.js'
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const instant = '2026-11-18T01:00:10.123Z'
 const segment = { transcript: '트랜잭션', segmentStartAt: instant, segmentEndAt: instant }
+function gate() {
+  let release
+  const promise = new Promise(resolve => { release = resolve })
+  return { promise, release }
+}
+
 function fixture(saved) {
   let snapshot = saved
   let sequence = 0
@@ -77,6 +83,28 @@ test('lost start response retries the same startKey without opening the micropho
   await f.recorder.dispose()
 })
 
+test('room end resolves a lost STT start using the original key and closes it without opening the mic', async () => {
+  const f = fixture()
+  const start = f.api.start
+  await f.recorder.init()
+  f.api.start = async () => { throw new TypeError('response lost') }
+  await f.recorder.start()
+  const key = f.snapshot().startKey
+  assert.ok(key)
+  f.api.start = start
+  assert.equal(await f.recorder.finishForRoomEnd(), true)
+  assert.deepEqual(f.calls, [['start', key], ['stop', 'MANUAL_STOP']])
+  await f.recorder.dispose()
+})
+
+test('lack of Web Locks never permits room end over locally pending speech', async () => {
+  const f = fixture({ version: 1, queue: [{ kind: 'segment' }], archived: [] })
+  f.recorder.acquire = async () => { throw new Error('TAB_LOCK_UNSUPPORTED') }
+  assert.equal(await f.recorder.finishForRoomEnd(), false)
+  assert.deepEqual(f.calls, [])
+  await f.recorder.dispose()
+})
+
 test('lost segment response retries unchanged payload and does not confuse network outage with a gap', async () => {
   const f = fixture()
   await f.recorder.init(); await f.recorder.start()
@@ -114,6 +142,120 @@ test('final result produced by stop is saved before server session stop', async 
   const order = f.calls.filter(x => ['send', 'stop'].includes(x[0])).map(x => x[0])
   assert.deepEqual(order, ['send', 'stop'])
   assert.equal(f.recorder.getSnapshot().phase, 'ended')
+  await f.recorder.dispose()
+})
+
+test('navigation waits for trailing finals and accepts server acknowledgements while the disk is stalled', async () => {
+  const f = fixture()
+  await f.recorder.init(); await f.recorder.start()
+  const disk = gate()
+  const microphone = gate()
+  const server = gate()
+  f.store.save = () => disk.promise
+  const send = f.api.send
+  f.api.send = async (id, item) => {
+    if (item.kind === 'segment') await server.promise
+    return send(id, item)
+  }
+  f.recorder.speech.stop = async () => {
+    await microphone.promise
+    f.emit({ finals: [segment, { ...segment, transcript: '마지막 발언' }], interim: '' })
+  }
+
+  const prepare = f.recorder.prepareForNavigation()
+  assert.equal(f.recorder.getSnapshot().navigationSafe, false)
+  assert.equal(f.recorder.getSnapshot().awaitingSpeechEnd, true)
+  microphone.release()
+  await prepare
+  assert.equal(f.recorder.getSnapshot().awaitingSpeechEnd, false)
+  assert.equal(f.recorder.getSnapshot().hasUnsecuredSegments, true)
+  assert.equal(f.recorder.getSnapshot().navigationSafe, false)
+  server.release()
+  await tick()
+  assert.deepEqual(f.calls.filter(([kind, item]) => kind === 'send' && item.kind === 'segment')
+    .map(([, item]) => item.body.transcript), ['트랜잭션', '마지막 발언'])
+  assert.equal(f.recorder.getSnapshot().navigationSafe, true)
+  assert.ok(f.calls.some(([kind, item]) => kind === 'send' && item.body.reason === 'MANUAL_STOP'))
+  assert.equal(f.calls.some(([kind]) => kind === 'stop'), false)
+  disk.release()
+  await f.recorder.dispose()
+})
+
+test('a browser checkpoint must contain each final, including one received after the previous checkpoint began', async () => {
+  const f = fixture()
+  await f.recorder.init(); await f.recorder.start()
+  const first = gate()
+  const last = gate()
+  const server = gate()
+  const save = f.store.save
+  const send = f.api.send
+  f.store.save = async value => {
+    const hasLast = value.queue.some(item => item.body.transcript === '마지막 발언')
+    await (hasLast ? last : first).promise
+    return save(value)
+  }
+  f.api.send = async (...args) => { await server.promise; return send(...args) }
+  f.emit({ finals: [segment], interim: '' })
+  f.recorder.speech.stop = async () => f.emit({ finals: [{ ...segment, transcript: '마지막 발언' }], interim: '' })
+  await f.recorder.prepareForNavigation()
+  first.release()
+  await tick()
+  assert.equal(f.recorder.getSnapshot().navigationSafe, false)
+  last.release()
+  await tick()
+  assert.equal(f.recorder.getSnapshot().navigationSafe, true)
+  const localCopy = structuredClone(f.snapshot())
+  const durableKeys = localCopy.queue.filter(item => item.kind === 'segment').map(item => item.body.segmentKey)
+  assert.equal(new Set(durableKeys).size, 2)
+  server.release()
+  await f.recorder.dispose()
+  const restored = fixture(localCopy)
+  await restored.recorder.init()
+  await restored.recorder.draining
+  assert.deepEqual(restored.calls.filter(([kind, item]) => kind === 'send' && item.kind === 'segment')
+    .map(([, item]) => item.body.segmentKey), durableKeys)
+  assert.equal(restored.active(), false)
+  await restored.recorder.dispose()
+})
+
+test('both saves can fail; a later disk retry secures archived finals and keeps recognition paused', async () => {
+  const f = fixture()
+  await f.recorder.init(); await f.recorder.start()
+  const save = f.store.save
+  f.store.save = async () => { throw new Error('quota') }
+  f.api.send = async () => { throw new ApiError(409, 'ROOM_ENDED') }
+  f.emit({ finals: [segment], interim: '' })
+  await tick()
+  await f.recorder.prepareForNavigation()
+  await tick()
+  assert.equal(f.recorder.getSnapshot().pending, 0)
+  assert.equal(f.recorder.getSnapshot().hasUnsecuredSegments, true)
+  assert.equal(f.recorder.getSnapshot().navigationSafe, false)
+  f.store.save = save
+  f.recorder.retryNavigationSave()
+  await tick()
+  assert.ok(f.snapshot().archived.some(item => item.body.transcript === segment.transcript))
+  assert.equal(f.recorder.getSnapshot().navigationSafe, true)
+  await f.recorder.start(true)
+  assert.equal(f.active(), false)
+  await f.recorder.dispose()
+})
+
+test('staying after a navigation pause leaves the same session idle until manual resume closes its gap', async () => {
+  const f = fixture()
+  await f.recorder.init(); await f.recorder.start()
+  const key = f.recorder.data.startKey
+  await f.recorder.prepareForNavigation()
+  await f.recorder.draining
+  await f.recorder.start(true)
+  assert.equal(f.active(), false)
+  assert.equal(f.recorder.getSnapshot().navigationSafe, true)
+  await f.recorder.start()
+  await f.recorder.draining
+  assert.equal(f.active(), true)
+  assert.equal(f.recorder.getSnapshot().navigationSafe, false)
+  assert.equal(f.recorder.data.startKey, key)
+  assert.deepEqual(f.calls.filter(([kind]) => kind === 'send').map(([, item]) => item.kind), ['gapOpen', 'gapClose'])
   await f.recorder.dispose()
 })
 
@@ -259,6 +401,20 @@ test('recognizer stop accepts trailing final before resolving end', async () => 
   assert.equal(engine.lang, 'ko-KR')
   await speech.stop()
   assert.equal(finals[0].transcript, '마지막 말')
+})
+
+test('disposing speech during a pending pause settles the stop without scheduling a restart', async () => {
+  class FakeRecognition {
+    start() { queueMicrotask(() => this.onstart()) }
+    stop() {}
+    abort() { this.onend() }
+  }
+  const speech = createSpeech({ Recognition: FakeRecognition,
+    onEnd: () => assert.fail('disposal must not restart recognition') })
+  await speech.start()
+  const stopped = speech.stop()
+  speech.abort()
+  await stopped
 })
 
 test('a different active session is never adopted or stopped after a rejected start and refresh', async () => {

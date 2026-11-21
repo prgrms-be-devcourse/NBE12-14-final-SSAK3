@@ -20,6 +20,7 @@ async function setup(page) {
     if (path.endsWith('/auth/login')) { state.authenticated = true; state.error = 0; return ok({}) }
     if (path.endsWith('/auth/me')) return state.authenticated ? ok({ userId: 1, name: '강연자' }) : fail(401)
     expect(route.request().method()).toBe('GET')
+    if (path.endsWith('/rooms/home')) return ok({ liveRooms: [], readyRooms: { rooms: [], nextCursor: null } })
     if (path === '/api/v1/rooms/10') return state.roomError ? fail(state.roomError)
       : ok({ roomId: 10, title: 'Redis로 이해하는 캐시 전략', status: 'ENDED', createdAt: '2026-11-19T01:00:00Z' })
     if (path.endsWith('/ai/analyses')) {
@@ -49,10 +50,9 @@ async function open(page) {
 }
 async function tick(page) { await page.clock.runFor(5001) }
 
-test('development room link opens real API view; lazy sources reuse cache and open independently', async ({ page }) => {
+test('ended room shows audience summaries inline; lazy sources reuse cache and open independently', async ({ page }) => {
   const state = await setup(page)
   await page.goto('/host/rooms/10')
-  await page.getByRole('link', { name: 'AI 요약 확인', exact: true }).click()
   await expect(card(page, 'Redis 사용 사례')).toBeVisible()
   expect(state.calls).toEqual([10])
   expect(state.sourceCalls).toEqual([])
@@ -180,6 +180,10 @@ test('polling keeps running after lecture end, pauses while hidden and resumes i
   await expect.poll(() => state.calls.length).toBe(3)
   await page.getByRole('link', { name: '← 강연방 상세로 돌아가기' }).click()
   await expect(page).toHaveURL(/\/host\/rooms\/10$/)
+  await expect(card(page, 'Redis 사용 사례')).toBeVisible()
+  await tick(page); await expect.poll(() => state.calls.length).toBe(5)
+  await page.getByRole('button', { name: '새 강연방', exact: true }).click()
+  await expect(page.getByLabel('강연 제목')).toBeVisible()
   const count = state.calls.length; await page.clock.runFor(15000)
   expect(state.calls.length).toBe(count)
 })

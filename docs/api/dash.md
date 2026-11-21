@@ -89,6 +89,14 @@
 { "type": "ROOM_STATUS_CHANGED", "data": { "roomId": 10, "status": "ENDED", "changedAt": "2026-11-17T02:00:00Z" } }
 ```
 
+준비 중인 방이 삭제되면 서버는 삭제 커밋 후 같은 채널에 다음 이벤트를 발행한다.
+
+```json
+{ "type": "ROOM_DELETED", "data": { "roomId": 10 } }
+```
+
+청중 화면은 `LIVE`에서 진행 화면으로 전환한다. `ENDED`이면 정상 종료, `ROOM_DELETED`이면 삭제 사유를 표시하는 공개 참여 종료 화면으로 이동한다. 연결이 복구되면 초대 코드로 현재 상태를 다시 조회해 연결이 끊긴 동안의 변경도 반영한다.
+
 ### WebSocket 보안 규칙
 
 - 강연방별 채널을 분리한다.

@@ -4,6 +4,9 @@ import com.react.global.response.ApiResponse;
 import com.react.room.dto.CreateRoomRequest;
 import com.react.room.dto.CreateRoomResponse;
 import com.react.room.dto.EndRoomResponse;
+import com.react.room.dto.HostRoomHomeResponse;
+import com.react.room.dto.LiveRoomResponse;
+import com.react.room.dto.ReadyRoomPage;
 import com.react.room.dto.RoomDetailResponse;
 import com.react.room.dto.RoomInvitationResponse;
 import com.react.room.dto.StartRoomResponse;
@@ -14,6 +17,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/rooms")
@@ -33,6 +38,23 @@ public class LectureRoomController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.of(response));
+    }
+
+    @GetMapping("/live")
+    public ApiResponse<List<LiveRoomResponse>> liveRooms(Authentication authentication) {
+        return ApiResponse.of(lectureRoomService.liveRooms(authentication));
+    }
+
+    @GetMapping("/home")
+    public ApiResponse<HostRoomHomeResponse> home(Authentication authentication,
+                                                  @RequestParam(defaultValue = "3") int readyLimit) {
+        return ApiResponse.of(lectureRoomService.home(authentication, readyLimit));
+    }
+
+    @GetMapping("/ready")
+    public ApiResponse<ReadyRoomPage> readyRooms(Authentication authentication,
+                                                 @RequestParam(required = false) String cursor) {
+        return ApiResponse.of(lectureRoomService.readyRooms(authentication, cursor));
     }
 
     @GetMapping("/{roomId}/invitation")
@@ -55,6 +77,12 @@ public class LectureRoomController {
                 lectureRoomService.detail(roomId, authentication);
 
         return ApiResponse.of(response);
+    }
+
+    @DeleteMapping("/{roomId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long roomId, Authentication authentication) {
+        lectureRoomService.deleteReadyRoom(roomId, authentication);
     }
 
     @PostMapping("/{roomId}/start")

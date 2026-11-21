@@ -2,9 +2,14 @@ package com.react.global.websocket;
 
 import com.react.auth.entity.User;
 import com.react.room.entity.LectureRoom;
+import com.react.room.service.LectureRoomService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.stomp.StompSession;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Map;
 import java.util.UUID;
@@ -16,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 강연자는 실제로 로그인해서 받은 세션 쿠키로 연결해, 로그인 정보가 STOMP 에서도 인식되는지 함께 확인한다.
  */
 class StompSubscribeAuthTest extends StompIntegrationTestSupport {
+    @Autowired LectureRoomService roomService;
+    @Autowired TransactionTemplate transactions;
     private User host;
     private String hostEmail;
     private LectureRoom roomA;
@@ -97,6 +104,35 @@ class StompSubscribeAuthTest extends StompIntegrationTestSupport {
         client.subscribe(otherSession, "/topic/rooms/" + roomB.getId() + "/status");
 
         assertThat(StompTestClient.awaitClosed(otherSession)).isTrue();
+    }
+
+    @Test
+    void 준비_방_삭제가_커밋된_뒤에만_대기_중인_청중에게_알린다() throws Exception {
+        var hostAuth = UsernamePasswordAuthenticationToken.authenticated(hostEmail, null,
+                AuthorityUtils.createAuthorityList("ROLE_HOST"));
+        var joined = participants.join(roomA.getJoinCode(), "대기자", UUID.randomUUID().toString(), Map.of());
+        String cookie = "PARTICIPANT_SESSION_" + roomA.getId() + "=" + joined.rawToken();
+        StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, cookie);
+        try {
+            String topic = "/topic/rooms/" + roomA.getId() + "/status";
+            var received = client.subscribe(session, topic);
+            assertThat(StompTestClient.awaitBroadcast(received,
+                    () -> broker.convertAndSend(topic, Map.of("type", "TEST_SUBSCRIBED")))).isNotNull();
+
+            transactions.executeWithoutResult(tx -> {
+                roomService.deleteReadyRoom(roomA.getId(), hostAuth);
+                tx.setRollbackOnly();
+            });
+            assertThat(participants.me(roomA.getId(), joined.rawToken()).roomId()).isEqualTo(roomA.getId());
+            assertThat(StompTestClient.nextOfType(received, "ROOM_DELETED", 400)).isNull();
+
+            roomService.deleteReadyRoom(roomA.getId(), hostAuth);
+            var event = StompTestClient.nextOfType(received, "ROOM_DELETED", 5000);
+            assertThat(event).isNotNull();
+            assertThat(json.valueToTree(event).at("/data/roomId").longValue()).isEqualTo(roomA.getId());
+        } finally {
+            session.disconnect();
+        }
     }
 
     @Test

@@ -26,7 +26,9 @@ async function setup(page) {
       if (state.logout === 'lost') return route.abort()
       state.authenticated = false; return route.fulfill({ status: 204 })
     }
+    if (path.endsWith('/rooms/home')) return ok({ liveRooms: [], readyRooms: { rooms: [], nextCursor: null } })
     if (path.endsWith('/rooms/10')) return ok({ roomId: 10, title: '내 강연', status: 'ENDED', createdAt: '2026-11-19T01:00:00Z' })
+    if (path.endsWith('/ai/analyses')) return ok({ roomId: 10, analyses: [] })
     return fail(404, 'NOT_FOUND')
   })
   return state

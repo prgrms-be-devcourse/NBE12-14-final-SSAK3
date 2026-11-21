@@ -7,6 +7,8 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -41,12 +43,16 @@ public class LectureRoom {
     @Column(nullable = false, length = 20)
     private LectureRoomStatus status;
 
+    // 세 DATETIME 열에는 한국 시각을 저장하므로 JDBC에서 LocalDateTime을 그대로 읽고 쓴다.
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
     @Column(name = "ended_at")
     private LocalDateTime endedAt;
 

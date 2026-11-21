@@ -129,6 +129,8 @@ public class SecurityConfig {
                                 "/api/v1/rooms"
                         ).hasRole("HOST")
 
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/rooms/*").hasRole("HOST")
+
                         // 강연자용 강연방 조회
                         .requestMatchers(
                                 HttpMethod.GET,

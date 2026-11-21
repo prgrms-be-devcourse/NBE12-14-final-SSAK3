@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.auth.entity.User;
 import com.react.auth.repository.UserRepository;
+import com.react.room.service.LectureParticipantService;
+import jakarta.servlet.http.Cookie;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,11 +21,17 @@ import org.springframework.test.web.servlet.MvcResult;
 import javax.sql.DataSource;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -38,6 +46,7 @@ class LectureRoomLifecycleIntegrationTest {
     @Autowired JdbcClient jdbc;
     @Autowired DataSource dataSource;
     @Autowired UserRepository userRepository;
+    @Autowired LectureParticipantService participants;
 
     private String ownerEmail;
     private String otherEmail;
@@ -280,6 +289,87 @@ class LectureRoomLifecycleIntegrationTest {
             """).param(roomId)
                 .query(String.class)
                 .single()).isEqualTo("TIMEOUT");
+    }
+
+    @Test
+    void 준비_방을_삭제하면_해당_방의_초대와_모든_청중_세션만_사라진다() throws Exception {
+        long roomId = createRoom();
+        String code = joinCode(roomId);
+        var joined = participants.join(code, "대기자", UUID.randomUUID().toString(), Map.of());
+        participants.join(code, "두 번째 대기자", UUID.randomUUID().toString(), Map.of());
+        long otherRoomId = createRoom();
+        var other = participants.join(joinCode(otherRoomId), "다른 방 대기자", UUID.randomUUID().toString(), Map.of());
+
+        mvc.perform(delete("/api/v1/rooms/{id}", roomId).with(user(ownerEmail).roles("HOST")).with(csrf()))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/v1/rooms/{id}", roomId).with(user(ownerEmail).roles("HOST")))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
+        mvc.perform(get("/api/v1/public/rooms/{code}", code))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("INVALID_JOIN_CODE"));
+        mvc.perform(get("/api/v1/rooms/{id}/participants/me", roomId)
+                        .cookie(new Cookie("PARTICIPANT_SESSION_" + roomId, joined.rawToken())))
+                .andExpect(status().isUnauthorized());
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM lecture_participants WHERE lecture_room_id = ?")
+                .param(roomId).query(Long.class).single()).isZero();
+        assertThat(participants.me(otherRoomId, other.rawToken()).roomId()).isEqualTo(otherRoomId);
+        mvc.perform(delete("/api/v1/rooms/{id}", roomId).with(user(ownerEmail).roles("HOST")).with(csrf()))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
+    }
+
+    @Test
+    void 삭제는_소유자_HOST와_CSRF_토큰이_필요하다() throws Exception {
+        long roomId = createRoom();
+        mvc.perform(delete("/api/v1/rooms/{id}", roomId).with(csrf()))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(delete("/api/v1/rooms/{id}", roomId).with(user(ownerEmail).roles("USER")).with(csrf()))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete("/api/v1/rooms/{id}", roomId).with(user(otherEmail).roles("HOST")).with(csrf()))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete("/api/v1/rooms/{id}", roomId).with(user(ownerEmail).roles("HOST")))
+                .andExpect(status().isForbidden());
+        assertThat(roomStatus(roomId)).isEqualTo("READY");
+    }
+
+    @Test
+    void 이미_시작했거나_종료한_방은_삭제할_수_없다() throws Exception {
+        long roomId = createRoom();
+        var joined = participants.join(joinCode(roomId), "대기자", UUID.randomUUID().toString(), Map.of());
+        startRoom(roomId);
+        mvc.perform(delete("/api/v1/rooms/{id}", roomId).with(user(ownerEmail).roles("HOST")).with(csrf()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INVALID_ROOM_STATUS"));
+        endRoom(roomId);
+        mvc.perform(delete("/api/v1/rooms/{id}", roomId).with(user(ownerEmail).roles("HOST")).with(csrf()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INVALID_ROOM_STATUS"));
+        assertThat(participants.me(roomId, joined.rawToken()).roomId()).isEqualTo(roomId);
+    }
+
+    @Test
+    void 준비_방에_시작과_삭제가_동시에_도착해도_하나만_성공한다() throws Exception {
+        long roomId = createRoom();
+        var gate = new CyclicBarrier(2);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var start = executor.submit(() -> {
+                gate.await(5, TimeUnit.SECONDS);
+                return mvc.perform(post("/api/v1/rooms/{id}/start", roomId)
+                        .with(user(ownerEmail).roles("HOST")).with(csrf())).andReturn().getResponse().getStatus();
+            });
+            var deletion = executor.submit(() -> {
+                gate.await(5, TimeUnit.SECONDS);
+                return mvc.perform(delete("/api/v1/rooms/{id}", roomId)
+                        .with(user(ownerEmail).roles("HOST")).with(csrf())).andReturn().getResponse().getStatus();
+            });
+            if (deletion.get(10, TimeUnit.SECONDS) == 204) {
+                assertThat(start.get(10, TimeUnit.SECONDS)).isEqualTo(404);
+            } else {
+                assertThat(deletion.get()).isEqualTo(409);
+                assertThat(start.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+                assertThat(roomStatus(roomId)).isEqualTo("LIVE");
+            }
+        }
+    }
+
+    private String joinCode(long roomId) {
+        return jdbc.sql("SELECT join_code FROM lecture_rooms WHERE id = ?").param(roomId).query(String.class).single();
     }
 
     private long createRoom() throws Exception {

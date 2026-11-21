@@ -1,14 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// 로컬 개발: /api, /ws 는 백엔드(8080)로 전달. 배포에서는 Nginx가 같은 역할
+// 별도 서버로 통합 테스트할 때에도 REST와 WebSocket이 같은 백엔드에 연결되어야 한다.
+const backendUrl = process.env.DEV_BACKEND_URL || 'http://localhost:8080'
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8080',
-      '/ws': { target: 'ws://localhost:8080', ws: true },
+      '/api': backendUrl,
+      '/ws': { target: backendUrl, ws: true },
     },
   },
 })
