@@ -7,6 +7,7 @@ import com.react.global.exception.ErrorCode;
 import com.react.room.repository.LectureRoomRepository;
 import com.react.room.service.LectureParticipantService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
@@ -17,33 +18,52 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 한 강연방에 대해 STOMP 요청자가 강연자인지 청중인지 판별한다. 구독과 전송이 같은 규칙을 쓰도록 한 곳에 둔다.
- * 실패는 REST 와 같다: 이 방에 낼 증명이 없으면 401, 증명은 냈지만 이 방에 맞지 않으면 403 이다.
- * 방이 없는 경우도 같은 규칙으로 거절해 방 번호 탐색에 단서를 주지 않는다.
+ * 한 강연방에 대한 구독·전송과 채팅 내역 조회에서 강연자 로그인 및 청중 입장 증명을 검증한다.
+ * STOMP는 존재하지 않는 방도 증명에 따라 401·403으로 거절한다. 로그인한 강연자의 내역 조회는 404를 반환한다.
  */
 @Component
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class StompActorResolver {
+    public static final String CHAT_ROLE_HEADER = "X-Chat-Role";
     private static final String HOST_ROLE = "ROLE_HOST";
 
     private final UserRepository users;
     private final LectureRoomRepository rooms;
     private final LectureParticipantService participants;
 
-    @Transactional(readOnly = true)
     public StompActor resolve(long roomId, Principal principal, Map<String, Object> sessionAttributes) {
+        return resolveActor(roomId, principal, participantToken(sessionAttributes, roomId), null, false);
+    }
+
+    public StompActor resolveChat(long roomId, SimpMessageHeaderAccessor headers) {
+        return resolveActor(roomId, headers.getUser(), participantToken(headers.getSessionAttributes(), roomId),
+                headers.getFirstNativeHeader(CHAT_ROLE_HEADER), false);
+    }
+
+    public StompActor resolveHistory(long roomId, Principal principal, String token, String role) {
+        return resolveActor(roomId, principal, token, role, true);
+    }
+
+    private StompActor resolveActor(long roomId, Principal principal, String token, String role, boolean history) {
+        if (role != null && !"HOST".equals(role) && !"PARTICIPANT".equals(role)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
         boolean forbidden = false;
 
-        Optional<User> host = loggedInHost(principal);
+        Optional<User> host = "PARTICIPANT".equals(role) ? Optional.empty() : loggedInHost(principal);
         if (host.isPresent()) {
-            if (ownsRoom(roomId, host.get())) {
+            var room = rooms.findById(roomId);
+            if (history && room.isEmpty()) {
+                throw new BusinessException(ErrorCode.ROOM_NOT_FOUND);
+            }
+            if (room.isPresent() && room.get().getHost().getId().equals(host.get().getId())) {
                 return StompActor.host(host.get().getId());
             }
             forbidden = true;
         }
 
-        String token = participantToken(sessionAttributes, roomId);
-        if (token != null) {
+        if (token != null && !"HOST".equals(role)) {
             try {
                 return StompActor.participant(participants.me(roomId, token).participantId());
             } catch (BusinessException e) {
@@ -63,12 +83,6 @@ public class StompActorResolver {
         boolean isHost = authentication.getAuthorities().stream()
                 .anyMatch(authority -> HOST_ROLE.equals(authority.getAuthority()));
         return isHost ? users.findByEmail(authentication.getName()) : Optional.empty();
-    }
-
-    private boolean ownsRoom(long roomId, User host) {
-        return rooms.findById(roomId)
-                .map(room -> room.getHost().getId().equals(host.getId()))
-                .orElse(false);
     }
 
     @SuppressWarnings("unchecked")

@@ -3,6 +3,7 @@ package com.react.chat.repository;
 import com.react.chat.dto.ChatMessageView;
 import com.react.chat.dto.ChatSenderView;
 import com.react.chat.dto.SenderType;
+import com.react.global.websocket.StompActor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -24,8 +25,9 @@ public class ChatMessageQueryRepository {
                 .param(roomId).query(Long.class).single() > 0;
     }
 
-    public Optional<String> findRoomStatus(long roomId) {
-        return jdbc.sql("SELECT status FROM lecture_rooms WHERE id = ?")
+    /** 전송끼리는 동시에 진행하고, 강연 종료와는 커밋까지 순서를 보장한다. */
+    public Optional<String> lockRoomStatusForSend(long roomId) {
+        return jdbc.sql("SELECT status FROM lecture_rooms WHERE id = ? FOR SHARE")
                 .param(roomId).query(String.class).optional();
     }
 
@@ -45,19 +47,23 @@ public class ChatMessageQueryRepository {
     }
 
     /** 강연방의 메시지를 최신 순(id DESC)으로 limit 건 조회한다. cursor 가 null 이면 가장 최신부터, 있으면 그 id 보다 오래된 것만. */
-    public List<ChatMessageView> findPage(long roomId, Long cursor, int limit) {
+    public List<ChatMessageView> findPage(long roomId, StompActor actor, Long cursor, int limit) {
         long before = cursor != null ? cursor : Long.MAX_VALUE;
+        String visibleSince = actor.type() == StompActor.Type.HOST
+                ? "SELECT started_at FROM lecture_rooms WHERE id = :room AND host_user_id = :viewer"
+                : "SELECT joined_at FROM lecture_participants WHERE lecture_room_id = :room AND id = :viewer";
         return jdbc.sql("""
                         SELECT m.id, m.participant_id, m.host_user_id, p.nickname, u.name,
                                m.content, m.received_at
                         FROM chat_messages m
                         LEFT JOIN lecture_participants p ON p.id = m.participant_id
                         LEFT JOIN users u ON u.id = m.host_user_id
-                        WHERE m.lecture_room_id = ? AND m.id < ?
+                        WHERE m.lecture_room_id = :room AND m.id < :before
+                          AND m.received_at >= (%s)
                         ORDER BY m.id DESC
-                        LIMIT ?
-                        """)
-                .params(roomId, before, limit)
+                        LIMIT :limit
+                        """.formatted(visibleSince))
+                .param("room", roomId).param("viewer", actor.id()).param("before", before).param("limit", limit)
                 .query((rs, rowNum) -> {
                     Long participantId = rs.getObject("participant_id", Long.class);
                     ChatSenderView sender = participantId != null

@@ -22,7 +22,7 @@ public class ParticipantSessionResolver {
         return participants.me(roomId, token(request, roomId)).participantId();
     }
 
-    private static String token(HttpServletRequest request, long roomId) {
+    public static String token(HttpServletRequest request, long roomId) {
         if (request.getCookies() == null) {
             return null;
         }

@@ -3,6 +3,7 @@ package com.react.global.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.global.exception.ErrorCode;
 import com.react.global.response.ErrorResponse;
+import com.react.global.websocket.StompActorResolver;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -144,12 +145,11 @@ public class SecurityConfig {
                                 "/api/v1/rooms/*/stt/**"
                         ).hasRole("HOST")
 
-                        // TODO(SCRUM-129):
-                        // 방별 인증이 없는 채팅 내역 조회 임시 차단
+                        // 채팅 내역은 요청한 방의 소유자 또는 참여 쿠키를 컨트롤러에서 검증한다.
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/v1/rooms/*/messages"
-                        ).denyAll()
+                        ).permitAll()
 
                         // SCRUM-131: 연결은 열고, 방별 인증·인가는 STOMP 구독·전송 때 검증한다.
                         // 허용된 Origin 만 연결할 수 있다(WebSocketConfig).
@@ -207,6 +207,7 @@ public class SecurityConfig {
                 List.of(
                         "Content-Type",
                         "X-CSRF-TOKEN",
+                        StompActorResolver.CHAT_ROLE_HEADER,
                         "Idempotency-Key",
                         "Accept",
                         "X-Requested-With"

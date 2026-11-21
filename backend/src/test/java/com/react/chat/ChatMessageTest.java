@@ -2,6 +2,8 @@ package com.react.chat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.react.room.service.LectureParticipantService;
+import jakarta.servlet.http.Cookie;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,25 +14,32 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import javax.sql.DataSource;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
-@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ChatMessageTest {
     @Autowired JdbcClient jdbc;
     @Autowired DataSource dataSource;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @Autowired LectureParticipantService participants;
+    private final String hostEmail = UUID.randomUUID() + "@example.com";
     private long hostUser;
     private long room;
     private long participant;
@@ -42,7 +51,7 @@ class ChatMessageTest {
         assertThat(jdbc.sql("SELECT DATABASE()").query(String.class).single()).endsWith("_test");
         Flyway.configure().dataSource(dataSource).load().migrate();
         hostUser = insert("INSERT INTO users(email,password_hash,name,created_at) VALUES (?, 'hash','강연자', NOW())",
-                UUID.randomUUID() + "@example.com");
+                hostEmail);
         room = newRoom();
         participant = insert("""
                 INSERT INTO lecture_participants(lecture_room_id,nickname,participant_token_hash,joined_at)
@@ -127,25 +136,87 @@ class ChatMessageTest {
     @Test
     void invalidInputAndUnknownRoom() throws Exception {
         for (String query : List.of("?size=0", "?size=101", "?size=-1", "?cursor=0", "?size=abc")) {
-            mvc.perform(get("/api/v1/rooms/{id}/messages" + query, room))
+            mvc.perform(get("/api/v1/rooms/{id}/messages" + query, room).with(user(hostEmail).roles("HOST")))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
         }
-        mvc.perform(get("/api/v1/rooms/{id}/messages", Long.MAX_VALUE))
+        mvc.perform(get("/api/v1/rooms/{id}/messages", Long.MAX_VALUE).with(user(hostEmail).roles("HOST")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
         // 최대 크기는 허용한다.
         page("?size=100");
     }
 
+    @Test
+    void 시작_입장과_같은_초는_포함하고_커서와_재접속에도_역할별_시작점을_유지한다() throws Exception {
+        long live = newRoom();
+        String joinCode = jdbc.sql("SELECT join_code FROM lecture_rooms WHERE id = ?")
+                .param(live).query(String.class).single();
+        var joined = participants.join(joinCode, "새 청중", UUID.randomUUID().toString(), Map.of());
+        var cookie = new Cookie("PARTICIPANT_SESSION_" + live, joined.rawToken());
+        var joinedAt = LocalDateTime.ofInstant(joined.response().joinedAt(), ZoneOffset.ofHours(9)).withNano(0);
+        // 실제 입장 서비스가 저장한 DATETIME 은 JVM 시간대와 관계없이 같은 서울 시각이어야 한다.
+        assertThat(jdbc.sql("SELECT joined_at FROM lecture_participants WHERE id = ?")
+                .param(joined.response().participantId()).query(LocalDateTime.class).single()).isEqualTo(joinedAt);
+        var startedAt = joinedAt.minusMinutes(1);
+        jdbc.sql("UPDATE lecture_rooms SET started_at = ? WHERE id = ?").params(startedAt, live).update();
+        message(live, null, hostUser, "시작 전", startedAt.minusSeconds(1));
+        long first = message(live, null, hostUser, "강연 시작 시각", startedAt);
+        long beforeJoin = message(live, null, hostUser, "입장 직전", joinedAt.minusSeconds(1));
+        long sameSecond = message(live, null, hostUser, "입장과 같은 초", joinedAt);
+        long following = message(live, null, hostUser, "입장 후", joinedAt.plusSeconds(1));
+
+        assertThat(ids(page(live, ""))).containsExactly(first, beforeJoin, sameSecond, following);
+        var firstPage = page(get("/api/v1/rooms/{id}/messages?size=1", live).cookie(cookie));
+        assertThat(ids(firstPage)).containsExactly(following);
+        assertThat(firstPage.get("nextCursor").asLong()).isEqualTo(following);
+        var lastPage = page(get("/api/v1/rooms/{id}/messages?size=1&cursor={cursor}", live, following)
+                .cookie(cookie));
+        assertThat(ids(lastPage)).containsExactly(sameSecond);
+        assertThat(lastPage.get("hasNext").asBoolean()).isFalse();
+        assertThat(ids(page(get("/api/v1/rooms/{id}/messages?cursor={cursor}", live, sameSecond)
+                .cookie(cookie)))).isEmpty();
+
+        // 같은 브라우저로 방 소유자가 청중 화면에 들어온 경우에도 선택된 증명으로 조회한다.
+        assertThat(ids(page(get("/api/v1/rooms/{id}/messages", live).cookie(cookie)
+                .with(user(hostEmail).roles("HOST")).header("X-Chat-Role", "PARTICIPANT"))))
+                .containsExactly(sameSecond, following);
+        jdbc.sql("UPDATE lecture_rooms SET status = 'ENDED' WHERE id = ?").param(live).update();
+        assertThat(ids(page(get("/api/v1/rooms/{id}/messages", live).cookie(cookie)
+                .with(user(hostEmail).roles("HOST")).header("X-Chat-Role", "HOST"))))
+                .containsExactly(first, beforeJoin, sameSecond, following);
+        assertThat(ids(page(get("/api/v1/rooms/{id}/messages", live).cookie(cookie))))
+                .containsExactly(sameSecond, following);
+    }
+
+    @Test
+    void 로그인이나_해당_방_입장_증명_없이_채팅을_읽을_수_없다() throws Exception {
+        String otherHost = UUID.randomUUID() + "@example.com";
+        insert("INSERT INTO users(email,password_hash,name,created_at) VALUES (?, 'hash','다른 강연자', NOW())", otherHost);
+        String code = jdbc.sql("SELECT join_code FROM lecture_rooms WHERE id = ?").param(room).query(String.class).single();
+        var joined = participants.join(code, "청중", UUID.randomUUID().toString(), Map.of());
+        long otherRoom = newRoom();
+        String url = "/api/v1/rooms/{room}/messages";
+        mvc.perform(get(url, room)).andExpect(status().isUnauthorized());
+        mvc.perform(get(url, room).with(user(otherHost).roles("HOST"))).andExpect(status().isForbidden());
+        mvc.perform(get(url, otherRoom).cookie(new Cookie("PARTICIPANT_SESSION_" + otherRoom, joined.rawToken())))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(url, room).cookie(new Cookie("PARTICIPANT_SESSION_" + room, joined.rawToken()))
+                .header("X-Chat-Role", "HOST")).andExpect(status().isUnauthorized());
+        mvc.perform(get(url, room).with(user(hostEmail).roles("HOST")).header("X-Chat-Role", "PARTICIPANT"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get(url, room).with(user(hostEmail).roles("HOST")).header("X-Chat-Role", "UNKNOWN"))
+                .andExpect(status().isBadRequest());
+    }
+
     private long newRoom() {
         return insert("""
-                INSERT INTO lecture_rooms(host_user_id,title,join_code,status,created_at)
-                VALUES (?, 'test', ?, 'LIVE', NOW())
+                INSERT INTO lecture_rooms(host_user_id,title,join_code,status,started_at,created_at)
+                VALUES (?, 'test', ?, 'LIVE', '2026-11-17 10:00:00', NOW())
                 """, hostUser, UUID.randomUUID().toString());
     }
 
-    private long message(long roomId, Long participantId, Long hostUserId, String content, String receivedAt) {
+    private long message(long roomId, Long participantId, Long hostUserId, String content, Object receivedAt) {
         return insert("""
                 INSERT INTO chat_messages(lecture_room_id,participant_id,host_user_id,content,received_at)
                 VALUES (?, ?, ?, ?, ?)
@@ -163,7 +234,11 @@ class ChatMessageTest {
     }
 
     private JsonNode page(long roomId, String query) throws Exception {
-        String body = mvc.perform(get("/api/v1/rooms/{id}/messages" + query, roomId))
+        return page(get("/api/v1/rooms/{id}/messages" + query, roomId).with(user(hostEmail).roles("HOST")));
+    }
+
+    private JsonNode page(MockHttpServletRequestBuilder request) throws Exception {
+        String body = mvc.perform(request)
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return json.readTree(body).get("data");

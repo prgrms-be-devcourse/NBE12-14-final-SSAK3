@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { SttPanel } from '../stt/SttPanel.jsx'
-import { AudienceRoomPanel } from '../ai/AudienceAnalysisPage.jsx'
-import { SavedSpeech } from './SavedSpeech.jsx'
+import { RoomWorkspace } from './RoomWorkspace.jsx'
 import { RoomControls } from './RoomControls.jsx'
 import { HomeRoomLists } from './HomeRoomLists.jsx'
 import { RoomShell } from './RoomShell.jsx'
@@ -221,12 +219,8 @@ function RoomDetail({ id, userId, shell, logoutNotice }) {
         <RoomControls room={room} userId={userId} recorder={recorder} onRoom={acceptTransition}
           onAccessError={deny} onEnding={setEnding} offline={!!error} />
       </div>
-      {['LIVE', 'ENDED'].includes(room.status) && <div className={`room-workspace ${room.status === 'LIVE' ? 'has-recorder' : ''}`}>
-        <div className="room-insights"><AudienceRoomPanel roomId={id} onAccessError={deny} /></div>
-        {room.status === 'LIVE'
-          ? <aside className="room-recording"><SttPanel userId={userId} roomId={id} onRecorder={setRecorder} ending={ending} /></aside>
-          : <SavedSpeech roomId={id} onAccessError={deny} />}
-      </div>}
+      {['LIVE', 'ENDED'].includes(room.status) && <RoomWorkspace room={room} userId={userId}
+        onRecorder={setRecorder} ending={ending} onAccessError={deny} />}
       <section className="room-card host-room-info"><h2>강연 정보</h2><p className="room-description">{room.description || '등록된 강연 설명이 없습니다.'}</p><dl>
           <dt>생성 시각</dt><dd>{time(room.createdAt)}</dd>
           {room.startedAt && <><dt>시작 시각</dt><dd>{time(room.startedAt)}</dd></>}

@@ -49,7 +49,12 @@ public class StompSubscribeInterceptor implements ChannelInterceptor {
         Matcher room = ROOM_TOPIC.matcher(destination);
         if (room.matches()) {
             // 이 방의 강연자나 청중이 아니면 BusinessException(401·403) 으로 거절된다.
-            actors.resolve(Long.parseLong(room.group(1)), accessor.getUser(), accessor.getSessionAttributes());
+            long roomId = Long.parseLong(room.group(1));
+            if ("chat".equals(room.group(2))) {
+                actors.resolveChat(roomId, accessor);
+            } else {
+                actors.resolve(roomId, accessor.getUser(), accessor.getSessionAttributes());
+            }
             return message;
         }
         Matcher results = ROOM_POLL_RESULTS_TOPIC.matcher(destination);

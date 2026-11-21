@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -28,6 +29,17 @@ class SecurityConfigTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @Test
+    void 로컬_프론트가_역할_헤더로_채팅을_조회할_수_있다() throws Exception {
+        mvc.perform(options("/api/v1/rooms/1/messages")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-Chat-Role"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Headers", "X-Chat-Role"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
 
     @Test
     void 미로그인_사용자는_보호된_API에_접근할_수_없다()
@@ -166,13 +178,4 @@ class SecurityConfigTest {
                         .value("UNAUTHENTICATED"));
     }
 
-    @Test
-    void 권한_구현_전까지_채팅_조회를_차단한다()
-            throws Exception {
-
-        mvc.perform(get("/api/v1/rooms/1/messages")
-                        .with(user("host@example.com")
-                                .roles("HOST")))
-                .andExpect(status().isForbidden());
-    }
 }
