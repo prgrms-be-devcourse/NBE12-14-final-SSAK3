@@ -1,5 +1,6 @@
 package com.react.global.config;
 
+import com.react.global.websocket.StompSessionAuthInterceptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -14,6 +15,8 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -24,8 +27,11 @@ class WebSocketConfigTest {
 
     @BeforeEach
     void setUp() {
+        StompSessionAuthInterceptor authInterceptor =
+                mock(StompSessionAuthInterceptor.class);
+
         WebSocketConfig config =
-                new WebSocketConfig("http://localhost:5173");
+                new WebSocketConfig("http://localhost:5173", authInterceptor);
 
         ChannelRegistration registration =
                 mock(ChannelRegistration.class);
@@ -35,9 +41,14 @@ class WebSocketConfigTest {
         ArgumentCaptor<ChannelInterceptor> captor =
                 ArgumentCaptor.forClass(ChannelInterceptor.class);
 
-        verify(registration).interceptors(captor.capture());
+        verify(registration, times(2)).interceptors(captor.capture());
 
-        interceptor = captor.getValue();
+        List<ChannelInterceptor> registered = captor.getAllValues();
+
+        assertEquals(2, registered.size());
+        assertSame(authInterceptor, registered.get(0));
+
+        interceptor = registered.get(1);
         channel = mock(MessageChannel.class);
     }
 

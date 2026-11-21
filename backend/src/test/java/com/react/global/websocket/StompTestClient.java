@@ -1,5 +1,7 @@
 package com.react.global.websocket;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
@@ -11,11 +13,17 @@ import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import java.lang.reflect.Type;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 /**
  * STOMP 테스트용 클라이언트. 휴대폰 대신 코드로 연결하고 구독하고 메시지를 받는다.
@@ -24,25 +32,129 @@ import java.util.function.BiConsumer;
 public final class StompTestClient {
     public static final String ALLOWED_ORIGIN = "http://localhost:5173";
     private static final long TIMEOUT_SECONDS = 5;
+    private static final String SESSION_COOKIE = "HOST_SESSION=";
 
     private final WebSocketStompClient client;
+    private final HttpClient httpClient;
+    private final ObjectMapper objectMapper;
     private final String url;
+    private final String baseUrl;
 
     public StompTestClient(int port) {
         client = new WebSocketStompClient(new StandardWebSocketClient());
         client.setMessageConverter(new MappingJackson2MessageConverter());
+
+        httpClient = HttpClient.newHttpClient();
+        objectMapper = new ObjectMapper();
+
+        baseUrl = "http://localhost:" + port;
         url = "ws://localhost:" + port + "/ws";
     }
 
     /** 연결에 성공하면 세션을 돌려주고, 서버가 거절하면 예외를 던진다. */
     public StompSession connect(String origin, String... cookies) throws Exception {
-        WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
-        headers.setOrigin(origin);
-        for (String cookie : cookies) {
-            headers.add(HttpHeaders.COOKIE, cookie);
+        return connectInternal(origin, null, true, cookies);
+    }
+
+    /** CONNECT에서 HOST 또는 PARTICIPANT 역할을 명시한다. */
+    public StompSession connectWithRole(
+            String origin, String role, String... cookies
+    ) throws Exception {
+        return connectInternal(origin, role, true, cookies);
+    }
+
+    /** CSRF 헤더가 없으면 CONNECT가 거절되는지 확인하기 위한 테스트용 연결. */
+    public StompSession connectWithoutCsrf(
+            String origin, String... cookies
+    ) throws Exception {
+        return connectInternal(origin, null, false, cookies);
+    }
+
+    private StompSession connectInternal(
+            String origin,
+            String role,
+            boolean includeCsrf,
+            String... cookies
+    ) throws Exception {
+        String existingCookies = Arrays.stream(cookies)
+                .filter(cookie -> cookie != null && !cookie.isBlank())
+                .collect(Collectors.joining("; "));
+
+        // 기존 쿠키를 이용해 실제 HTTP API에서 CSRF 토큰을 조회한다.
+        HttpRequest.Builder request =
+                HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/api/v1/auth/csrf")
+                ).GET();
+
+        if (!existingCookies.isBlank()) {
+            request.header(HttpHeaders.COOKIE, existingCookies);
         }
-        return client.connectAsync(url, headers, new StompSessionHandlerAdapter() { })
-                .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+        HttpResponse<String> response = httpClient.send(
+                request.build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        if (response.statusCode() != 200) {
+            throw new IllegalStateException(
+                    "CSRF 토큰 발급 실패: " + response.statusCode()
+            );
+        }
+
+        JsonNode data = objectMapper.readTree(response.body()).path("data");
+        String csrfToken = data.path("token").asText();
+
+        if (csrfToken.isBlank()) {
+            throw new IllegalStateException("CSRF 토큰이 없습니다.");
+        }
+
+        // HTTP 세션이 새로 생성되었다면 발급된 세션 쿠키도 전달한다.
+        String issuedSessionCookie = response.headers()
+                .allValues(HttpHeaders.SET_COOKIE)
+                .stream()
+                .map(value -> value.split(";", 2)[0].trim())
+                .filter(value -> value.startsWith(SESSION_COOKIE))
+                .findFirst()
+                .orElse(null);
+
+        String handshakeCookies = existingCookies;
+
+        if (issuedSessionCookie != null) {
+            String otherCookies = Arrays.stream(existingCookies.split(";"))
+                    .map(String::trim)
+                    .filter(value -> !value.isBlank())
+                    .filter(value -> !value.startsWith(SESSION_COOKIE))
+                    .collect(Collectors.joining("; "));
+
+            handshakeCookies = otherCookies.isBlank()
+                    ? issuedSessionCookie
+                    : otherCookies + "; " + issuedSessionCookie;
+        }
+
+        if (!handshakeCookies.contains(SESSION_COOKIE)) {
+            throw new IllegalStateException("HTTP 세션 쿠키가 없습니다.");
+        }
+
+        WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
+        handshakeHeaders.setOrigin(origin);
+        handshakeHeaders.add(HttpHeaders.COOKIE, handshakeCookies);
+
+        StompHeaders connectHeaders = new StompHeaders();
+
+        if (includeCsrf) {
+            connectHeaders.add("X-CSRF-TOKEN", csrfToken);
+        }
+
+        if (role != null) {
+            connectHeaders.add(StompActorResolver.CHAT_ROLE_HEADER, role);
+        }
+
+        return client.connectAsync(
+                url,
+                handshakeHeaders,
+                connectHeaders,
+                new StompSessionHandlerAdapter() { }
+        ).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
     /**
@@ -55,7 +167,7 @@ public final class StompTestClient {
     }
 
     public BlockingQueue<Map<String, Object>> subscribe(StompSession session, String destination,
-            BiConsumer<StompHeaders, Map<String, Object>> inspect) {
+                                                        BiConsumer<StompHeaders, Map<String, Object>> inspect) {
         BlockingQueue<Map<String, Object>> received = new LinkedBlockingQueue<>();
         session.subscribe(destination, new StompFrameHandler() {
             @Override
@@ -101,7 +213,7 @@ public final class StompTestClient {
      * 시간 안에 못 받으면 null. "오면 안 되는 메시지"를 확인할 때는 짧은 제한시간을 준다.
      */
     public static Map<String, Object> nextOfType(BlockingQueue<Map<String, Object>> received, String type,
-            long timeoutMillis) throws InterruptedException {
+                                                 long timeoutMillis) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         while (true) {
             long remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());

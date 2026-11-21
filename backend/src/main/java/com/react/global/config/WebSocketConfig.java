@@ -1,8 +1,11 @@
 package com.react.global.config;
 
 import com.react.global.websocket.StompHandshakeInterceptor;
+import com.react.global.websocket.StompSessionAuthInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -20,17 +23,22 @@ import java.util.Arrays;
 
 @Configuration
 @EnableWebSocketMessageBroker
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final String[] allowedOrigins;
+    private final StompSessionAuthInterceptor authInterceptor;
 
     public WebSocketConfig(
-            @Value("${app.cors.allowed-origins}") String origins
+            @Value("${app.cors.allowed-origins}") String origins,
+            StompSessionAuthInterceptor authInterceptor
     ) {
         this.allowedOrigins = Arrays.stream(origins.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isBlank())
                 .toArray(String[]::new);
+
+        this.authInterceptor = authInterceptor;
     }
 
     // 클라이언트가 최초 연결할 주소
@@ -52,6 +60,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     // 클라이언트가 브로커 주소로 직접 메시지를 보내는 행위 차단
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
+        // STOMP CONNECT 인증과 SUBSCRIBE·SEND의 세션 유효성 검사
+        registration.interceptors(authInterceptor);
+
         registration.interceptors(new ChannelInterceptor() {
 
             @Override
