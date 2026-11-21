@@ -17,8 +17,8 @@ function newerSummary(incoming, previous) {
 }
 
 export function createAudienceFeed({ roomId, request, onChange, onUnauthenticated,
-  hidden = () => document.hidden }) {
-  let state = initialFeed(), active = true, epoch = 0, timer, running = false, stopped = false
+  knownRoom = null, hidden = () => document.hidden }) {
+  let state = { ...initialFeed(), room: knownRoom }, active = true, epoch = 0, timer, running = false, stopped = false
   let wantedLimit = 10
   const base = `/rooms/${encodeURIComponent(roomId)}`
   const emit = patch => { state = { ...state, ...patch }; onChange(state) }

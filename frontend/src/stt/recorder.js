@@ -16,6 +16,8 @@ export class Recorder {
     this.message = ''
     this.interim = ''
     this.recent = []
+    // Loaded records already have a durable copy. Only newly emitted finals enter this set.
+    this.unsecuredSegments = new Set()
     this.storageOk = true
     this.authOk = true
     this.visible = true
@@ -37,7 +39,12 @@ export class Recorder {
       sending: !!this.draining, busy: !!this.busy,
       storageOk: this.storageOk, authOk: this.authOk, visible: this.visible,
       hasSession: !!this.data.session, stopPending: !!this.data.stopReason,
+      readyToCloseRoom: this.readyToCloseRoom(),
+      hasUnsecuredSegments: this.unsecuredSegments.size > 0,
+      awaitingSpeechEnd: !!this.pausing,
+      navigationSafe: this.navigationPause === 'paused' && this.unsecuredSegments.size === 0,
       canStart: !!this.release && this.visible && !this.busy && !this.disposed
+        && this.navigationPause !== 'pausing'
         && !['listening', 'starting', 'stopping', 'loading', 'blocked'].includes(this.phase),
     }
     for (const listener of this.listeners) listener()
@@ -47,7 +54,17 @@ export class Recorder {
     const snapshot = structuredClone(this.data)
     const task = this.saving.catch(() => {}).then(() => this.store.save(snapshot))
     this.saving = task
-    try { await task; return true } catch {
+    try {
+      await task
+      if (this.unsecuredSegments.size) {
+        // Another final may have arrived while this particular snapshot was being written.
+        for (const item of [...snapshot.queue, ...snapshot.archived]) {
+          if (item.kind === 'segment') this.unsecuredSegments.delete(item.body.segmentKey)
+        }
+        this.publish()
+      }
+      return true
+    } catch {
       if (this.storageOk) {
         this.storageOk = false
         this.message = '브라우저에 기록을 보관할 수 없어 녹음을 중단했습니다. 화면을 닫으면 일부 기록을 잃을 수 있습니다.'
@@ -56,6 +73,68 @@ export class Recorder {
       this.publish()
       return false
     }
+  }
+
+  async prepareForNavigation() {
+    this.navigationPause = 'pausing'
+    const stopped = this.pause('MANUAL_STOP')
+    this.publish()
+    // The engine can emit further finals after stop() and before its end event.
+    await stopped
+    if (this.disposed) return
+    this.navigationPause = 'paused'
+    this.retryNavigationSave()
+    this.publish()
+  }
+
+  retryNavigationSave() {
+    if (!this.loaded || !this.release || this.disposed) return
+    this.data.retryCount = 0
+    this.data.retryPaused = false
+    this.cancel(this.retryTimer)
+    this.retryTimer = null
+    // Either destination is sufficient. An unavailable server must not delay the disk write.
+    void this.persist().then(ok => {
+      if (ok) this.storageOk = true
+      this.publish()
+    })
+    if (this.authOk) this.drain()
+    else this.verifyUser().then(() => this.drain()).catch(error => this.fail(error))
+  }
+
+  readyToCloseRoom() {
+    const { session, queue, stopReason, startKey, archived } = this.data
+    return this.loaded && this.visible && this.authOk && !this.disposed && !this.busy
+      && this.phase !== 'blocked' && !queue.length && !stopReason
+      && (!startKey || !!session) && session?.status !== 'RECORDING'
+      && !archived.some(item => item.sessionId === session?.sttSessionId)
+  }
+
+  async finishForRoomEnd() {
+    await this.init()
+    if (this.readyToCloseRoom()) return true
+    if (!this.disposed && this.lockUnsupported) {
+      // Recording cannot start here. Still check for work left by an earlier visit.
+      const saved = await this.store.load()
+      return !saved || (saved.version === 1 && Array.isArray(saved.queue) && !saved.queue.length
+        && Array.isArray(saved.archived) && !saved.archived.length
+        && !saved.stopReason && !saved.gap && (!saved.startKey || !!saved.session)
+        && saved.session?.status !== 'RECORDING')
+    }
+    if (this.disposed || !this.loaded || !this.release || this.busy || this.phase === 'blocked') return false
+    // A lost start response may have left a server session even before the microphone opened.
+    if (!this.data.session && this.data.startKey) {
+      await this.verifyUser()
+      const session = await this.api.start(this.data.startKey)
+      if (session.status === 'RECORDING' && !session.canRecord) return false
+      this.data.session = session
+      this.data.ownsSession = session.canRecord
+      await this.persist()
+    }
+    if (this.data.stopReason) await this.retry()
+    else if (this.data.session?.status === 'RECORDING' && this.data.ownsSession) await this.stop()
+    else if (this.data.queue.length) await this.retry()
+    return this.readyToCloseRoom()
   }
 
   async verifyUser() {
@@ -127,7 +206,8 @@ export class Recorder {
       if (!this.disposed) this.poll()
     } catch (error) {
       this.phase = 'blocked'
-      this.message = error.message === 'TAB_LOCK_UNSUPPORTED'
+      this.lockUnsupported = error.message === 'TAB_LOCK_UNSUPPORTED'
+      this.message = this.lockUnsupported
         ? '이 브라우저에서는 안전한 탭 간 녹음 제어를 지원하지 않습니다. Chrome의 HTTPS 화면에서 이용해 주세요.'
         : '녹음 화면을 불러오지 못했습니다. 로그인·강연방 접근 권한과 브라우저 저장소를 확인해 주세요.'
       if (error.status === 401) this.authOk = false
@@ -156,6 +236,7 @@ export class Recorder {
     this.interim = interim
     for (const final of finals) {
       const segment = { ...final, startKey: this.data.startKey, segmentKey: this.uuid() }
+      this.unsecuredSegments.add(segment.segmentKey)
       this.data.queue.push({ id: this.uuid(), kind: 'segment', body: segment })
       this.recent.push(segment)
       if (this.recent.length > 30) this.recent.shift()
@@ -171,9 +252,21 @@ export class Recorder {
       this.openGap(reason)
       this.data.wasListening = false
       this.phase = 'paused'
-      this.pausing = this.speech.stop().then(() => { this.interim = ''; this.publish() })
+      return this.stopSpeech()
     }
     return this.pausing || Promise.resolve()
+  }
+
+  stopSpeech() {
+    if (!this.pausing) {
+      this.pausing = this.speech.stop().finally(() => {
+        this.interim = ''
+        this.pausing = null
+        this.publish()
+      })
+      this.publish()
+    }
+    return this.pausing
   }
 
   async interrupted(error) {
@@ -188,7 +281,7 @@ export class Recorder {
     this.drain()
     const denied = ['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(error)
     if (denied) this.message = '마이크 권한·장치·인식 언어를 확인한 후 녹음 재개를 눌러 주세요.'
-    else if (!this.autoUsed && this.storageOk && this.authOk) {
+    else if (!this.navigationPause && !this.autoUsed && this.storageOk && this.authOk) {
       this.autoUsed = true
       this.message = '음성 인식을 한 번 자동 재시작합니다.'
       this.restartTimer = this.schedule(() => this.start(true), 500)
@@ -198,6 +291,8 @@ export class Recorder {
 
   async start(automatic = false) {
     if (this.busy || this.disposed || !this.loaded || !this.release || this.phase === 'listening') return
+    if (this.navigationPause === 'pausing' || (automatic && this.navigationPause)) return
+    this.navigationPause = null
     this.busy = true
     this.phase = 'starting'
     this.message = '녹음 시작 가능 여부를 확인하고 있습니다.'
@@ -208,6 +303,7 @@ export class Recorder {
       if (this.disposed) return
       await this.pausing
       if (!await this.persist()) throw new Error('STORAGE')
+      if (this.disposed || this.navigationPause) return
       this.storageOk = true
       if (this.data.stopReason) {
         this.message = '이전 세션의 종료 처리를 먼저 완료해 주세요.'
@@ -222,7 +318,9 @@ export class Recorder {
       // Save the key before POST: a lost response must never generate another key.
       if (!this.data.startKey) this.data.startKey = this.uuid()
       if (!await this.persist()) throw new Error('STORAGE')
+      if (this.disposed || this.navigationPause) return
       const session = await this.api.start(this.data.startKey)
+      if (this.disposed) return
       if (!session.canRecord && session.status === 'RECORDING' && !this.data.ownsSession) {
         this.phase = 'paused'
         this.message = '다른 녹음 세션이 진행 중입니다. 해당 세션을 종료한 후 다시 시작해 주세요.'
@@ -239,8 +337,10 @@ export class Recorder {
       }
       firstStart = !this.data.everStarted
       if (!await this.persist()) throw new Error('STORAGE')
+      if (this.navigationPause || this.disposed) return
       await this.speech.start()
       if (this.disposed) { this.speech.abort(); return }
+      if (this.navigationPause) return
       this.closeGap()
       this.data.everStarted = true
       this.data.wasListening = true
@@ -254,7 +354,7 @@ export class Recorder {
     } catch (error) {
       this.phase = 'paused'
       this.message = '녹음을 시작하지 못했습니다. 연결·마이크 권한을 확인한 후 다시 시도해 주세요.'
-      if (firstStart && this.data.session && this.eligible && !error.status && error.message !== 'STORAGE') {
+      if (firstStart && !this.navigationPause && this.data.session && this.eligible && !error.status && error.message !== 'STORAGE') {
         this.data.stopReason = 'ERROR'
         this.phase = 'stopping'
         this.message = '처음 마이크를 켜지 못해 세션을 종료합니다. 권한과 장치를 확인해 주세요.'
@@ -273,8 +373,7 @@ export class Recorder {
     this.phase = 'stopping'
     this.message = '남은 기록 저장 중입니다.'
     this.publish()
-    await this.speech.stop() // result events received before end are enqueued first.
-    this.interim = ''
+    await this.stopSpeech() // result events received before end are enqueued first.
     this.data.wasListening = false
     this.data.stopReason ||= 'MANUAL_STOP'
     if (discard) {
@@ -319,7 +418,8 @@ export class Recorder {
     this.draining = this.flush().finally(() => {
       this.draining = null
       this.publish()
-      if (this.data.queue.length && this.authOk && !this.data.retryPaused && !this.retryTimer && !this.disposed) {
+      if (this.data.session && (this.data.queue.length || this.data.stopReason)
+          && this.authOk && !this.data.retryPaused && !this.retryTimer && !this.disposed) {
         queueMicrotask(() => this.drain())
       }
     })
@@ -332,11 +432,11 @@ export class Recorder {
     try {
       await this.verifyUser()
       while (this.data.queue.length && !this.disposed) {
-        await this.saving.catch(() => {})
         const item = this.data.queue[0]
         if (item.kind === 'gapClose' && !item.gapId) throw new ApiError(409, 'GAP_DEPENDENCY')
         try {
           const response = await this.api.send(this.data.session.sttSessionId, item)
+          if (item.kind === 'segment') this.unsecuredSegments.delete(item.body.segmentKey)
           if (item.kind === 'gapOpen') {
             if (this.data.gap?.key === item.gapKey) this.data.gap.gapId = response.gapId
             for (const pending of this.data.queue) {
@@ -345,7 +445,8 @@ export class Recorder {
           }
           this.data.queue = this.data.queue.filter(x => x.id !== item.id)
           this.data.retryCount = 0
-          await this.persist()
+          // Writes are serialized by persist(). A slow disk must not stall the upload queue.
+          void this.persist()
           this.publish()
         } catch (error) {
           if (isTemporary(error) || error.status === 401) throw error
@@ -371,7 +472,7 @@ export class Recorder {
           : '녹음이 종료되었습니다.'
         await this.persist()
       }
-    } catch (error) { await this.fail(error) }
+    } catch (error) { void this.fail(error) }
   }
 
   async fail(error) {
@@ -449,6 +550,9 @@ export class Recorder {
       this.data.archived = previous
       this.publish()
       throw new Error('STORAGE')
+    }
+    for (const item of previous) {
+      if (item.kind === 'segment') this.unsecuredSegments.delete(item.body.segmentKey)
     }
     this.publish()
   }

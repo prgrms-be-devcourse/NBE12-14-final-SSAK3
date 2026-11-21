@@ -46,3 +46,11 @@ cd backend
 
 이 방식은 저장소의 기존 공유 테스트 DB·순차 실행 방식에 맞춘 것이다. 같은 `react_test`를 사용하는
 IntelliJ 테스트와 Gradle 테스트를 동시에 실행하지 않는다. 병렬 실행이 필요하면 실행별 DB를 분리해야 한다.
+
+## 강연자와 청중의 두 창 통합 테스트
+
+각 시나리오는 테스트 계정과 방을 직접 만들고, 강연자와 청중을 쿠키가 분리된 Chromium 창으로 연다. 삭제 시나리오는 청중 창에 도착한 `ROOM_DELETED`의 방 ID, 자동 퇴장 안내, 삭제한 초대 링크의 재방문 결과를 검사한다. 정상 종료 시나리오는 같은 대기 창에서 `LIVE`와 `ENDED` 이벤트를 차례로 확인한다.
+
+1. 별도 MySQL 스키마와 Redis를 사용하는 Spring 서버를 `127.0.0.1:18080`에 실행한다. 서버에는 테스트 전용 DB 연결 정보와 `PARTICIPANT_JOIN_SECRET`을 설정한다. `ROOM_JOIN_BASE_URL`과 `CORS_ALLOWED_ORIGINS`는 모두 `http://127.0.0.1:15173`으로, 로컬 HTTP용 `SESSION_COOKIE_SECURE`는 `false`로 지정한다.
+2. `frontend`에서 `npm ci`와 `npx playwright install chromium`으로 의존성을 준비한다.
+3. `npx playwright test -c tests/integration/playwright.config.js`를 실행한다. 테스트가 15173 포트에 프론트 서버를 띄운다. 삭제 확인창·청중 대기·퇴장 화면 캡처는 `frontend/playwright-report/room-integration/`에 저장된다.

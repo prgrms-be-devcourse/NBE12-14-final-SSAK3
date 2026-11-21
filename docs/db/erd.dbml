@@ -52,6 +52,7 @@ Table polls {
   status varchar(20) [not null, note: 'OPEN, CLOSED']
   created_at datetime [not null]
   closes_at datetime [not null, note: '마감 예정 시각 = created_at + 제한 시간(초). 서버가 계산']
+  closed_total_participants bigint [note: '마감 당시 누적 참여자 수. 진행 중에는 NULL']
   closed_at datetime [note: '실제 마감 시각. 자동 마감이면 closes_at']
   close_reason varchar(20) [note: 'HOST, TIMEOUT, ROOM_ENDED. OPEN 이면 NULL']
   indexes {

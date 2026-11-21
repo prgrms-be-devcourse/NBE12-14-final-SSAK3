@@ -1,5 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
-import QRCode from 'qrcode'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { SttPanel } from '../stt/SttPanel.jsx'
+import { AudienceRoomPanel } from '../ai/AudienceAnalysisPage.jsx'
+import { SavedSpeech } from './SavedSpeech.jsx'
+import { RoomControls } from './RoomControls.jsx'
+import { HomeRoomLists } from './HomeRoomLists.jsx'
+import { RoomShell } from './RoomShell.jsx'
+import { RoomInvitation } from './RoomInvitation.jsx'
+import { LeaveRoomDialog } from './LeaveRoomDialog.jsx'
 import { request } from '../stt/api.js'
 import { draftKey, emptyDraft, readDraft, writeDraft, clearDraft, loginFor, terminal, errorText } from './state.js'
 import '@fontsource/pretendard/400.css'
@@ -18,7 +26,13 @@ export function RoomApp() {
   const [logoutError, setLogoutError] = useState('')
   const [creating, setCreating] = useState(false)
   const logoutLock = useRef(false)
-  const id = location.pathname.split('/').at(-1)
+  const { roomId: id } = useParams()
+  const navigate = useNavigate()
+  const route = useLocation()
+  const home = id === 'new'
+  function goHome(section) {
+    navigate('/host/rooms/new', { replace: home, state: { section } })
+  }
   useEffect(() => {
     let active = true
     request('/auth/me').then(value => { if (active) setUser(value) }).catch(e => {
@@ -43,18 +57,30 @@ export function RoomApp() {
       setLoggingOut(false); logoutLock.current = false
     }
   }
-  return <div className="room-app">
-    <header className="room-top"><a href="/host/rooms/new" aria-label="RE:ACT 새 강연방">RE:ACT<span>강연자 공간</span></a>
-      {user ? <div className="room-user-menu"><span>{user.name}</span><button className="room-secondary" disabled={loggingOut || creating} onClick={logout}>로그아웃</button></div> : <span>강연 준비부터 참여 안내까지</span>}</header>
-    <main>{logoutError && <p className="room-warning" role="alert">{logoutError}</p>}
-      {loggingOut ? <p role="status">로그아웃하고 있습니다.</p> : error ? <section className="room-card"><p role="alert">{errorText(error)}</p><button onClick={() => { setError(null); setRevision(v => v + 1) }}>다시 확인</button></section>
+  const shell = { user, logout, logoutDisabled: loggingOut || creating, home,
+    section: home ? route.state?.section || 'home' : null,
+    onNavigate: goHome, navigationDisabled: !user || creating || loggingOut }
+  const logoutNotice = logoutError && <p className="room-warning" role="alert">{logoutError}</p>
+  if (user && !error && !loggingOut && !home) {
+    return <RoomDetail key={`${user.userId}:${id}`} id={id} userId={user.userId} shell={shell} logoutNotice={logoutNotice} />
+  }
+  return <RoomShell {...shell}>
+    {logoutNotice}
+    {loggingOut ? <p role="status">로그아웃하고 있습니다.</p> : error ? <section className="room-card"><p role="alert">{errorText(error)}</p><button onClick={() => { setError(null); setRevision(v => v + 1) }}>다시 확인</button></section>
       : !user ? <p role="status">로그인 정보를 확인하고 있습니다.</p>
-        : id === 'new' ? <CreateRoom user={user} onBusy={setCreating} /> : <RoomDetail key={id} id={id} />}</main>
-    <footer className="room-footer">RE:ACT · 청중과 함께 만드는 강연</footer>
-  </div>
+        : <CreateRoom key={user.userId} user={user} onBusy={setCreating} />}
+  </RoomShell>
 }
 
 function CreateRoom({ user, onBusy }) {
+  const route = useLocation()
+  useEffect(() => {
+    const section = route.state?.section
+    if (!section) return
+    const target = document.getElementById(section === 'new' ? 'room-title' : 'host-live-rooms')
+    target?.focus({ preventScroll: true })
+    target?.scrollIntoView({ block: 'nearest' })
+  }, [route.key, route.state])
   const [draft, setDraft] = useState(() => readDraft(user.userId))
   const [restored] = useState(() => !!(draft.title || draft.description || draft.uncertain))
   const [busy, setBusy] = useState(false)
@@ -95,8 +121,10 @@ function CreateRoom({ user, onBusy }) {
     }
   }
   return <div className="room-create">
-    <div className="room-heading"><span className="room-kicker">새로운 만남의 시작</span><h1>어떤 강연을 준비하고 있나요?</h1><p>강연방을 만들고, 청중에게 참여 링크를 공유하세요.</p></div>
-    <form className="room-card" onSubmit={submit}>
+    <div className="room-heading"><h1>강연자 홈</h1></div>
+    <HomeRoomLists />
+    <form className="room-card" onSubmit={submit} aria-labelledby="host-create-title">
+      <h2 id="host-create-title">새 강연방</h2>
       {restored && <p className="room-note" role="status">작성 중이던 내용을 불러왔습니다.</p>}
       {storageError && <p role="alert">임시 저장을 사용할 수 없습니다. 새로고침하거나 로그인 화면으로 이동하면 작성 내용이 사라질 수 있습니다.</p>}
       <label htmlFor="room-title">강연 제목 <span className="room-required">필수</span></label>
@@ -117,27 +145,54 @@ function CreateRoom({ user, onBusy }) {
   </div>
 }
 
-function RoomDetail({ id }) {
+function RoomDetail({ id, userId, shell, logoutNotice }) {
   const [room, setRoom] = useState(null)
   const [error, setError] = useState(null)
   const [revision, setRevision] = useState(0)
-  const [modal, setModal] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [leave, setLeave] = useState(null)
   const [accessError, setAccessError] = useState(null)
+  const [recorder, setRecorder] = useState(null)
+  const [ending, setEnding] = useState(false)
+  const version = useRef(0)
+  function selectMenu(target) {
+    setInviteOpen(false)
+    const view = recorder?.getSnapshot()
+    const recording = view?.phase === 'listening' || view?.phase === 'starting'
+    if (!recording && !view?.awaitingSpeechEnd && !view?.hasUnsecuredSegments) {
+      shell.onNavigate(target)
+      return
+    }
+    if (!recording) recorder.prepareForNavigation()
+    setLeave({ target, confirm: recording })
+  }
+  function acceptTransition(value) {
+    version.current++
+    setRoom(previous => ({ ...previous, ...value }))
+    if (value.status === 'ENDED') setInviteOpen(false)
+    setError(null)
+    setRevision(v => v + 1)
+  }
+  function deny(e) {
+    setInviteOpen(false); setRoom(null); setAccessError(e)
+    if (e.status === 401) loginFor(location.pathname)
+  }
   useEffect(() => {
-    if (accessError) return
+    if (accessError || room?.status === 'ENDED') return
     let cancelled = false, timer, running = false, stopped = false
     async function load() {
       if (cancelled || running || stopped || document.hidden) return
       running = true
+      const before = version.current
       clearTimeout(timer)
       try {
         const value = await request(`/rooms/${encodeURIComponent(id)}`)
-        if (cancelled) return
+        if (cancelled || before !== version.current) return
         setRoom(value); setError(null)
-        if (value.status === 'ENDED') { stopped = true; setModal(false) }
+        if (value.status === 'ENDED') { stopped = true; setInviteOpen(false) }
       } catch (e) {
-        if (cancelled) return
-        stopped = true; setModal(false); setError(e)
+        if (cancelled || before !== version.current) return
+        stopped = true; setInviteOpen(false); setError(e)
         if (terminal(e)) setRoom(null)
         if (e.status === 401) loginFor(location.pathname)
       } finally {
@@ -151,68 +206,35 @@ function RoomDetail({ id }) {
     return () => { cancelled = true; clearTimeout(timer); document.removeEventListener('visibilitychange', visibility) }
   }, [id, revision, accessError])
   const fatal = accessError || (terminal(error || {}) ? error : null)
-  if (fatal) return <section className="room-card"><h1>강연방을 표시할 수 없습니다</h1><p role="alert">{errorText(fatal)}</p><a href="/host/rooms/new">새 강연방 만들기</a></section>
-  return <>
-    <a className="room-back" href="/host/rooms/new">＋ 새 강연방 만들기</a>
+  if (fatal) return <RoomShell {...shell}><section className="room-card"><h1>강연방을 표시할 수 없습니다</h1><p role="alert">{errorText(fatal)}</p></section></RoomShell>
+  const canInvite = !error && ['READY', 'LIVE'].includes(room?.status)
+  return <RoomShell {...shell} onNavigate={selectMenu} canInvite={canInvite} inviteOpen={canInvite && inviteOpen}
+    onToggleInvite={() => setInviteOpen(open => !open)}>
+    {logoutNotice}
     {error && <div className="room-warning" role="alert">최신 상태를 확인하지 못했습니다. 참여 안내를 잠시 숨겼습니다. <button className="room-secondary" onClick={() => setRevision(v => v + 1)}>다시 확인</button></div>}
     {!room ? !error && <p role="status">강연 정보를 불러오고 있습니다.</p> : <>
-      <div className="room-heading"><span className={`room-badge room-${room.status}`}>{statusNames[room.status] || '상태 확인 필요'}</span><h1>{room.title}</h1><p>{room.status === 'ENDED' ? '종료된 강연입니다. 새로운 참여는 불가능합니다.' : room.status === 'LIVE' ? '강연이 진행 중입니다.' : '청중에게 참여 링크를 공유하세요.'}</p></div>
-      {import.meta.env.DEV && <p><a href={`/dev/rooms/${id}/ai`}>AI 요약 확인</a></p>}
-      <div className={`room-grid ${room.status === 'ENDED' ? 'room-ended' : ''}`}>
-        <section className="room-card"><span className="room-kicker">LECTURE</span><h2>강연 정보</h2><p className="room-description">{room.description || '등록된 강연 설명이 없습니다.'}</p><dl>
+      <div className="host-room-heading-row">
+        <div className="room-heading"><span className={`room-badge room-${room.status}`}>{statusNames[room.status] || '상태 확인 필요'}</span>
+          <h1>{room.title}</h1>
+          {room.status === 'ENDED' && <p>종료된 강연입니다. 새로운 참여는 불가능합니다.</p>}
+        </div>
+        <RoomControls room={room} userId={userId} recorder={recorder} onRoom={acceptTransition}
+          onAccessError={deny} onEnding={setEnding} offline={!!error} />
+      </div>
+      {['LIVE', 'ENDED'].includes(room.status) && <div className={`room-workspace ${room.status === 'LIVE' ? 'has-recorder' : ''}`}>
+        <div className="room-insights"><AudienceRoomPanel roomId={id} onAccessError={deny} /></div>
+        {room.status === 'LIVE'
+          ? <aside className="room-recording"><SttPanel userId={userId} roomId={id} onRecorder={setRecorder} ending={ending} /></aside>
+          : <SavedSpeech roomId={id} onAccessError={deny} />}
+      </div>}
+      <section className="room-card host-room-info"><h2>강연 정보</h2><p className="room-description">{room.description || '등록된 강연 설명이 없습니다.'}</p><dl>
           <dt>생성 시각</dt><dd>{time(room.createdAt)}</dd>
           {room.startedAt && <><dt>시작 시각</dt><dd>{time(room.startedAt)}</dd></>}
           {room.endedAt && <><dt>종료 시각</dt><dd>{time(room.endedAt)}</dd></>}
         </dl><p className="room-caption">모든 시각은 한국 시간(KST) 기준입니다.</p></section>
-        {!error && ['READY', 'LIVE'].includes(room.status) && <Invitation id={id} modal={modal} setModal={setModal} onAccessError={e => {
-          setModal(false); setRoom(null); setAccessError(e)
-          if (e.status === 401) loginFor(location.pathname)
-        }} />}
-      </div>
+      {import.meta.env.DEV && room.status === 'READY' && <p className="room-caption"><a href={`/dev/rooms/${id}/ai`}>AI 요약 확인</a></p>}
+      {canInvite && <RoomInvitation key={id} id={id} open={inviteOpen} onClose={() => setInviteOpen(false)} onAccessError={deny} />}
+      {leave && recorder && <LeaveRoomDialog recorder={recorder} intent={leave} onStay={() => setLeave(null)} onReady={shell.onNavigate} />}
     </>}
-  </>
-}
-
-function Invitation({ id, modal, setModal, onAccessError }) {
-  const [info, setInfo] = useState(null)
-  const [qr, setQr] = useState('')
-  const [error, setError] = useState(false)
-  const [revision, setRevision] = useState(0)
-  const [copy, setCopy] = useState('')
-  const access = useRef(onAccessError)
-  access.current = onAccessError
-  useEffect(() => {
-    let active = true
-    setError(false)
-    request(`/rooms/${id}/invitation`).then(async value => {
-      const image = await QRCode.toDataURL(value.qrText, { width: 640, margin: 4, errorCorrectionLevel: 'M' })
-      if (active) { setInfo(value); setQr(image) }
-    }).catch(e => {
-      if (!active) return
-      if (terminal(e)) access.current(e)
-      else setError(true)
-    })
-    return () => { active = false }
-  }, [id, revision])
-  const dialog = useRef(null)
-  const openButton = useRef(null)
-  useEffect(() => {
-    if (modal && dialog.current && !dialog.current.open) dialog.current.showModal()
-    if (!modal && dialog.current?.open) { dialog.current.close(); openButton.current?.focus() }
-  }, [modal])
-  return <section className="room-card room-invite"><span className="room-kicker">INVITATION</span><h2>청중 초대</h2>
-    {error ? <><p role="alert">참여 정보를 불러오지 못했습니다.</p><button onClick={() => setRevision(v => v + 1)}>다시 불러오기</button></>
-      : !info ? <p role="status">참여 정보를 불러오고 있습니다.</p> : <>
-        <img className="room-qr" src={qr} alt="청중 참여 링크 QR코드" />
-        <button className="room-secondary" ref={openButton} onClick={() => setModal(true)}>QR 크게 보기</button>
-        <label htmlFor="join-link">참여 링크</label><div className="room-copy"><input id="join-link" readOnly value={info.joinUrl} onFocus={e => e.target.select()} /><button onClick={async () => {
-          try { await navigator.clipboard.writeText(info.joinUrl); setCopy('참여 링크를 복사했습니다.') }
-          catch { setCopy('복사하지 못했습니다. 링크를 선택해 직접 복사해 주세요.') }
-        }}>링크 복사</button></div><p role="status" className="room-caption">{copy}</p>
-        <p className="room-code">참여 코드 <strong>{info.joinCode}</strong></p>
-        <dialog ref={dialog} className="room-dialog" aria-labelledby="qr-title" onCancel={() => setModal(false)} onClose={() => setModal(false)}>
-          <h2 id="qr-title">QR코드로 강연에 참여하세요</h2><img src={qr} alt="확대된 청중 참여 QR코드" /><p>참여 코드 · {info.joinCode}</p><button onClick={() => setModal(false)}>닫기</button>
-        </dialog>
-      </>}
-  </section>
+  </RoomShell>
 }

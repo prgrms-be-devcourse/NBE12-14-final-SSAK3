@@ -93,7 +93,7 @@ export function createSpeech({ onResult, onEnd, now = () => new Date().toISOStri
     abort() {
       if (!current) return
       const run = current
-      run.stopResolve = () => {}
+      run.stopResolve ||= () => {}
       run.recognition.abort()
       run.finish()
     },

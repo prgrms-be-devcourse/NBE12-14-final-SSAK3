@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | [common](api/common.md) | 개요, 공통 규약(기본 정보, 오류 응답, 인증·권한) | 전원 |
 | [auth](api/auth.md) | AUTH-01~04 강연자 인증 | A |
-| [room](api/room.md) | ROOM-01~07 강연방·청중 입장·권한 | A |
+| [room](api/room.md) | ROOM-01~08 강연방·청중 입장·권한·강연자 홈 목록 조회 | A |
 | [chat](api/chat.md) | CHAT-01~05 실시간 채팅 | B |
 | [poll](api/poll.md) | POLL-01~03, 05~07 실시간 투표·이해도 체크 | A·B |
 | [stt](api/stt.md) | STT-01~05 발언 기록 | D |
@@ -32,6 +32,8 @@
 | ROOM-04 | POST `/rooms/{roomId}/start`, POST `/rooms/{roomId}/end` |
 | ROOM-05 | POST `/public/rooms/{joinCode}/participants` |
 | ROOM-06, 07 | REST 및 WebSocket 권한·종료 상태 검증 |
+| ROOM-08 (P1) | GET `/rooms/home`, GET `/rooms/ready`, GET `/rooms/live` |
+| ROOM-10 | DELETE `/rooms/{roomId}` (소유자의 준비 중인 방), 상태 채널의 `ROOM_DELETED` 이벤트 |
 | CHAT-01, 02, 04, 05 | WebSocket 채팅 송수신·저장·검증·격리 |
 | CHAT-03 | GET `/rooms/{roomId}/messages` |
 | POLL-01 | POST `/rooms/{roomId}/polls`(`type`: GENERAL·UNDERSTANDING, 제한 시간), POST `/rooms/{roomId}/polls/{pollId}/close`, GET `/rooms/{roomId}/polls`, 서버 스케줄러의 자동 마감 |

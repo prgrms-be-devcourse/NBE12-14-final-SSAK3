@@ -37,7 +37,7 @@ function getCsrfToken(timeout) {
   return csrfPromise
 }
 
-export async function request(path, { method = 'GET', body, timeout = 10000 } = {}) {
+export async function request(path, { method = 'GET', body, headers: extraHeaders, timeout = 10000 } = {}) {
   const normalizedMethod = method.toUpperCase()
   const needsCsrf = !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(normalizedMethod)
 
@@ -46,7 +46,8 @@ export async function request(path, { method = 'GET', body, timeout = 10000 } = 
     csrfPromise = null
   }
 
-  const headers = body !== undefined ? { 'Content-Type': 'application/json' } : {}
+  const headers = { ...extraHeaders }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
 
   if (needsCsrf) {
     const { headerName, token } = await getCsrfToken(timeout)

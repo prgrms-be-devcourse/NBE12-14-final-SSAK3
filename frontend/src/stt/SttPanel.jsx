@@ -8,7 +8,7 @@ import './stt.css'
 const labels = { loading: '연결 확인 중', idle: '시작 전', starting: '인식 준비 중',
   listening: '인식 중', paused: '인식 중단', stopping: '인식 종료 · 저장 중', ended: '인식 종료', blocked: '연결 불가' }
 
-function RecordingView({ recorder }) {
+function RecordingView({ recorder, integrated, ending, reconnect }) {
   const state = useSyncExternalStore(recorder.subscribe, recorder.getSnapshot)
   const [actionError, setActionError] = useState('')
   const supported = !!speechConstructor() && !!navigator.locks && !!globalThis.isSecureContext
@@ -28,11 +28,14 @@ function RecordingView({ recorder }) {
     try { await recorder.deleteArchived() } catch { setActionError('보관 기록을 삭제하지 못했습니다.') }
   }
   const unsaved = state.pending + state.pendingGaps
-  const saving = state.retryPaused ? '저장 재시도 필요' : state.retrying ? '전송 재시도 중'
+  const canRetry = state.retryPaused || state.retrying || state.stopPending || unsaved > 0 || !state.authOk
+  const saving = state.phase === 'loading' || state.phase === 'blocked' ? '저장 상태 확인 필요'
+    : state.retryPaused ? '저장 재시도 필요' : state.retrying ? '전송 재시도 중'
+    : state.archived && !unsaved ? '미저장 보관 기록 있음'
     : state.sending ? '서버 저장 중' : unsaved ? '전송 대기 중' : '서버 저장 완료'
+  const Transcript = integrated ? 'details' : 'div'
   return <section className="stt-panel" aria-label="강연 발언 기록">
-    <header><span className="stt-eyebrow">강연방 {recorder.roomId}</span><h2>발언 기록</h2>
-      <p>강연의 흐름을 기록하고, 놓친 구간을 확인하세요.</p></header>
+    <header>{!integrated && <span className="stt-eyebrow">강연방 {recorder.roomId}</span>}<h2>발언 기록</h2></header>
     {!supported && <p role="alert">이 환경에서는 녹음을 시작할 수 없습니다. Web Speech API와 탭 제어를 지원하는 Chrome에서 HTTPS로 접속해 주세요. 로컬 개발은 localhost를 사용하세요.</p>}
     <div className="stt-status" aria-live="polite">
       <div><span>음성 인식</span><strong className={state.phase === 'listening' ? 'stt-live' : ''}>{labels[state.phase]}</strong></div>
@@ -42,39 +45,39 @@ function RecordingView({ recorder }) {
     {state.message && <p className="stt-notice" role="status">{state.message}</p>}
     {actionError && <p role="alert">{actionError}</p>}
     <div className="stt-actions">
-      <button disabled={!supported || !state.canStart || state.stopPending} onClick={() => recorder.start()}>
-        {state.hasSession && state.phase !== 'ended' ? '녹음 재개' : '녹음 시작'}</button>
-      <button className="secondary" disabled={!state.hasSession || state.busy || !state.visible || ['ended', 'blocked'].includes(state.phase)}
-        onClick={() => recorder.stop()}>녹음 종료</button>
-      <button className="secondary" disabled={state.busy || state.phase === 'blocked' || !state.visible}
-        onClick={() => recorder.retry()}>저장 재시도</button>
-      {state.stopPending && (unsaved > 0 || state.retryPaused) && state.visible && <button className="secondary"
+      {(!integrated || state.phase !== 'listening') && <button disabled={ending || !supported || !state.canStart || state.stopPending} onClick={() => recorder.start()}>
+        {state.hasSession && state.phase !== 'ended' ? '녹음 재개' : '녹음 시작'}</button>}
+      <button className={integrated && state.phase === 'listening' ? '' : 'secondary'} disabled={ending || !state.hasSession || state.busy || !state.visible || ['ended', 'blocked'].includes(state.phase)}
+        onClick={() => recorder.stop()}>{integrated ? '녹음 중지' : '녹음 종료'}</button>
+      {!ending && (!integrated || canRetry) && <button className="secondary" disabled={state.busy || state.phase === 'blocked' || !state.visible}
+        onClick={() => recorder.retry()}>저장 재시도</button>}
+      {integrated && state.phase === 'blocked' && <button className="secondary" onClick={reconnect}>녹음 다시 연결</button>}
+      {!integrated && state.stopPending && (unsaved > 0 || state.retryPaused) && state.visible && <button className="secondary"
         disabled={state.busy} onClick={() => {
           if (window.confirm(`서버 저장이 확인되지 않은 발언 ${state.pending}건과 누락 구간 요청 ${state.pendingGaps}건이 있습니다. 저장하지 않고 종료할까요? 남은 기록은 다운로드할 수 있습니다.`)) recorder.stop(true)
         }}>남은 기록을 서버에 저장하지 않고 종료</button>}
     </div>
-    <div className="stt-transcript">
-      <h3>최근 확정 전사</h3>
+    <Transcript className="stt-transcript">
+      {integrated ? <summary>최근 발언 보기</summary> : <h3>최근 확정 전사</h3>}
       {!state.recent.length && <p className="stt-muted">녹음을 시작하면 확정된 발언이 여기에 표시됩니다.</p>}
       <ol>{state.recent.map(segment => <li key={segment.segmentKey}>
-        <time>{new Date(segment.segmentStartAt).toLocaleTimeString('ko-KR')} (추정)</time>
+        <time>{new Date(segment.segmentStartAt).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' })} (추정)</time>
         <p>{segment.transcript}</p>
       </li>)}</ol>
       {state.interim && <div className="stt-interim"><span>인식 중 · 변경될 수 있음</span><p>{state.interim}</p></div>}
-    </div>
+      <footer>최근 확정 발언 30건을 표시합니다. 발언 시각은 브라우저가 전사를 처음 확인하고 확정한 시각을 기준으로 추정합니다.</footer>
+    </Transcript>
     {state.archived > 0 && <aside className="stt-archive">
       <h3>별도 보관 기록 {state.archived}건</h3>
       <p>서버 저장이 확인되지 않은 기록입니다. 다운로드한 파일은 보고서에 자동 반영되지 않습니다.</p>
       <button className="secondary" onClick={download}>기록 다운로드</button>{' '}
-      <button className="secondary" onClick={remove}>보관 기록 삭제</button>
+      {!integrated && <button className="secondary" onClick={remove}>보관 기록 삭제</button>}
     </aside>}
-    <footer>발언 시각은 전사 결과를 처음 확인한 시점부터 확정된 시점까지의 추정값입니다.
-      실제 발언 시각과 차이가 있을 수 있습니다. 최근 30건을 표시합니다.</footer>
   </section>
 }
 
 // userId must come from /auth/me (or the authenticated application's user context).
-export function SttPanel({ userId, roomId, authRevision = 0 }) {
+export function SttPanel({ userId, roomId, authRevision = 0, onRecorder, ending = false }) {
   const [recorder, setRecorder] = useState(null)
   const [connection, setConnection] = useState(0)
   const previousCleanup = useRef(Promise.resolve())
@@ -88,6 +91,7 @@ export function SttPanel({ userId, roomId, authRevision = 0 }) {
       acquire: () => acquireTab(key), speechFactory: createSpeech,
       now: () => new Date(origin + performance.now() - elapsed).toISOString() })
     setRecorder(controller)
+    onRecorder?.(controller)
     let cancelled = false
     previousCleanup.current.then(() => { if (!cancelled) controller.init() })
     const warn = event => {
@@ -106,13 +110,15 @@ export function SttPanel({ userId, roomId, authRevision = 0 }) {
       window.removeEventListener('beforeunload', warn)
       window.removeEventListener('pagehide', hide)
       window.removeEventListener('pageshow', show)
+      onRecorder?.(null)
       cancelled = true
       previousCleanup.current = controller.dispose()
     }
-  }, [userId, roomId, connection])
-  return <>{recorder && <RecordingView recorder={recorder} />}
-    <button className="secondary stt-reconnect" onClick={() => {
+  }, [userId, roomId, connection, onRecorder])
+  const reconnect = () => setConnection(value => value + 1)
+  return <>{recorder && <RecordingView recorder={recorder} integrated={!!onRecorder} ending={ending} reconnect={reconnect} />}
+    {!onRecorder && <button className="secondary stt-reconnect" onClick={() => {
       if (recorder?.getSnapshot().phase === 'listening' && !window.confirm('음성 인식을 멈추고 화면을 다시 연결할까요?')) return
-      setConnection(value => value + 1)
-    }}>화면 다시 연결</button></>
+      reconnect()
+    }}>화면 다시 연결</button>}</>
 }

@@ -8,25 +8,33 @@ import com.react.poll.service.PollService;
 import com.react.room.dto.CreateRoomRequest;
 import com.react.room.dto.CreateRoomResponse;
 import com.react.room.dto.EndRoomResponse;
+import com.react.room.dto.HostRoomHomeResponse;
+import com.react.room.dto.LiveRoomResponse;
 import com.react.room.dto.PublicRoomResponse;
+import com.react.room.dto.ReadyRoomPage;
 import com.react.room.dto.RoomDetailResponse;
 import com.react.room.dto.RoomInvitationResponse;
 import com.react.room.dto.StartRoomResponse;
 import com.react.room.entity.LectureRoom;
 import com.react.room.entity.LectureRoomStatus;
+import com.react.room.event.RoomDeletedEvent;
 import com.react.room.event.RoomStatusChangedEvent;
+import com.react.room.repository.LectureParticipantRepository;
 import com.react.room.repository.LectureRoomRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 
 @Service
 @Transactional(readOnly = true)
@@ -38,8 +46,10 @@ public class LectureRoomService {
             "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int JOIN_CODE_LENGTH = 12;
     private static final int MAX_CODE_ATTEMPTS = 10;
+    private static final int READY_PAGE_SIZE = 3;
 
     private final LectureRoomRepository lectureRoomRepository;
+    private final LectureParticipantRepository participantRepository;
     private final UserRepository userRepository;
     private final PollService pollService;
     private final ApplicationEventPublisher eventPublisher;
@@ -47,6 +57,7 @@ public class LectureRoomService {
 
     public LectureRoomService(
             LectureRoomRepository lectureRoomRepository,
+            LectureParticipantRepository participantRepository,
             UserRepository userRepository,
             PollService pollService,
             ApplicationEventPublisher eventPublisher,
@@ -54,6 +65,7 @@ public class LectureRoomService {
             String joinBaseUrl
     ) {
         this.lectureRoomRepository = lectureRoomRepository;
+        this.participantRepository = participantRepository;
         this.userRepository = userRepository;
         this.pollService = pollService;
         this.eventPublisher = eventPublisher;
@@ -86,6 +98,47 @@ public class LectureRoomService {
                 saved.getJoinCode(),
                 toInstant(saved.getCreatedAt())
         );
+    }
+
+    public List<LiveRoomResponse> liveRooms(Authentication authentication) {
+        return liveRooms(requireHost(authentication));
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public HostRoomHomeResponse home(Authentication authentication, int readyLimit) {
+        User host = requireHost(authentication);
+        if (readyLimit < 1) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        return new HostRoomHomeResponse(liveRooms(host), readyPage(host, null, readyLimit));
+    }
+
+    public ReadyRoomPage readyRooms(Authentication authentication, String cursor) {
+        User host = requireHost(authentication);
+        return readyPage(host, cursor == null ? null : ReadyRoomCursor.parse(cursor), READY_PAGE_SIZE);
+    }
+
+    private List<LiveRoomResponse> liveRooms(User host) {
+        return lectureRoomRepository.findByHostAndStatusOrderByStartedAtDescIdDesc(host, LectureRoomStatus.LIVE)
+                .stream()
+                .map(room -> new LiveRoomResponse(room.getId(), room.getTitle(), toInstant(room.getStartedAt())))
+                .toList();
+    }
+
+    private ReadyRoomPage readyPage(User host, ReadyRoomCursor cursor, int limit) {
+        int fetchSize = limit == Integer.MAX_VALUE ? limit : limit + 1;
+        var rows = lectureRoomRepository.findReadyPage(host, cursor == null ? null : cursor.createdAt(),
+                cursor == null ? null : cursor.roomId(), PageRequest.of(0, fetchSize));
+        String nextCursor = null;
+        if (rows.size() > limit) {
+            rows = rows.subList(0, limit);
+            var last = rows.getLast();
+            nextCursor = new ReadyRoomCursor(last.getCreatedAt(), last.getId()).encode();
+        }
+        var rooms = rows.stream()
+                .map(row -> new ReadyRoomPage.Room(row.getId(), row.getTitle(), toInstant(row.getCreatedAt())))
+                .toList();
+        return new ReadyRoomPage(rooms, nextCursor);
     }
 
     // 강연방 초대 정보 조회
@@ -145,6 +198,19 @@ public class LectureRoomService {
                 room.getStatus().name(),
                 canJoin
         );
+    }
+
+    @Transactional
+    public void deleteReadyRoom(Long roomId, Authentication authentication) {
+        // 최초 입장과 강연 시작도 같은 방 행을 먼저 잠근다.
+        LectureRoom room = findOwnedRoomForUpdate(roomId, authentication);
+        if (room.getStatus() != LectureRoomStatus.READY) {
+            throw new BusinessException(ErrorCode.INVALID_ROOM_STATUS);
+        }
+
+        participantRepository.deleteAllInRoom(roomId);
+        lectureRoomRepository.delete(room);
+        eventPublisher.publishEvent(new RoomDeletedEvent(roomId));
     }
 
     // SCRUM-130: 강연 시작
