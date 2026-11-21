@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -31,6 +33,8 @@ public class LectureParticipant {
     @Column(name = "participant_token_hash", nullable = false, unique = true, length = 255)
     private String participantTokenHash;
 
+    // 채팅 수신 시각과 같은 한국 시각 DATETIME을 저장한다.
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
     @Column(name = "joined_at", nullable = false)
     private LocalDateTime joinedAt;
 

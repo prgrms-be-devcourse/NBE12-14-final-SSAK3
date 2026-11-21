@@ -5,12 +5,14 @@ import com.react.global.exception.ErrorCode;
 import com.react.room.entity.LectureRoom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,12 +30,15 @@ class StompChatSendTest extends StompIntegrationTestSupport {
     }
 
     @Test
-    void 청중이_보낸_메시지는_그_청중이_작성자로_저장된다() throws Exception {
+    void 본인_방에_청중으로_입장한_강연자는_청중_이름으로_보낼_수_있다() throws Exception {
         var joined = participants.join(room.getJoinCode(), "청중A", UUID.randomUUID().toString(), Map.of());
         StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN,
-                "PARTICIPANT_SESSION_" + room.getId() + "=" + joined.rawToken());
+                loginCookies(hostEmail) + "; PARTICIPANT_SESSION_" + room.getId() + "=" + joined.rawToken());
 
-        session.send(chatDestination(), Map.of("content", "Redis 가 궁금해요"));
+        StompHeaders headers = new StompHeaders();
+        headers.setDestination(chatDestination());
+        headers.set("X-Chat-Role", "PARTICIPANT");
+        session.send(headers, Map.of("content", "Redis 가 궁금해요"));
 
         Map<String, Object> row = awaitSavedMessage();
         assertThat(row.get("content")).isEqualTo("Redis 가 궁금해요");
@@ -121,11 +126,24 @@ class StompChatSendTest extends StompIntegrationTestSupport {
     void 방송은_명세의_CHAT_CREATED_모양이다() throws Exception {
         var a = join("청중A");
         StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
-        var queue = subscribeReady(session, room);
+        var echoedAttempt = new AtomicReference<String>();
+        String topic = "/topic/rooms/" + room.getId() + "/chat";
+        var queue = client.subscribe(session, topic, (headers, event) -> {
+            if ("CHAT_CREATED".equals(event.get("type"))) {
+                echoedAttempt.set(headers.getFirst("X-Chat-Attempt"));
+            }
+        });
+        assertThat(StompTestClient.awaitBroadcast(queue, () -> broker.convertAndSend(topic, Map.of("type", "WARMUP"))))
+                .isNotNull();
 
-        session.send(chatDestination(), Map.of("content", "모양 확인"));
+        String attempt = UUID.randomUUID().toString();
+        StompHeaders headers = new StompHeaders();
+        headers.setDestination(chatDestination());
+        headers.set("X-Chat-Attempt", attempt);
+        session.send(headers, Map.of("content", "모양 확인"));
 
         Map<String, Object> data = data(StompTestClient.nextOfType(queue, "CHAT_CREATED", 5000));
+        assertThat(echoedAttempt.get()).isEqualTo(attempt);
         assertThat(((Number) data.get("messageId")).longValue()).isPositive();
         assertThat(((Number) data.get("roomId")).longValue()).isEqualTo(room.getId());
         assertThat(data.get("content")).isEqualTo("모양 확인");
@@ -264,11 +282,15 @@ class StompChatSendTest extends StompIntegrationTestSupport {
     private void expectError(StompSession session, String destination, Object payload, ErrorCode expected)
             throws InterruptedException {
         var errors = client.subscribe(session, "/user/queue/errors");
-
-        Map<String, Object> error = StompTestClient.awaitBroadcast(errors, () -> session.send(destination, payload));
+        String attempt = UUID.randomUUID().toString();
+        StompHeaders headers = new StompHeaders();
+        headers.setDestination(destination);
+        headers.set("X-Chat-Attempt", attempt);
+        Map<String, Object> error = StompTestClient.awaitBroadcast(errors, () -> session.send(headers, payload));
 
         assertThat(error).as("오류가 보낸 사람에게 도착해야 한다").isNotNull();
         assertThat(error).containsEntry("type", "ERROR")
+                .containsEntry("attempt", attempt)
                 .containsEntry("code", expected.name())
                 .containsEntry("message", expected.getMessage());
     }

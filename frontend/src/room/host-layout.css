@@ -343,8 +343,7 @@
 }
 .host-shell .host-room-info .room-description { margin-bottom: 18px; }
 .host-shell .host-room-info dl { margin: 0; padding-top: 16px; }
-.host-shell .room-workspace { gap: 18px; }
-.host-shell .room-workspace.has-recorder { grid-template-columns: minmax(0, 1.65fr) minmax(270px, 1fr); }
+.host-shell .room-workspace { gap: 18px; grid-template-columns: minmax(0, 1.65fr) minmax(270px, 1fr); }
 .host-shell .room-recording .stt-status { gap: 7px; }
 .host-shell .room-recording .stt-status > div {
   padding: 10px 14px;
@@ -406,8 +405,14 @@
   font-size: 16px;
 }
 @media (max-width: 960px) {
-  .host-shell .room-workspace.has-recorder { grid-template-columns: minmax(0, 1fr); }
-  .host-shell .room-recording { grid-row: 1; }
+  .host-shell .room-workspace { grid-template-columns: minmax(0, 1fr); }
+  .room-panel-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: #e8efef; }
+  .host-shell .room-panel-tabs button { flex: 1; background: transparent; color: var(--host-muted); }
+  .host-shell .room-panel-tabs button[aria-selected="true"] {
+    background: white;
+    color: var(--host-teal);
+    box-shadow: 0 1px 4px rgb(20 39 46 / 12%);
+  }
 }
 @media (max-width: 760px) {
   .room-app.host-shell { --host-bar-size: 56px; --host-rail-size: 0px; }

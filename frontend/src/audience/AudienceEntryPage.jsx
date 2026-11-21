@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ChatPanel } from '../chat/ChatPanel.jsx'
+import { randomUuid } from '../uuid.js'
 import { clearAttempt, endReason, joinRoom, loadAttempt, readParticipation, saveAttempt } from './participation.js'
 import { watchRoom } from './watchRoom.js'
 import './participation.css'
 
-function AudienceLayout({ children }) {
-  return <div className="participation">
+function AudienceLayout({ children, live = false }) {
+  return <div className={live ? 'participation participation-live' : 'participation'}>
     <header><strong>RE:ACT</strong><span>청중 참여</span></header>
     <main>{children}</main>
   </div>
@@ -75,7 +77,7 @@ function JoinRoomPage({ code }) {
       <button onClick={() => { setLookupFailed(false); setLookup(n => n + 1) }}>다시 불러오기</button>
     </> : <p role="status">강연방 확인 중</p>}
   </AudienceLayout>
-  return <AudienceLayout>
+  return <AudienceLayout live={Boolean(participant) && room.status === 'LIVE'}>
     {participant ? <JoinedRoom code={code} room={room} participant={participant} finish={finish}
       onStatus={updateStatus} setParticipant={setParticipant} /> : <>
       <h1>{room.title}</h1>
@@ -87,14 +89,13 @@ function JoinRoomPage({ code }) {
 
 function JoinedRoom({ code, room, participant, finish, onStatus, setParticipant }) {
   const [connected, setConnected] = useState(false)
-  useEffect(() => watchRoom({
-    code,
-    roomId: room.roomId,
-    onStatus,
-    onEnded: finish,
-    onSessionLost: () => setParticipant(null),
-    onConnection: setConnected,
-  }), [code, room.roomId, finish, onStatus, setParticipant])
+  const watcher = useRef(null)
+  useEffect(() => {
+    const subscription = watchRoom({ code, roomId: room.roomId, onStatus, onEnded: finish,
+      onParticipant: setParticipant, onConnection: setConnected })
+    watcher.current = subscription
+    return () => { watcher.current = null; subscription.close() }
+  }, [code, room.roomId, finish, onStatus, setParticipant])
   const live = room.status === 'LIVE'
   return <>
     <p className="participation-title">{room.title}</p>
@@ -102,6 +103,8 @@ function JoinedRoom({ code, room, participant, finish, onStatus, setParticipant 
     <p>{participant.nickname}님으로 입장했습니다.</p>
     {!live && <p>강연자가 시작하면 이 화면에서 바로 참여할 수 있습니다.</p>}
     {!connected && <p role="status" className="participation-notice">연결 확인 중</p>}
+    {live && <ChatPanel roomId={room.roomId} live viewer={{ type: 'PARTICIPANT', id: participant.participantId }}
+      since={participant.joinedAt} onAccessError={() => watcher.current?.reconcile()} />}
   </>
 }
 
@@ -125,7 +128,7 @@ function JoinForm({ code, roomId, onJoined, finish }) {
     setError('')
     let next
     try {
-      next = { roomId, nickname: nickname.trim(), key: attempt?.key ?? newJoinKey() }
+      next = { roomId, nickname: nickname.trim(), key: attempt?.key ?? randomUuid() }
       saveAttempt(code, next)
     } catch {
       setError('입장 정보를 임시 저장할 수 없습니다. 브라우저의 사이트 저장 설정을 확인해 주세요.')
@@ -169,14 +172,4 @@ function JoinForm({ code, roomId, onJoined, finish }) {
     {error && <p role="alert">{error}</p>}
     <button type="submit" disabled={busy || !nickname.trim()}>{busy ? '입장 중' : label}</button>
   </form>
-}
-
-function newJoinKey() {
-  if (crypto.randomUUID) return crypto.randomUUID()
-  // randomUUID is unavailable on HTTP when a phone opens a local-network invitation.
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  bytes[6] = (bytes[6] & 0x0f) | 0x40
-  bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
-  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-')
 }

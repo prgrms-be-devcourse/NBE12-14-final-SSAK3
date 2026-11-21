@@ -6,6 +6,7 @@ import com.react.chat.dto.SenderType;
 import com.react.chat.service.ChatMessageService;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
+import com.react.global.websocket.StompActor;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,9 +15,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +34,7 @@ class ChatMessageSaveTest {
     @Autowired JdbcClient jdbc;
     @Autowired DataSource dataSource;
     @Autowired ChatMessageService service;
+    @Autowired PlatformTransactionManager transactionManager;
     private long hostUser;
     private long room;
     private long participant;
@@ -107,6 +114,19 @@ class ChatMessageSaveTest {
     }
 
     @Test
+    void 종료_중에_들어온_채팅은_종료가_커밋될_때까지_기다렸다가_거절된다() throws Exception {
+        var send = new TransactionTemplate(transactionManager).execute(transaction -> {
+            jdbc.sql("UPDATE lecture_rooms SET status = 'ENDED' WHERE id = ?").param(room).update();
+            var pending = CompletableFuture.supplyAsync(() -> service.saveFromParticipant(room, participant, "질문"));
+            assertThatThrownBy(() -> pending.get(1, TimeUnit.SECONDS)).isInstanceOf(TimeoutException.class);
+            return pending;
+        });
+        assertThatThrownBy(() -> send.get(5, TimeUnit.SECONDS)).rootCause()
+                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ROOM_ENDED));
+        assertThat(messageCount(room)).isZero();
+    }
+
+    @Test
     void senderMustBelongToTheRoom() {
         long otherRoom = newRoom(newUser("다른 강연자"), "LIVE");
         long otherParticipant = newParticipant(otherRoom, "다른방 청중");
@@ -131,7 +151,7 @@ class ChatMessageSaveTest {
         ChatMessageView first = service.saveFromParticipant(room, participant, "질문입니다");
         ChatMessageView second = service.saveFromHost(room, hostUser, "답변입니다");
 
-        ChatMessagePageView page = service.getMessages(room, null, 30);
+        ChatMessagePageView page = service.getMessages(room, StompActor.host(hostUser), null, 30);
 
         assertThat(page.messages()).extracting(ChatMessageView::messageId)
                 .containsExactly(first.messageId(), second.messageId());
@@ -157,8 +177,8 @@ class ChatMessageSaveTest {
 
     private long newRoom(long hostUserId, String status) {
         return insert("""
-                INSERT INTO lecture_rooms(host_user_id,title,join_code,status,created_at)
-                VALUES (?, 'test', ?, ?, NOW())
+                INSERT INTO lecture_rooms(host_user_id,title,join_code,status,started_at,created_at)
+                VALUES (?, 'test', ?, ?, '2026-01-01 00:00:00', NOW())
                 """, hostUserId, UUID.randomUUID().toString(), status);
     }
 

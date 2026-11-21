@@ -72,8 +72,8 @@
   .room-app dl { grid-template-columns:80px 1fr; }.room-dialog { padding:20px; }
 }
 .room-workspace { display:grid; gap:20px; align-items:start; margin:20px 0 28px; }
-.room-workspace.has-recorder { grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr); }
-.room-insights,.room-recording { min-width:0; }
+.room-workspace > * { min-width:0; }
+.room-recording,.room-panel-tabs,.room-workspace > .room-records { grid-column:1/-1; }
 .room-lifecycle { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:12px 0 20px; }
 .room-app .room-end { color:#9a352f; border-color:#e5c6c3; }
 .room-end-dialog { max-width:min(420px,92vw); text-align:left; }
@@ -82,7 +82,7 @@
 .room-recording .stt-panel header { display:block; }
 .room-recording h2 { margin:0 0 16px; font-size:22px; }
 .room-recording .secondary { border-color:#d3d8dc; background:white; color:#41474e; }
-.room-recording .stt-status { display:grid; grid-template-columns:1fr; }
+.room-recording .stt-status { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr)); }
 .room-recording .stt-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .room-recording summary { cursor:pointer; font-weight:600; }
 .room-records ol { list-style:none; margin:16px 0 0; padding:0; }
@@ -90,7 +90,3 @@
 .room-records time { font-variant-numeric:tabular-nums; }
 .room-records li p { margin:4px 0 0; white-space:pre-wrap; }
 .room-gap { color:#76511b; }
-@media(max-width:800px) {
-  .room-workspace.has-recorder { grid-template-columns:minmax(0,1fr); }
-  .room-recording { grid-row:1; }
-}

@@ -20,6 +20,7 @@ async function setup(page) {
     if (path.endsWith('/auth/login')) { state.authenticated = true; state.error = 0; return ok({}) }
     if (path.endsWith('/auth/me')) return state.authenticated ? ok({ userId: 1, name: '강연자' }) : fail(401)
     expect(route.request().method()).toBe('GET')
+    if (path === '/api/v1/rooms/10/messages') return ok({ messages: [], nextCursor: null, hasNext: false })
     if (path.endsWith('/rooms/home')) return ok({ liveRooms: [], readyRooms: { rooms: [], nextCursor: null } })
     if (path === '/api/v1/rooms/10') return state.roomError ? fail(state.roomError)
       : ok({ roomId: 10, title: 'Redis로 이해하는 캐시 전략', status: 'ENDED', createdAt: '2026-11-19T01:00:00Z' })

@@ -7,9 +7,14 @@ const ended = page => page.getByText('종료된 강연입니다. 새로운 참�
 
 async function setup(context, status = 'LIVE') {
   const recording = await setupRecording(context)
+  await context.routeWebSocket('**/ws', socket => {
+    socket.onMessage(frame => {
+      if (frame.toString().startsWith('CONNECT\n')) socket.send('CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0')
+    })
+  })
   await context.route(url => url.pathname === '/api/v1/rooms/home', route =>
     route.fulfill({ json: { data: { liveRooms: [], readyRooms: { rooms: [], nextCursor: null } } } }))
-  const room = { status, failDetail: false, start: 'ok', end: 'ok', events: [], records: null }
+  const room = { status, failDetail: false, start: 'ok', end: 'ok', events: [], records: null, messages: [] }
   await context.route('**/api/v1/rooms/10{,/**}', async route => {
     const req = route.request()
     const path = new URL(req.url()).pathname.replace('/api/v1/rooms/10', '')
@@ -34,6 +39,7 @@ async function setup(context, status = 'LIVE') {
     if (path === '/invitation') return ok({ joinCode: 'ABC123', joinUrl: 'https://example.test/join/ABC123',
       qrText: 'https://example.test/join/ABC123' })
     if (path === '/ai/analyses') return ok({ roomId: 10, analyses: [] })
+    if (path === '/messages') return ok({ messages: room.messages, nextCursor: null, hasNext: false })
     if (path === '/stt/segments' && room.records) return ok(room.records)
     return route.fallback()
   })
@@ -49,6 +55,53 @@ async function confirmEnd(page) {
   await button(page, '강연 종료').click()
   await button(page.getByRole('dialog'), '강연 종료').click()
 }
+
+test('모바일에서 AI 요약과 채팅을 오가도 녹음과 입력이 유지되고 PC에서는 두 패널을 나란히 표시한다', async ({ page, context }) => {
+  const { room, recording } = await setup(context)
+  room.messages = Array.from({ length: 24 }, (_, index) => ({
+    messageId: index + 1, sender: { type: 'PARTICIPANT', id: 3, name: '수강생' },
+    content: `질문 ${index + 1}`, receivedAt: '2026-11-19T01:10:00Z',
+  }))
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(roomUrl)
+  const ai = page.getByRole('heading', { name: 'AI 질문·의견 분석' })
+  const chat = page.getByRole('region', { name: '강연 채팅' })
+  const aiTab = page.getByRole('tab', { name: 'AI 요약' })
+  const chatTab = page.getByRole('tab', { name: '채팅' })
+  await expect(aiTab).toHaveAttribute('aria-selected', 'true')
+  await expect(ai).toBeVisible()
+  await expect(chat).toBeHidden()
+  await record(page)
+  await chatTab.click()
+  const message = chat.getByRole('textbox', { name: '메시지', exact: true })
+  await message.fill('작성 중인 질문')
+  const log = chat.getByRole('log')
+  await expect(log.getByText('질문 24', { exact: true })).toBeVisible()
+  await log.evaluate(el => { el.scrollTop = 120 })
+  await expect.poll(() => log.evaluate(el => el.scrollTop)).toBe(120)
+  await expect(ai).toBeHidden()
+  await expect(page.getByText('기록 저장', { exact: true })).toBeVisible()
+  await expect(button(page, '녹음 중지')).toBeVisible()
+  await chatTab.press('ArrowLeft')
+  await expect(aiTab).toBeFocused()
+  await expect(ai).toBeVisible()
+  await aiTab.press('ArrowRight')
+  await expect(chatTab).toBeFocused()
+  await expect(message).toHaveValue('작성 중인 질문')
+  await expect.poll(() => log.evaluate(el => el.scrollTop)).toBe(120)
+  await page.evaluate(() => window.testSpeech.emit('탭을 바꿔도 저장되는 발언'))
+  await expect.poll(() => recording.sends.map(s => s.transcript)).toContain('탭을 바꿔도 저장되는 발언')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
+
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await expect(chatTab).toHaveCount(0)
+  await expect(ai).toBeVisible()
+  await expect(message).toHaveValue('작성 중인 질문')
+  const analysisBounds = await page.locator('#room-panel-ai').boundingBox()
+  const chatBounds = await page.locator('#room-panel-chat').boundingBox()
+  expect(analysisBounds.y).toBe(chatBounds.y)
+  expect(analysisBounds.x + analysisBounds.width).toBeLessThan(chatBounds.x)
+})
 
 test('lost start response reads room before retry; confirmed LIVE never restarts or opens mic', async ({ page, context }) => {
   const { room, recording } = await setup(context, 'READY')

@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 
 /**
  * STOMP 테스트용 클라이언트. 휴대폰 대신 코드로 연결하고 구독하고 메시지를 받는다.
@@ -50,6 +51,11 @@ public final class StompTestClient {
      * awaitBroadcast 로 방송을 반복해 보내 보며 확인한다.
      */
     public BlockingQueue<Map<String, Object>> subscribe(StompSession session, String destination) {
+        return subscribe(session, destination, (headers, body) -> {});
+    }
+
+    public BlockingQueue<Map<String, Object>> subscribe(StompSession session, String destination,
+            BiConsumer<StompHeaders, Map<String, Object>> inspect) {
         BlockingQueue<Map<String, Object>> received = new LinkedBlockingQueue<>();
         session.subscribe(destination, new StompFrameHandler() {
             @Override
@@ -60,7 +66,9 @@ public final class StompTestClient {
             @Override
             @SuppressWarnings("unchecked")
             public void handleFrame(StompHeaders headers, Object payload) {
-                received.add((Map<String, Object>) payload);
+                Map<String, Object> body = (Map<String, Object>) payload;
+                inspect.accept(headers, body);
+                received.add(body);
             }
         });
         return received;

@@ -29,6 +29,7 @@ async function setup(page) {
     if (path.endsWith('/rooms/home')) return ok({ liveRooms: [], readyRooms: { rooms: [], nextCursor: null } })
     if (path.endsWith('/rooms/10')) return ok({ roomId: 10, title: '내 강연', status: 'ENDED', createdAt: '2026-11-19T01:00:00Z' })
     if (path.endsWith('/ai/analyses')) return ok({ roomId: 10, analyses: [] })
+    if (path === '/api/v1/rooms/10/messages') return ok({ messages: [], nextCursor: null, hasNext: false })
     return fail(404, 'NOT_FOUND')
   })
   return state

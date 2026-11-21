@@ -93,3 +93,71 @@ test('강연 시작은 대기 창에서 반영되고 정상 종료는 같은 참
     await audience.close()
   }
 })
+
+test('늦게 입장한 청중과 강연자가 채팅하고 재접속 후에도 같은 입장 경계가 적용된다', async ({ page: host, browser }, info) => {
+  const room = await createRoom(host, '실시간 질문 실습')
+  const audience = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  const panel = page => page.getByRole('region', { name: '강연 채팅' })
+  async function send(page, content) {
+    const chat = panel(page)
+    await chat.getByRole('textbox', { name: '메시지' }).fill(content)
+    await chat.getByRole('button', { name: '보내기', exact: true }).click()
+    await expect(chat.getByRole('log').getByText(content, { exact: true })).toBeVisible()
+    await expect(chat.getByRole('textbox', { name: '메시지' })).toHaveValue('')
+  }
+  const history = (page, role) => page.request.get(
+    new URL(`/api/v1/rooms/${room.roomId}/messages`, room.invitation).href,
+    { headers: { 'X-Chat-Role': role } },
+  )
+  const earlier = '강연 초기 안내입니다.'
+  const question = '방금 보신 예시를 다시 설명해 주세요.'
+  const answer = '네, 같은 예시로 다시 설명할게요.'
+  const whileOffline = '이어서 실습을 시작합니다.'
+  try {
+    await host.getByRole('button', { name: '강연 시작', exact: true }).click()
+    await send(host, earlier)
+    const first = await history(host, 'HOST')
+    expect(first.status()).toBe(200)
+    const savedMessages = (await first.json()).data.messages
+    expect(savedMessages.map(item => item.content)).toEqual([earlier])
+    // 같은 초에 입장하면 규칙상 이전 메시지도 보이므로 다음 초에 입장한다.
+    await expect.poll(Date.now).toBeGreaterThanOrEqual(Date.parse(savedMessages[0].receivedAt) + 1000)
+    await audience.goto(room.invitation)
+    await audience.getByLabel('닉네임').fill('늦게 온 청중')
+    await audience.getByRole('button', { name: '입장', exact: true }).click()
+    await expect(audience.getByRole('heading', { name: '강연 진행 중' })).toBeVisible()
+    const restricted = await history(audience, 'PARTICIPANT')
+    expect(restricted.status()).toBe(200)
+    expect((await restricted.json()).data.messages).toEqual([])
+
+    await send(audience, question)
+    await expect(panel(host).getByText(question, { exact: true })).toBeVisible()
+    await send(host, answer)
+    await expect(panel(audience).getByText(answer, { exact: true })).toBeVisible()
+    await expect(panel(audience).getByText('강연자', { exact: true })).toBeVisible()
+    await expect(panel(audience).getByText(earlier)).toHaveCount(0)
+    await host.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+    await host.screenshot({ path: info.outputPath('host-live-chat.png'), fullPage: true })
+    await audience.screenshot({ path: info.outputPath('audience-live-chat.png') })
+
+    await audience.context().setOffline(true)
+    await send(host, whileOffline)
+    await audience.context().setOffline(false)
+    await expect(panel(audience).getByText(whileOffline, { exact: true })).toBeVisible({ timeout: 15000 })
+    await audience.reload()
+    await expect(panel(audience).getByText(whileOffline, { exact: true })).toBeVisible()
+    await expect(panel(audience).getByText(earlier)).toHaveCount(0)
+    const afterReload = await history(audience, 'PARTICIPANT')
+    expect((await afterReload.json()).data.messages.map(m => [m.sender.type, m.content])).toEqual([
+      ['PARTICIPANT', question], ['HOST', answer], ['HOST', whileOffline],
+    ])
+    await host.getByRole('button', { name: '강연 종료', exact: true }).click()
+    await host.getByRole('dialog').getByRole('button', { name: '강연 종료' }).click()
+    await expect(audience).toHaveURL(/\/participation-ended\/ended$/)
+    await expect(panel(host).getByRole('textbox')).toHaveCount(0)
+    await expect(panel(host).getByText(earlier, { exact: true })).toBeVisible()
+    await expect(panel(host).getByText(question, { exact: true })).toBeVisible()
+  } finally {
+    await audience.close()
+  }
+})

@@ -33,6 +33,7 @@ async function setup(page) {
       return state.pageError ? fail(state.pageError) : ok(readyPage(state.readyRooms, index + 1, 3))
     }
     if (path.endsWith('/ai/analyses')) return ok({ roomId: 10, analyses: [] })
+    if (/^\/api\/v1\/rooms\/\d+\/messages$/.test(path)) return ok({ messages: [], nextCursor: null, hasNext: false })
     if (path === '/api/v1/rooms' && req.method() === 'POST') {
       expect(req.headers()['x-csrf-token']).toBe('token')
       state.posts.push(req.postDataJSON())

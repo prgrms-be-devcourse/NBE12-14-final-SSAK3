@@ -1,7 +1,7 @@
 import { Client } from '@stomp/stompjs'
 import { endReason, readParticipation } from './participation.js'
 
-export function watchRoom({ code, roomId, onStatus, onEnded, onSessionLost, onConnection }) {
+export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onConnection }) {
   let active = true
   let checking = false
   let needsAnotherCheck = false
@@ -49,9 +49,9 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onSessionLost, onCo
       if (!active) return
       if (room.roomId !== roomId) { finish('unavailable'); return }
       if (room.status === 'ENDED') { finish('ended'); return }
+      onParticipant(participant)
       if (!participant) {
         active = false
-        onSessionLost()
         return
       }
       onStatus(room.status)
@@ -85,7 +85,7 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onSessionLost, onCo
   document.addEventListener('visibilitychange', refreshVisible)
   window.addEventListener('online', reconcile)
   window.addEventListener('offline', offline)
-  return () => {
+  function close() {
     active = false
     window.clearInterval(timer)
     document.removeEventListener('visibilitychange', refreshVisible)
@@ -93,4 +93,5 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onSessionLost, onCo
     window.removeEventListener('offline', offline)
     void client.deactivate({ force: true })
   }
+  return { reconcile, close }
 }

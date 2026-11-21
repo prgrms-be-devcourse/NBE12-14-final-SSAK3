@@ -5,7 +5,7 @@
   font-family: Pretendard, sans-serif;
   line-height: 1.55;
 }
-.participation header {
+.participation > header {
   display: flex;
   align-items: center;
   gap: 18px;
@@ -16,7 +16,7 @@
   color: #596676;
   font-size: 14px;
 }
-.participation header strong { color: #172532; font-size: 22px; letter-spacing: -.055em; }
+.participation > header strong { color: #172532; font-size: 22px; letter-spacing: -.055em; }
 .participation main {
   width: min(calc(100% - 32px), 520px);
   margin: clamp(24px, 8vh, 80px) auto 0;
@@ -27,13 +27,21 @@
   overflow-wrap: anywhere;
 }
 .participation h1 { margin: 0 0 12px; font-size: clamp(24px, 6vw, 32px); line-height: 1.3; letter-spacing: -.04em; }
-.participation p { margin: 8px 0 0; color: #526170; }
+.participation main > p, .participation main > form > p { margin: 8px 0 0; color: #526170; }
 .participation p.participation-title { color: #00746d; font-weight: 600; margin: 0 0 12px; }
 .participation-description { white-space: pre-wrap; }
 .participation p.participation-notice { margin-top: 24px; color: #88510d; }
-.participation form { margin-top: 28px; }
-.participation label { font-weight: 600; margin-bottom: 6px; }
-.participation input { width: 100%; min-height: 46px; border: 1px solid #a8b4be; font: inherit; }
-.participation input[readonly] { background: #f5f7f8; }
-.participation button { width: 100%; margin-top: 20px; background: #00746d; color: #fff; }
+.participation main > form { margin-top: 28px; }
+.participation main > form label { font-weight: 600; margin-bottom: 6px; }
+.participation main > form input { width: 100%; min-height: 46px; border: 1px solid #a8b4be; font: inherit; }
+.participation main > form input[readonly] { background: #f5f7f8; }
+.participation main > form button, .participation main > button { width: 100%; margin-top: 20px; background: #00746d; color: #fff; }
 .participation button:focus-visible, .participation input:focus-visible { outline: 3px solid #4285af; outline-offset: 3px; }
+.participation-live main {
+  width: min(calc(100% - 32px), 680px);
+  margin: clamp(24px, 4vh, 48px) auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.participation-live main > section { margin-top: 20px; }

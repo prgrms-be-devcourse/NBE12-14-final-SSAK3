@@ -9,6 +9,7 @@ import com.react.chat.repository.ChatMessageQueryRepository;
 import com.react.chat.repository.ChatMessageRepository;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
+import com.react.global.websocket.StompActor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,7 +51,7 @@ public class ChatMessageService {
         return view(saved, new ChatSenderView(SenderType.HOST, hostUserId, name));
     }
 
-    public ChatMessagePageView getMessages(long roomId, Long cursor, int size) {
+    public ChatMessagePageView getMessages(long roomId, StompActor actor, Long cursor, int size) {
         if (size < 1 || size > MAX_SIZE || (cursor != null && cursor < 1)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
@@ -59,7 +60,7 @@ public class ChatMessageService {
         }
 
         // 한 건 더 가져와서 "다음 페이지가 있는지"만 판단한다.
-        List<ChatMessageView> rows = repository.findPage(roomId, cursor, size + 1);
+        List<ChatMessageView> rows = repository.findPage(roomId, actor, cursor, size + 1);
         boolean hasNext = rows.size() > size;
 
         // 남는 한 건(가장 오래된 것)은 버리고, 화면 순서(오래된 → 최신)로 뒤집는다.
@@ -80,7 +81,7 @@ public class ChatMessageService {
     }
 
     private String findRoomStatus(long roomId) {
-        return repository.findRoomStatus(roomId)
+        return repository.lockRoomStatusForSend(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
     }
 

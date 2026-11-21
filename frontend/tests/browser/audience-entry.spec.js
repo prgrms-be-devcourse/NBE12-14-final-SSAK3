@@ -9,7 +9,7 @@ const live = page => page.getByRole('heading', { name: '강연 진행 중' })
 const retryJoin = page => page.getByRole('button', { name: '입장 다시 시도' })
 
 async function setup(page) {
-  const state = { status: 'READY', hasSession: false, joinResult: 'created', posts: [], subscriptions: [] }
+  const state = { status: 'READY', hasSession: false, participant, messages: [], joinResult: 'created', posts: [], subscriptions: [] }
   await page.route('**/api/v1/**', route => {
     const request = route.request()
     const path = new URL(request.url()).pathname
@@ -21,7 +21,10 @@ async function setup(page) {
       return ok({ roomId, title: '오후 워크숍', status: state.status, canJoin: state.status !== 'ENDED' })
     }
     if (path === '/api/v1/rooms/42/participants/me') {
-      return state.hasSession ? ok(participant) : fail(401, 'UNAUTHENTICATED')
+      return state.hasSession ? ok(state.participant) : fail(401, 'UNAUTHENTICATED')
+    }
+    if (path === '/api/v1/rooms/42/messages' && request.method() === 'GET') {
+      return ok({ messages: state.messages, nextCursor: null, hasNext: false })
     }
     if (path === '/api/v1/public/rooms/WORKSHOP/participants' && request.method() === 'POST') {
       expect(request.headers()['x-csrf-token']).toBe('public-token')
@@ -38,7 +41,11 @@ async function setup(page) {
       const message = frame.toString()
       if (message.startsWith('CONNECT\n')) socket.send('CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0')
       if (message.startsWith('SUBSCRIBE\n')) {
-        expect(message).toContain(`destination:${topic}\n`)
+        const destination = /^destination:(.+)$/m.exec(message)[1]
+        if (destination !== topic) {
+          expect(['/topic/rooms/42/chat', '/user/queue/errors']).toContain(destination)
+          return
+        }
         const id = /^id:(.+)$/m.exec(message)[1]
         state.subscriptions.push({
           close: () => socket.close({ code: 4001, reason: 'test disconnect' }),
@@ -113,14 +120,34 @@ test('다른 방 이벤트는 건너뛰고 내 방의 시작·정상 종료 알�
   await page.goto(invitation)
   await submitNickname(page)
   await expect(waiting(page)).toBeVisible()
+  await expect(page.getByRole('region', { name: '강연 채팅' })).toHaveCount(0)
   const socket = await waitForConnection(page, state)
   socket.send({ type: 'ROOM_DELETED', data: { roomId: roomId + 1 } })
   socket.send({ type: 'ROOM_STATUS_CHANGED', data: { roomId, status: 'LIVE' } })
   await expect(live(page)).toBeVisible()
+  await expect(page.getByRole('region', { name: '강연 채팅' })).toBeVisible()
   await expect(page).toHaveURL(/\/join\/WORKSHOP$/)
   socket.send({ type: 'ROOM_STATUS_CHANGED', data: { roomId, status: 'ENDED' } })
   await expect(page).toHaveURL(/\/participation-ended\/ended$/)
   await expect(page.getByRole('alert')).toHaveText('강연이 종료되었습니다')
+  await expect(page.getByRole('region', { name: '강연 채팅' })).toHaveCount(0)
+})
+
+test('재연결 시 참여 세션이 교체되면 새 참여자의 입장 시각과 채팅 내역으로 복귀한다', async ({ page }) => {
+  const state = await setup(page)
+  state.status = 'LIVE'
+  state.hasSession = true
+  state.messages = [{ messageId: 1, sender: { type: 'HOST', id: 1, name: '강연자' },
+    content: '처음 시작할 때의 안내', receivedAt: '2026-11-21T01:01:10Z' }]
+  await page.goto(invitation)
+  const chat = page.getByRole('region', { name: '강연 채팅' })
+  await expect(chat.getByText('처음 시작할 때의 안내')).toBeVisible()
+  state.participant = { ...participant, participantId: 8, nickname: '서진', joinedAt: '2026-11-21T01:05:25Z' }
+  state.messages = []
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.getByText('서진님으로 입장했습니다.')).toBeVisible()
+  await expect(chat.getByText('처음 시작할 때의 안내')).toHaveCount(0)
+  await expect(chat.getByText('아직 메시지가 없어요.')).toBeVisible()
 })
 
 for (const [status, reason, notice] of [
