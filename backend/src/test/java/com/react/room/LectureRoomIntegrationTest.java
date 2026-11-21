@@ -19,11 +19,16 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -111,6 +116,36 @@ class LectureRoomIntegrationTest {
                 .single();
 
         assertThat(savedHostId).isEqualTo(ownerId);
+    }
+
+    @Test
+    void 생성_시작_종료_응답과_DB에_저장한_한국_시각이_일치한다() throws Exception {
+        JsonNode created = createdData(createRoom(ownerEmail));
+        long roomId = created.path("roomId").asLong();
+        JsonNode started = createdData(mvc.perform(post("/api/v1/rooms/{roomId}/start", roomId)
+                        .with(user(ownerEmail).roles("HOST")).with(csrf()))
+                .andExpect(status().isOk()).andReturn());
+        JsonNode ended = createdData(mvc.perform(post("/api/v1/rooms/{roomId}/end", roomId)
+                        .with(user(ownerEmail).roles("HOST")).with(csrf()))
+                .andExpect(status().isOk()).andReturn());
+
+        record RoomTimes(LocalDateTime createdAt, LocalDateTime startedAt, LocalDateTime endedAt) {}
+        RoomTimes stored = jdbc.sql("SELECT created_at, started_at, ended_at FROM lecture_rooms WHERE id = ?")
+                .param(roomId)
+                .query((rs, rowNumber) -> new RoomTimes(
+                        rs.getObject("created_at", LocalDateTime.class),
+                        rs.getObject("started_at", LocalDateTime.class),
+                        rs.getObject("ended_at", LocalDateTime.class)))
+                .single();
+
+        ZoneId seoul = ZoneId.of("Asia/Seoul");
+        // 생성 응답에는 소수점 이하 초가 포함될 수 있고 DB의 DATETIME은 초까지만 저장한다.
+        assertThat(stored.createdAt().atZone(seoul).toInstant())
+                .isCloseTo(Instant.parse(created.path("createdAt").asText()), within(1, ChronoUnit.SECONDS));
+        assertThat(stored.startedAt().atZone(seoul).toInstant())
+                .isEqualTo(Instant.parse(started.path("startedAt").asText()));
+        assertThat(stored.endedAt().atZone(seoul).toInstant())
+                .isEqualTo(Instant.parse(ended.path("endedAt").asText()));
     }
 
     @Test
