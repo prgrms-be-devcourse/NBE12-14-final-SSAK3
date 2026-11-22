@@ -29,6 +29,7 @@ async function openChat(page, initial = []) {
       const hasNext = items.length < earlier.length
       return ok({ messages: items, hasNext, nextCursor: hasNext ? items[0].messageId : null })
     }
+    if (url.pathname.endsWith('/polls')) return ok({ polls: [], serverTime: '2026-11-21T03:00:00Z' })
     throw Error('예상하지 않은 API 경로 ' + url.pathname)
   })
   await page.routeWebSocket('**/ws', socket => {

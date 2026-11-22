@@ -3,6 +3,7 @@ import { AudienceRoomPanel } from '../ai/AudienceAnalysisPage.jsx'
 import { ChatPanel } from '../chat/ChatPanel.jsx'
 import { SttPanel } from '../stt/SttPanel.jsx'
 import { SavedSpeech } from './SavedSpeech.jsx'
+import { PollCreatePanel } from '../poll/PollCreatePanel.jsx'
 
 const compactLayout = '(max-width: 960px)'
 const tabs = [{ id: 'ai', label: 'AI 요약' }, { id: 'chat', label: '채팅' }]
@@ -34,25 +35,42 @@ export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError 
   }
 
   function panelProps(id) {
-    return { id: `room-panel-${id}`, role: compact ? 'tabpanel' : undefined, tabIndex: compact ? 0 : undefined,
-      'aria-labelledby': compact ? `room-tab-${id}` : undefined, hidden: compact && activeTab !== id }
+    return {
+      id: `room-panel-${id}`,
+      role: compact ? 'tabpanel' : undefined,
+      tabIndex: compact ? 0 : undefined,
+      'aria-labelledby': compact ? `room-tab-${id}` : undefined,
+      hidden: compact && activeTab !== id,
+    }
   }
 
   return <div className="room-workspace">
-    {live && <div className="room-recording"><SttPanel userId={userId} roomId={room.roomId}
-      onRecorder={onRecorder} ending={ending} /></div>}
+    {live && <div className="room-recording">
+      <SttPanel userId={userId} roomId={room.roomId}
+                onRecorder={onRecorder} ending={ending} />
+    </div>}
+
+    {live && <PollCreatePanel roomId={room.roomId} ending={ending} />}
+
     {compact && <div className="room-panel-tabs" role="tablist" aria-label="강연 패널">
       {tabs.map(({ id, label }) => <button key={id} id={`room-tab-${id}`} role="tab"
-        aria-controls={`room-panel-${id}`} aria-selected={activeTab === id} tabIndex={activeTab === id ? 0 : -1}
-        onClick={() => setActiveTab(id)} onKeyDown={changeTabByKey}>{label}</button>)}
+                                           aria-controls={`room-panel-${id}`} aria-selected={activeTab === id}
+                                           tabIndex={activeTab === id ? 0 : -1}
+                                           onClick={() => setActiveTab(id)} onKeyDown={changeTabByKey}>
+        {label}
+      </button>)}
     </div>}
+
     <div className="room-insights" {...panelProps('ai')}>
       <AudienceRoomPanel roomId={room.roomId} onAccessError={onAccessError} />
     </div>
+
     <div className="room-chat" {...panelProps('chat')}>
-      <ChatPanel roomId={room.roomId} live={live} viewer={{ type: 'HOST', id: userId }}
-        since={room.startedAt} onAccessError={onAccessError} />
+      <ChatPanel roomId={room.roomId} live={live}
+                 viewer={{ type: 'HOST', id: userId }}
+                 since={room.startedAt} onAccessError={onAccessError} />
     </div>
+
     {!live && <SavedSpeech roomId={room.roomId} onAccessError={onAccessError} />}
   </div>
 }

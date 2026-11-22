@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChatPanel } from '../chat/ChatPanel.jsx'
+import { PollVotePanel } from '../poll/PollVotePanel.jsx'
 import { randomUuid } from '../uuid.js'
 import { clearAttempt, endReason, joinRoom, loadAttempt, readParticipation, saveAttempt } from './participation.js'
 import { watchRoom } from './watchRoom.js'
@@ -45,7 +46,12 @@ function JoinRoomPage({ code }) {
       try {
         const result = await readParticipation(code)
         if (!active) return
-        if (result.room.status === 'ENDED') { finish('ended'); return }
+
+        if (result.room.status === 'ENDED') {
+          finish('ended')
+          return
+        }
+
         if (result.participant) clearAttempt(code)
         setParticipant(result.participant)
         setRoom(result.room)
@@ -66,7 +72,12 @@ function JoinRoomPage({ code }) {
   }, [])
   function joined(result) {
     clearAttempt(code)
-    if (result.roomStatus === 'ENDED') { finish('ended'); return }
+
+    if (result.roomStatus === 'ENDED') {
+      finish('ended')
+      return
+    }
+
     updateStatus(result.roomStatus)
     setParticipant(result)
   }
@@ -79,7 +90,7 @@ function JoinRoomPage({ code }) {
   </AudienceLayout>
   return <AudienceLayout live={Boolean(participant) && room.status === 'LIVE'}>
     {participant ? <JoinedRoom code={code} room={room} participant={participant} finish={finish}
-      onStatus={updateStatus} setParticipant={setParticipant} /> : <>
+                               onStatus={updateStatus} setParticipant={setParticipant} /> : <>
       <h1>{room.title}</h1>
       {room.description && <p className="participation-description">{room.description}</p>}
       <JoinForm code={code} roomId={room.roomId} onJoined={joined} finish={finish} />
@@ -91,10 +102,21 @@ function JoinedRoom({ code, room, participant, finish, onStatus, setParticipant 
   const [connected, setConnected] = useState(false)
   const watcher = useRef(null)
   useEffect(() => {
-    const subscription = watchRoom({ code, roomId: room.roomId, onStatus, onEnded: finish,
-      onParticipant: setParticipant, onConnection: setConnected })
+    const subscription = watchRoom({
+      code,
+      roomId: room.roomId,
+      onStatus,
+      onEnded: finish,
+      onParticipant: setParticipant,
+      onConnection: setConnected,
+    })
+
     watcher.current = subscription
-    return () => { watcher.current = null; subscription.close() }
+
+    return () => {
+      watcher.current = null
+      subscription.close()
+    }
   }, [code, room.roomId, finish, onStatus, setParticipant])
   const live = room.status === 'LIVE'
   return <>
@@ -103,8 +125,13 @@ function JoinedRoom({ code, room, participant, finish, onStatus, setParticipant 
     <p>{participant.nickname}님으로 입장했습니다.</p>
     {!live && <p>강연자가 시작하면 이 화면에서 바로 참여할 수 있습니다.</p>}
     {!connected && <p role="status" className="participation-notice">연결 확인 중</p>}
+    {live && <PollVotePanel
+        roomId={room.roomId}
+        onAccessError={() => watcher.current?.reconcile()}
+    />}
+
     {live && <ChatPanel roomId={room.roomId} live viewer={{ type: 'PARTICIPANT', id: participant.participantId }}
-      since={participant.joinedAt} onAccessError={() => watcher.current?.reconcile()} />}
+                        since={participant.joinedAt} onAccessError={() => watcher.current?.reconcile()} />}
   </>
 }
 
@@ -128,7 +155,11 @@ function JoinForm({ code, roomId, onJoined, finish }) {
     setError('')
     let next
     try {
-      next = { roomId, nickname: nickname.trim(), key: attempt?.key ?? randomUuid() }
+      next = {
+        roomId,
+        nickname: nickname.trim(),
+        key: attempt?.key ?? randomUuid(),
+      }
       saveAttempt(code, next)
     } catch {
       setError('입장 정보를 임시 저장할 수 없습니다. 브라우저의 사이트 저장 설정을 확인해 주세요.')
@@ -142,11 +173,21 @@ function JoinForm({ code, roomId, onJoined, finish }) {
     } catch (error) {
       if (!mounted.current) return
       const reason = endReason(error)
-      if (reason) { finish(reason); return }
+
+      if (reason) {
+        finish(reason)
+        return
+      }
+
       if (error.status === 409 && error.code === 'CONFLICT') {
         const expired = { ...next, key: null }
         setAttempt(expired)
-        try { saveAttempt(code, expired) } catch { clearAttempt(code) }
+
+        try {
+          saveAttempt(code, expired)
+        } catch {
+          clearAttempt(code)
+        }
       } else if (error.code === 'INVALID_NICKNAME') {
         clearAttempt(code)
         setAttempt(null)
@@ -165,11 +206,16 @@ function JoinForm({ code, roomId, onJoined, finish }) {
   return <form onSubmit={submit}>
     <label htmlFor="audience-nickname">닉네임</label>
     <input id="audience-nickname" type="text" autoComplete="nickname" maxLength={50}
-      value={nickname} readOnly={Boolean(attempt?.key) || busy}
-      onChange={event => { setNickname(event.target.value); setError('') }} required />
-    {attempt && <p role="status">{attempt.key ? '이전 입장 결과를 확인하지 못했습니다. 같은 닉네임으로 다시 시도해 주세요.'
-      : '이전 입장 요청이 만료되었습니다. 새로 입장해 주세요.'}</p>}
+           value={nickname} readOnly={Boolean(attempt?.key) || busy}
+           onChange={event => { setNickname(event.target.value); setError('') }} required />
+
+    {attempt && <p role="status">{attempt.key
+        ? '이전 입장 결과를 확인하지 못했습니다. 같은 닉네임으로 다시 시도해 주세요.'
+        : '이전 입장 요청이 만료되었습니다. 새로 입장해 주세요.'}</p>}
     {error && <p role="alert">{error}</p>}
-    <button type="submit" disabled={busy || !nickname.trim()}>{busy ? '입장 중' : label}</button>
+
+    <button type="submit" disabled={busy || !nickname.trim()}>
+      {busy ? '입장 중' : label}
+    </button>
   </form>
 }
