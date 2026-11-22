@@ -1,0 +1,31 @@
+.understanding {
+  padding: 20px;
+  border: 1px solid #dde3e8;
+  border-radius: 16px;
+  background: #fff;
+}
+.understanding-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.understanding h2 { margin: 0; font-size: 18px; line-height: 1.4; letter-spacing: -.03em; }
+.understanding-time { flex: none; color: #00746d; font-weight: 700; font-variant-numeric: tabular-nums; }
+.understanding-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+.understanding-options button {
+  min-height: 52px;
+  padding: 8px 6px;
+  border: 1px solid #a8b4be;
+  border-radius: 12px;
+  background: #fff;
+  color: #1e2834;
+  font: inherit;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.understanding-options button.understanding-selected { border-color: #00746d; background: #00746d; color: #fff; }
+.understanding-options button:disabled { opacity: .6; }
+.understanding-options button:focus-visible { outline: 3px solid #4285af; outline-offset: 3px; }
+.understanding-sending { font-weight: 400; font-size: 12px; }
+.understanding p { margin: 12px 0 0; color: #526170; font-size: 14px; }
+.understanding p.understanding-error { color: #a1281d; }
+.understanding p.understanding-ended { margin: 0; text-align: center; }
+@media (max-width: 360px) {
+  .understanding-options { grid-template-columns: 1fr; }
+}
