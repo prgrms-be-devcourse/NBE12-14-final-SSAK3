@@ -90,3 +90,68 @@
 .room-records time { font-variant-numeric:tabular-nums; }
 .room-records li p { margin:4px 0 0; white-space:pre-wrap; }
 .room-gap { color:#76511b; }
+
+/* SCRUM-169: 강연자 투표 생성 */
+.host-shell .room-workspace > .room-poll {
+  grid-column: 1 / -1;
+}
+
+.room-poll form {
+  max-width: 680px;
+}
+
+.room-poll .room-poll-options {
+  margin: 24px 0 8px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.room-poll-options legend {
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.room-poll-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.room-poll-option label {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.room-poll-option input {
+  min-width: 0;
+}
+
+.room-poll-option button {
+  white-space: nowrap;
+}
+
+.room-poll .room-poll-add {
+  margin-bottom: 24px;
+}
+
+.room-poll .room-poll-duration {
+  width: min(180px, 100%);
+}
+
+.room-poll .room-poll-error {
+  margin: 16px 0;
+  color: #b3261e;
+  font-size: 14px;
+}
+
+.room-poll ol {
+  padding-left: 24px;
+}
+
+.room-poll li {
+  margin: 8px 0;
+}
