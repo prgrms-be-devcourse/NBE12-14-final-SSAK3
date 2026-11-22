@@ -1,5 +1,5 @@
-import { Client } from '@stomp/stompjs'
-import { ApiError, getCsrfTokenForStomp, request } from '../stt/api.js'
+import { ApiError, request } from '../stt/api.js'
+import { openRoomSocket } from '../ws/roomSocket.js'
 import { readHistory } from './history.js'
 
 export function openRoomChat({ roomId, live, role, since, onMessages, onConnection, onHistory, onLost, onAck, isCurrentAttempt, onError, onAccessError }) {
@@ -7,7 +7,7 @@ export function openRoomChat({ roomId, live, role, since, onMessages, onConnecti
   let revision = 0
   let refreshing = false
   let knownThrough = 0
-  let client
+  let socket
   const roleHeaders = { 'X-Chat-Role': role }
   const earliestSecond = Math.floor(Date.parse(since) / 1000)
   const path = `/rooms/${encodeURIComponent(roomId)}/messages?size=100`
@@ -44,7 +44,7 @@ export function openRoomChat({ roomId, live, role, since, onMessages, onConnecti
 
   function deny(error) {
     active = false
-    void client?.deactivate({ force: true })
+    socket?.close()
     onAccessError(error)
   }
 
@@ -77,63 +77,33 @@ export function openRoomChat({ roomId, live, role, since, onMessages, onConnecti
   }
 
   if (live) {
-    const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
-    client = new Client({
-      brokerURL: `${scheme}://${location.host}/ws`,
-      reconnectDelay: 3000,
-      connectionTimeout: 8000,
-      beforeConnect: async () => {
-        try {
-          // SCRUM-164: 새 연결과 재연결마다 현재 HTTP 세션의 CSRF 토큰을 확인한다.
-          // 일시적인 CSRF 요청 실패는 재시도한 뒤 연결한다.
-          const csrf = await getCsrfTokenForStomp(() => active, disconnected)
-          if (!active || !csrf) return
-          client.connectHeaders = { ...roleHeaders, [csrf.headerName]: csrf.token }
-        } catch (error) {
-          if (active) {
-            disconnected()
-            if (error.status === 401 || error.status === 403) deny(error)
-          }
-          throw error
-        }
-      },
+    socket = openRoomSocket({
+      role,
+      subscriptions: [{ destination: `/topic/rooms/${roomId}/chat`, headers: roleHeaders, handler: handleMessage }],
+      onErrorQueue: handleError,
       onConnect() {
-        if (!active) return
-        client.subscribe(`/topic/rooms/${roomId}/chat`, handleMessage, roleHeaders)
-        client.subscribe('/user/queue/errors', handleError)
         onConnection(true)
         void refresh()
       },
-      onWebSocketClose: disconnected,
-      onStompError: () => { disconnected(); void refresh() },
+      onDisconnect: disconnected,
+      onStompError: () => void refresh(),
+      onAuthError: deny,
+      // The simple broker has no event replay. Reconcile after reconnect and when returning to the tab.
+      refresh: () => { if (!refreshing) void refresh() },
     })
-    client.activate()
-  }
-  // The simple broker has no event replay. Reconcile after reconnect and when returning to the tab.
-  const refreshVisible = () => { if (!document.hidden && navigator.onLine) void refresh() }
-  const offline = () => { disconnected(); client?.forceDisconnect() }
-  const timer = live ? window.setInterval(() => { if (!refreshing) refreshVisible() }, 30000) : null
-  if (live) {
-    document.addEventListener('visibilitychange', refreshVisible)
-    window.addEventListener('online', refreshVisible)
-    window.addEventListener('offline', offline)
   }
   queueMicrotask(() => { if (active) void refresh() })
 
   return {
     refresh,
     send(content, attempt) {
-      if (!active || !client?.connected) throw new Error('CHAT_DISCONNECTED')
-      client.publish({ destination: `/app/rooms/${roomId}/chat`,
-        headers: { ...roleHeaders, 'X-Chat-Attempt': attempt }, body: JSON.stringify({ content }) })
+      if (!active || !socket?.connected) throw new Error('CHAT_DISCONNECTED')
+      socket.publish(`/app/rooms/${roomId}/chat`,
+        { ...roleHeaders, 'X-Chat-Attempt': attempt }, JSON.stringify({ content }))
     },
     close() {
       active = false
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', refreshVisible)
-      window.removeEventListener('online', refreshVisible)
-      window.removeEventListener('offline', offline)
-      void client?.deactivate({ force: true })
+      socket?.close()
     },
   }
 }

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChatPanel } from '../chat/ChatPanel.jsx'
 import { PollVotePanel } from '../poll/PollVotePanel.jsx'
+import { UnderstandingCheck } from '../poll/UnderstandingCheck.jsx'
 import { randomUuid } from '../uuid.js'
 import { clearAttempt, endReason, joinRoom, loadAttempt, readParticipation, saveAttempt } from './participation.js'
 import { watchRoom } from './watchRoom.js'
@@ -129,7 +130,7 @@ function JoinedRoom({ code, room, participant, finish, onStatus, setParticipant 
         roomId={room.roomId}
         onAccessError={() => watcher.current?.reconcile()}
     />}
-
+    {live && <UnderstandingCheck roomId={room.roomId} />}
     {live && <ChatPanel roomId={room.roomId} live viewer={{ type: 'PARTICIPANT', id: participant.participantId }}
                         since={participant.joinedAt} onAccessError={() => watcher.current?.reconcile()} />}
   </>

@@ -1,30 +1,17 @@
-import { Client } from '@stomp/stompjs'
-import { getCsrfTokenForStomp } from '../stt/api.js'
+import { openRoomSocket } from '../ws/roomSocket.js'
 import { endReason, readParticipation } from './participation.js'
 
 export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onConnection }) {
   let active = true
   let checking = false
   let needsAnotherCheck = false
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const client = new Client({
-    brokerURL: `${wsProtocol}//${window.location.host}/ws`,
-    reconnectDelay: 3000,
-    connectionTimeout: 8000,
-    beforeConnect: async () => {
-      // SCRUM-164: 강연 상태 감시 연결에도 CSRF와 청중 역할을 전달한다.
-      // 자동 재연결 시에도 현재 HTTP 세션의 토큰을 다시 확인한다.
-      // CSRF 요청이 일시적으로 실패하면 발급을 재시도한다.
-      const csrf = await getCsrfTokenForStomp(() => active, () => onConnection(false))
-      if (!active || !csrf) return
-      client.connectHeaders = {
-        'X-Chat-Role': 'PARTICIPANT',
-        [csrf.headerName]: csrf.token,
-      }
-    },
-    onConnect() {
-      if (!active) return
-      client.subscribe(`/topic/rooms/${roomId}/status`, message => {
+  // The simple broker does not acknowledge SUBSCRIBE or replay missed events.
+  // A snapshot after subscribing and occasional visible-tab checks cover that gap.
+  const socket = openRoomSocket({
+    role: 'PARTICIPANT',
+    subscriptions: [{
+      destination: `/topic/rooms/${roomId}/status`,
+      handler(message) {
         if (!active) return
         let event
         try { event = JSON.parse(message.body) } catch { return }
@@ -33,18 +20,16 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onCo
         if (event.type !== 'ROOM_STATUS_CHANGED') return
         if (event.data.status === 'ENDED') finish('ended')
         if (event.data.status === 'LIVE') onStatus('LIVE')
-      })
-      void reconcile()
-    },
-    onWebSocketClose() {
+      },
+    }],
+    onConnect: () => void reconcile(),
+    onDisconnect() {
       if (active) onConnection(false)
     },
     onStompError() {
-      if (active) {
-        onConnection(false)
-        void reconcile()
-      }
+      if (active) void reconcile()
     },
+    refresh: reconcile,
   })
 
   function finish(reason) {
@@ -67,7 +52,7 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onCo
         return
       }
       onStatus(room.status)
-      onConnection(client.connected && navigator.onLine)
+      onConnection(socket.connected && navigator.onLine)
     } catch (error) {
       if (!active) return
       const reason = endReason(error)
@@ -82,31 +67,9 @@ export function watchRoom({ code, roomId, onStatus, onEnded, onParticipant, onCo
     }
   }
 
-  function offline() {
-    if (!active) return
-    onConnection(false)
-    client.forceDisconnect()
-  }
-
-  function refreshVisible() {
-    if (!document.hidden) void reconcile()
-  }
-
-  // The simple broker does not acknowledge SUBSCRIBE or replay missed events.
-  // A snapshot after subscribing and occasional visible-tab checks cover that gap.
-  client.activate()
-  const timer = window.setInterval(refreshVisible, 30000)
-  document.addEventListener('visibilitychange', refreshVisible)
-  window.addEventListener('online', reconcile)
-  window.addEventListener('offline', offline)
-
   function close() {
     active = false
-    window.clearInterval(timer)
-    document.removeEventListener('visibilitychange', refreshVisible)
-    window.removeEventListener('online', reconcile)
-    window.removeEventListener('offline', offline)
-    void client.deactivate({ force: true })
+    socket.close()
   }
 
   return { reconcile, close }
