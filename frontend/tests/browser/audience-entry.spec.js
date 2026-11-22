@@ -34,6 +34,9 @@ async function setup(page) {
     if (path === '/api/v1/rooms/42/messages' && request.method() === 'GET') {
       return ok({ messages: state.messages, nextCursor: null, hasNext: false })
     }
+    if (path === '/api/v1/rooms/42/polls' && request.method() === 'GET') {
+      return ok({ polls: [], serverTime: '2026-11-21T03:00:00Z' })
+    }
     if (path === '/api/v1/public/rooms/WORKSHOP/participants' && request.method() === 'POST') {
       expect(request.headers()['x-csrf-token']).toBe('public-token')
       state.posts.push({ key: request.headers()['idempotency-key'], ...request.postDataJSON() })
@@ -51,7 +54,7 @@ async function setup(page) {
       if (message.startsWith('SUBSCRIBE\n')) {
         const destination = /^destination:(.+)$/m.exec(message)[1]
         if (destination !== topic) {
-          expect(['/topic/rooms/42/chat', '/user/queue/errors']).toContain(destination)
+          expect(['/topic/rooms/42/chat', '/topic/rooms/42/polls', '/user/queue/errors']).toContain(destination)
           return
         }
         const id = /^id:(.+)$/m.exec(message)[1]

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChatPanel } from '../chat/ChatPanel.jsx'
+import { UnderstandingCheck } from '../poll/UnderstandingCheck.jsx'
 import { randomUuid } from '../uuid.js'
 import { clearAttempt, endReason, joinRoom, loadAttempt, readParticipation, saveAttempt } from './participation.js'
 import { watchRoom } from './watchRoom.js'
@@ -103,6 +104,7 @@ function JoinedRoom({ code, room, participant, finish, onStatus, setParticipant 
     <p>{participant.nickname}님으로 입장했습니다.</p>
     {!live && <p>강연자가 시작하면 이 화면에서 바로 참여할 수 있습니다.</p>}
     {!connected && <p role="status" className="participation-notice">연결 확인 중</p>}
+    {live && <UnderstandingCheck roomId={room.roomId} />}
     {live && <ChatPanel roomId={room.roomId} live viewer={{ type: 'PARTICIPANT', id: participant.participantId }}
       since={participant.joinedAt} onAccessError={() => watcher.current?.reconcile()} />}
   </>
