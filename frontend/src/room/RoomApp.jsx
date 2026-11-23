@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { RoomWorkspace } from './RoomWorkspace.jsx'
 import { RoomControls } from './RoomControls.jsx'
+import { RoomReportStatus } from './RoomReportStatus.jsx'
 import { HomeRoomLists } from './HomeRoomLists.jsx'
 import { RoomShell } from './RoomShell.jsx'
 import { RoomInvitation } from './RoomInvitation.jsx'
@@ -171,10 +172,10 @@ function RoomDetail({ id, userId, shell, logoutNotice }) {
     setError(null)
     setRevision(v => v + 1)
   }
-  function deny(e) {
+  const deny = useCallback(e => {
     setInviteOpen(false); setRoom(null); setAccessError(e)
     if (e.status === 401) loginFor(location.pathname)
-  }
+  }, [])
   useEffect(() => {
     if (accessError || room?.status === 'ENDED') return
     let cancelled = false, timer, running = false, stopped = false
@@ -219,6 +220,7 @@ function RoomDetail({ id, userId, shell, logoutNotice }) {
         <RoomControls room={room} userId={userId} recorder={recorder} onRoom={acceptTransition}
           onAccessError={deny} onEnding={setEnding} offline={!!error} />
       </div>
+      {room.status === 'ENDED' && <RoomReportStatus roomId={id} endedAt={room.endedAt} onAccessError={deny} />}
       {['LIVE', 'ENDED'].includes(room.status) && <RoomWorkspace room={room} userId={userId}
         onRecorder={setRecorder} ending={ending} onAccessError={deny} />}
       <section className="room-card host-room-info"><h2>강연 정보</h2><p className="room-description">{room.description || '등록된 강연 설명이 없습니다.'}</p><dl>

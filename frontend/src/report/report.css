@@ -13,13 +13,14 @@
 .report-preview-bar label { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
 .report-preview-bar select { max-width: 100%; min-height: 42px; background: white; border: 1px solid #adbfb3; border-radius: 7px; padding: 6px 12px; color: #243a38; }
 .report-page { max-width: 1328px; padding: 0 24px; margin: auto; }
+.report-back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 12px; color: #285f50; font-weight: 600; text-underline-offset: .2em; }
 .report-brand { height: 90px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #dce3dc; }
 .report-brand > span:first-child { font-size: 27px; font-weight: 800; letter-spacing: -.07em; }
 .report-brand > span:last-child { font-size: 11px; letter-spacing: .2em; color: #64776e; }
 .report-brand-dot { color: #da9257; }
 .report-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 44px 0 38px; }
 .report-eyebrow { font-size: 11px; letter-spacing: .15em; font-weight: 700; color: #517464; }
-.report-header h1 { margin: 10px 0 12px; font-size: clamp(25px, 3.2vw, 38px); font-weight: 700; line-height: 1.35; letter-spacing: -.05em; }
+.report-header h1 { margin: 10px 0 12px; font-size: clamp(25px, 3.2vw, 38px); font-weight: 700; line-height: 1.35; letter-spacing: -.05em; overflow-wrap: anywhere; }
 .report-header p { margin: 0; color: #67776d; font-size: 14px; }
 .report-header p span { margin: 0 12px; color: #bac6bb; }
 .report-status-pill { background: #e5eee5; color: #34654e; border: 1px solid #d2e1d1; padding: 7px 14px; border-radius: 30px; font-size: 12px; white-space: nowrap; }
