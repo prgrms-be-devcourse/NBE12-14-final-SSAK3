@@ -3,7 +3,7 @@ package com.react.ai.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.config.GeminiAudienceAnalysisProperties;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
-import com.react.ai.dto.AudienceMessage;
+import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
 import com.react.ai.exception.GeminiAudienceAnalysisException;
 import org.junit.jupiter.api.Test;
@@ -16,7 +16,6 @@ import org.springframework.web.client.RestClient;
 
 import java.net.SocketTimeoutException;
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +45,7 @@ class GeminiAudienceAnalysisLlmClientTest {
                 .andExpect(content().string(allOf(
                         containsString("\\\"messageId\\\":1001"),
                         containsString("질문 내용"),
+                        containsString("\\\"occurrenceCount\\\":1"),
                         containsString("도입 여부, 장단점, 적용 범위, 대안, 실제 사례, 설명 요청은 같은 판단을 위한 재료이므로 가능한 한 하나의 상위 논의 그룹으로 묶는다"),
                         containsString("질문, 의견, 요청이라는 발화 유형이 다르다는 이유만으로 별도 그룹으로 분리하지 않는다"),
                         containsString("기술 이름이나 단어만 같고 실제 논의 목적과 맥락이 다른 경우에는 분리한다"),
@@ -286,8 +286,8 @@ class GeminiAudienceAnalysisLlmClientTest {
                 Duration.ofSeconds(1), Duration.ofSeconds(1), 100, 32_000, 2_048, 128_000);
     }
 
-    private AudienceMessage message(long id, String content) {
-        return new AudienceMessage(id, 1L, content, LocalDateTime.of(2026, 11, 17, 10, 0));
+    private AudienceAnalysisInputMessage message(long id, String content) {
+        return new AudienceAnalysisInputMessage(id, content, 1);
     }
 
     private String geminiResponse(String text) {

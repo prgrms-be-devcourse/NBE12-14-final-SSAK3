@@ -8,6 +8,7 @@ import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.domain.TopicCategory;
 import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
+import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.dto.AiTopicResult;
 import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AiLlmCallUsageRepository;
@@ -23,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
@@ -37,6 +39,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -487,6 +490,162 @@ class AudienceAnalysisIntegrationTest {
     }
 
     @Test
+    void 전처리된_대표_ID를_원본_ID_전체로_확장하고_명백한_노이즈는_LLM에_전달하지_않는다() {
+        long first = insertAudienceMessage(" Redis   API ", start);
+        long duplicate = insertAudienceMessage("redis api", start.plusSeconds(1));
+        insertAudienceMessage("👍👍", start.plusSeconds(2));
+        long shortQuestion = insertAudienceMessage("왜요?", start.plusSeconds(3));
+        var receivedInputs = new AtomicReference<java.util.List<AudienceAnalysisInputMessage>>();
+        var service = service(inputs -> {
+            receivedInputs.set(inputs);
+            return response("""
+                    {"topics":[{"topic":"Redis API","summary":"도입 이유를 질문했습니다.",
+                    "category":"QUESTION","sourceMessageIds":[%d]}]}
+                    """.formatted(first));
+        });
+
+        var result = service.process(roomId, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        assertThat(receivedInputs.get()).containsExactly(
+                new AudienceAnalysisInputMessage(first, "Redis API", 2),
+                new AudienceAnalysisInputMessage(shortQuestion, "왜요?", 1)
+        );
+        assertThat(jdbc.sql("""
+                SELECT link_row.chat_message_id
+                FROM ai_topic_group_messages link_row
+                JOIN ai_topic_groups topic_group ON topic_group.id = link_row.topic_group_id
+                WHERE topic_group.analysis_id = ?
+                ORDER BY link_row.chat_message_id
+                """).param(result.analysisId()).query(Long.class).list()).containsExactlyInAnyOrder(first, duplicate);
+        assertThat(jdbc.sql("""
+                SELECT COUNT(*)
+                FROM ai_topic_group_messages link_row
+                JOIN ai_topic_groups topic_group ON topic_group.id = link_row.topic_group_id
+                WHERE topic_group.analysis_id = ?
+                """).param(result.analysisId()).query(Long.class).single()).isEqualTo(2L);
+    }
+
+    @Test
+    void 전처리후_분석_대상이_없으면_Gemini_호출없이_빈_구간을_완료한다() {
+        insertAudienceMessage("!!!", start);
+        insertAudienceMessage("👍", start.plusSeconds(1));
+        var calls = new AtomicInteger();
+        var service = service(inputs -> {
+            calls.incrementAndGet();
+            throw new AssertionError("명백한 노이즈만 있는 구간은 LLM을 호출하면 안 됩니다.");
+        });
+
+        var result = service.process(roomId, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        assertThat(calls).hasValue(0);
+        assertThat(jdbc.sql("SELECT model_name FROM ai_analyses WHERE id = ?").param(result.analysisId())
+                .query((rs, rowNum) -> rs.getString("model_name")).optional()).isEmpty();
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?")
+                .param(result.analysisId()).query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void 필터링된_메시지_ID를_Gemini가_반환하면_실패하고_원문_연결을_저장하지_않는다() {
+        insertAudienceMessage("Redis?", start);
+        long filteredMessageId = insertAudienceMessage("ㅋㅋㅎㅎ", start.plusSeconds(1));
+        var service = service(inputs -> response("""
+                {"topics":[{"topic":"주제","summary":"요약","category":"QUESTION",
+                "sourceMessageIds":[%d]}]}
+                """.formatted(filteredMessageId)));
+
+        var result = service.process(roomId, start, end);
+
+        assertRejectedAnalysis(result.analysisId());
+    }
+
+    @Test
+    void 병합된_원문중_대표가_아닌_ID를_Gemini가_반환하면_실패하고_원문_연결을_저장하지_않는다() {
+        insertAudienceMessage("Redis API", start);
+        long nonRepresentativeId = insertAudienceMessage("redis api", start.plusSeconds(1));
+        var service = service(inputs -> response("""
+                {"topics":[{"topic":"주제","summary":"요약","category":"QUESTION",
+                "sourceMessageIds":[%d]}]}
+                """.formatted(nonRepresentativeId)));
+
+        var result = service.process(roomId, start, end);
+
+        assertRejectedAnalysis(result.analysisId());
+    }
+
+    @Test
+    void 여러_주제에_동일한_대표_ID를_반환하면_실패하고_원문_연결을_저장하지_않는다() {
+        long representativeId = insertAudienceMessage("Redis API", start);
+        var service = service(inputs -> response("""
+                {"topics":[
+                  {"topic":"주제1","summary":"요약1","category":"QUESTION","sourceMessageIds":[%d]},
+                  {"topic":"주제2","summary":"요약2","category":"OPINION","sourceMessageIds":[%d]}
+                ]}
+                """.formatted(representativeId, representativeId)));
+
+        var result = service.process(roomId, start, end);
+
+        assertRejectedAnalysis(result.analysisId());
+    }
+
+    @Test
+    void 전처리후_대표_메시지_수가_상한을_초과하면_재시도나_HTTP_호출없이_FAILED가_된다() {
+        insertAudienceMessage("Redis?", start);
+        insertAudienceMessage("MySQL?", start.plusSeconds(1));
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(ExpectedCount.never(), requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"));
+        var service = service(geminiClient(builder.build(), 1, 100));
+
+        var result = service.process(roomId, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        assertThat(jdbc.sql("SELECT error_message FROM ai_analyses WHERE id = ?").param(result.analysisId())
+                .query(String.class).single()).isEqualTo("INPUT_LIMIT_EXCEEDED");
+        server.verify();
+    }
+
+    @Test
+    void 전처리후_문자수_상한을_초과하면_재시도나_HTTP_호출없이_FAILED가_된다() {
+        insertAudienceMessage("길어진 Redis 질문", start);
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(ExpectedCount.never(), requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"));
+        var service = service(geminiClient(builder.build(), 10, 3));
+
+        var result = service.process(roomId, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        assertThat(jdbc.sql("SELECT error_message FROM ai_analyses WHERE id = ?").param(result.analysisId())
+                .query(String.class).single()).isEqualTo("INPUT_LIMIT_EXCEEDED");
+        server.verify();
+    }
+
+    @Test
+    void 동일_메시지_병합후_대표_메시지_수가_상한_이하면_Gemini를_호출한다() {
+        long representativeId = insertAudienceMessage(" Redis API ", start);
+        insertAudienceMessage("redis   api", start.plusSeconds(1));
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"))
+                .andRespond(withSuccess(geminiResponse("""
+                        {"topics":[{"topic":"Redis","summary":"질문","category":"QUESTION",
+                        "sourceMessageIds":[%d]}]}
+                        """.formatted(representativeId)), MediaType.APPLICATION_JSON));
+        var service = service(geminiClient(builder.build(), 1, 100));
+
+        var result = service.process(roomId, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_group_messages link_row "
+                        + "JOIN ai_topic_groups topic_group ON topic_group.id = link_row.topic_group_id "
+                        + "WHERE topic_group.analysis_id = ?")
+                .param(result.analysisId()).query(Long.class).single()).isEqualTo(2L);
+        server.verify();
+    }
+
+    @Test
     void 그룹과_원문_연결_저장_실패는_트랜잭션으로_롤백된다() {
         long messageId = insertAudienceMessage("질문", start);
         var acquired = analyses.acquire(roomId, start, end);
@@ -511,6 +670,21 @@ class AudienceAnalysisIntegrationTest {
         return new AudienceAnalysisService(analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()),
                 new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), usages,
                 new AudienceAnalysisCostProperties("0.25", "1.50"));
+    }
+
+    private void assertRejectedAnalysis(long analysisId) {
+        assertThat(jdbc.sql("SELECT status FROM ai_analyses WHERE id = ?").param(analysisId)
+                .query(String.class).single()).isEqualTo("FAILED");
+        assertThat(jdbc.sql("SELECT error_message FROM ai_analyses WHERE id = ?").param(analysisId)
+                .query(String.class).single()).isEqualTo("INVALID_LLM_RESPONSE");
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?").param(analysisId)
+                .query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("""
+                SELECT COUNT(*)
+                FROM ai_topic_group_messages link_row
+                JOIN ai_topic_groups topic_group ON topic_group.id = link_row.topic_group_id
+                WHERE topic_group.analysis_id = ?
+                """).param(analysisId).query(Long.class).single()).isZero();
     }
 
     private void assertInvalidGeminiResponseUsage(LocalDateTime windowStart, String response) {
@@ -576,9 +750,14 @@ class AudienceAnalysisIntegrationTest {
     }
 
     private GeminiAudienceAnalysisLlmClient geminiClient(RestClient restClient) {
+        return geminiClient(restClient, 100, 32_000);
+    }
+
+    private GeminiAudienceAnalysisLlmClient geminiClient(RestClient restClient, int maxMessages, int maxInputCharacters) {
         return new GeminiAudienceAnalysisLlmClient(restClient, new ObjectMapper(),
                 new GeminiAudienceAnalysisProperties("test-key", GEMINI_MODEL, "https://gemini.test/v1beta",
-                        Duration.ofSeconds(1), Duration.ofSeconds(1), 100, 32_000, 2_048, 128_000));
+                        Duration.ofSeconds(1), Duration.ofSeconds(1), maxMessages, maxInputCharacters,
+                        2_048, 128_000));
     }
 
     private AudienceAnalysisLlmResponse response(String content) {

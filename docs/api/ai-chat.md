@@ -9,7 +9,7 @@
 
 스케줄러 지연 또는 서버 재시작 후에는 `startedAt`부터 현재 시각까지 완전히 닫힌 정규 30초 구간 중 `ai_analyses` 기록이 없는 구간을 오래된 순서로 처리한다. 강연방별 한 실행의 최대 처리 구간 수는 `app.ai.audience.scheduler.max-windows-per-run`(기본 3)이며, 남은 미기록 구간은 다음 실행에서 이어서 처리한다. 이미 분석 행이 있는 구간(`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`)은 이 경로에서 다시 호출하지 않는다. 종료 후 전용 스케줄러는 잔여 구간까지 처리하며, 이미 `FAILED`인 구간도 종결된 분석으로 센다.
 
-정상 흐름: 채팅 DB 조회 → 강연자 메시지 제외 → 분석 구간 확정 → `ai_analyses` PENDING 생성 → PROCESSING 변경 → 청중 채팅이 있으면 LLM API 호출·구조화된 결과 검증·유사 주제 그룹화·원문 메시지 연결·결과 저장 → COMPLETED 변경 → 대시보드 알림. 청중 채팅이 없는 구간은 LLM 호출 없이 `COMPLETED` 로 변경하며, `model_name` 은 null이고 주제 그룹은 0개다. `COMPLETED` 는 LLM 호출 성공만이 아니라 해당 분석 구간의 정상 처리 완료를 뜻한다.
+정상 흐름: 채팅 DB 조회 → 강연자 메시지 제외 → 보수적 노이즈 필터링·동일 원문 전처리 → 분석 구간 확정 → `ai_analyses` PENDING 생성 → PROCESSING 변경 → 전처리 후 청중 채팅이 있으면 LLM API 호출·구조화된 결과 검증·유사 주제 그룹화·원문 메시지 연결·결과 저장 → COMPLETED 변경 → 대시보드 알림. 전처리 후 분석 대상이 없는 구간은 LLM 호출 없이 `COMPLETED` 로 변경하며, `model_name` 은 null이고 주제 그룹은 0개다. `COMPLETED` 는 LLM 호출 성공만이 아니라 해당 분석 구간의 정상 처리 완료를 뜻한다.
 
 LLM 출력 예시
 
@@ -37,6 +37,9 @@ LLM 출력 예시
 규칙:
 
 - AI 입력은 청중이 작성한 메시지로 한정하고 강연자 메시지는 제외한다.
+- AI-CHAT-09 전처리는 명백한 반복 이모지·기호·반응성 메시지만 보수적으로 제외한다. 일반적인 짧은 질문·요청·이해 부족 표현은 글자 수를 기준으로 제외하지 않으며, 원본 채팅은 삭제·수정하지 않는다.
+- AI-CHAT-10은 Unicode NFC, 앞뒤·연속 공백 정리, 영문 대소문자 통일 뒤 문자열이 같은 메시지만 하나의 대표 입력으로 병합한다. 의미 유사도 기반 병합은 하지 않는다. Gemini에는 대표 `messageId`, `content`, `occurrenceCount`를 전달하며, `occurrenceCount`는 실제 메시지 발생 횟수일 뿐 고유 청중 수·찬성 수·동의자 수를 뜻하지 않는다.
+- Gemini가 반환하는 `sourceMessageIds`는 대표 메시지 ID만 사용한다. 서버는 대표 ID 유효성을 먼저 검증한 뒤 연결된 실제 원본 메시지 ID 전체로 확장해 저장하며, 조회 API의 `messageCount`는 확장되어 실제 연결된 원본 메시지 수를 반환한다.
 - P0 구현은 Gemini `generateContent` API를 사용한다. 모델은 `GEMINI_MODEL` 환경변수로 주입하며 로컬 예시는 `gemini-3.5-flash-lite`다. API 키는 `GEMINI_API_KEY` 환경변수로만 주입하고 코드·로그·응답에 포함하지 않는다.
 - 요청은 Gemini의 JSON MIME type 및 JSON Schema를 사용해 `topics` 구조를 요청한다. 그래도 외부 응답은 신뢰하지 않고 아래의 서버 측 JSON·원문 ID 검증을 반드시 수행한다.
 - 30초 구간의 비용과 지연을 제한하기 위해 기본적으로 메시지 100개, 메시지 본문 합계 32,000자, 출력 2,048 토큰, 응답 본문 128,000자로 제한한다. 상한 초과 시 메시지를 잘라내거나 일부만 전송하지 않고 해당 분석을 FAILED로 기록한다. 향후 배치 분할은 별도 정책으로 정한다.
