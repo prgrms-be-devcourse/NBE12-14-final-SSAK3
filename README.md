@@ -41,6 +41,8 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 전체 실행(로컬): `docker compose up -d --build` (http://localhost)
 
 강연방을 종료하면 생성 상태가 표시됩니다. 완료 후 **회고 보고서 보기**를 누르면 해당 강연의 요약과 기록을 볼 수 있습니다. 가상 데이터로 화면을 살펴보려면 `/preview/reports`를 여세요. [보고서 화면 구성·실행 방법](docs/experiments/report-ui.md)
+
+이전에 종료한 방은 강연자 메뉴의 **내 강연 기록**에서 다시 열 수 있습니다. 최근 강연을 10개씩 볼 수 있고, 완료된 회고 보고서도 같은 목록에서 열 수 있습니다.
 배포(EC2): `docker compose -f docker-compose.yml up -d --build` (override 제외, DB·Redis 포트 비공개)
 
 설정 파일: `application.yml`(공통), `application-local.yml`(로컬, 기본 프로파일), `application-prod.yml`(배포, 환경 변수로만 주입)

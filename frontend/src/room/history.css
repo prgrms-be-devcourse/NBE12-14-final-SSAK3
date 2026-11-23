@@ -1,0 +1,91 @@
+.host-history {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+}
+
+.history-heading h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.3;
+  letter-spacing: -.04em;
+}
+
+.host-history .history-heading button {
+  padding: 8px 12px;
+  font-size: .875rem;
+}
+
+.history-notice {
+  min-height: 1.5em;
+  margin: 4px 0 10px;
+  color: #865315;
+  font-size: .875rem;
+}
+
+.history-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--host-line);
+}
+
+.history-rows li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 20px 4px;
+  border-bottom: 1px solid var(--host-line);
+}
+
+.history-room-info { min-width: 0; }
+.history-room-info h2 { margin: 0 0 4px; font-size: 1.125rem; overflow-wrap: anywhere; }
+.history-room-info :is(time, small), .history-report-status { color: var(--host-muted); font-size: .875rem; }
+
+.history-row-actions {
+  display: grid;
+  grid-template-columns: max-content 9rem;
+  gap: 8px;
+  align-items: center;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.host-history .history-row-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 7px 12px;
+  border: 1px solid var(--host-line);
+  border-radius: 8px;
+  color: var(--host-ink);
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.host-history .history-row-actions .history-report-link {
+  border-color: #c6e4de;
+  color: #046861;
+  background: #eef7f5;
+}
+
+.history-empty { padding: 30px 18px; border: 1px solid var(--host-line); border-radius: 12px; }
+.history-empty h2 { margin: 0; font-size: 1.125rem; }
+.history-empty p { margin: 8px 0; color: var(--host-muted); }
+.history-more { margin-top: 20px; text-align: center; }
+.history-more p { color: #865315; }
+
+@media (max-width: 650px) {
+  .history-rows li { align-items: flex-start; flex-direction: column; padding: 17px 0; }
+  .history-row-actions { grid-template-columns: max-content minmax(0, 1fr); }
+  .history-report-status { padding: 0 8px; }
+}

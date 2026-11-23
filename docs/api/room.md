@@ -32,6 +32,24 @@
 
 두 API 모두 로그인 세션이 없으면 `401 UNAUTHENTICATED`, 강연자 권한이 없으면 `403 FORBIDDEN`을 반환한다. 잘못된 조회 개수나 커서에는 `400 INVALID_INPUT`을 반환한다.
 
+### [ROOM-08] 내 강연 기록
+
+강연자 메뉴의 `/host/rooms/history`에서 로그인한 강연자 본인의 종료된 강연을 조회한다.
+
+| 요청 | 응답의 `data` | 사용 시점 |
+| --- | --- | --- |
+| `GET /api/v1/rooms/history` | `rooms`, `nextCursor`, `totalCount`, `serverTime` | 메뉴 진입·새로고침 시 최근 10개. 더 보기는 직전 응답의 `nextCursor`를 `?cursor=...`로 전달 |
+| `GET /api/v1/rooms/history/latest` | `totalCount` | 다른 탭에서 돌아왔을 때 새로 종료된 방이 있는지 확인 |
+| `GET /api/v1/rooms/history/statuses?roomIds=21,15` | `rooms`의 각 항목에 `roomId`·`reportStatus`, 응답에 `serverTime` | 화면에 불러온 강연의 보고서 상태를 선택해서 갱신 |
+
+목록의 방마다 `roomId`, `title`, `endedAt`, `reportStatus`를 반환한다. `endedAt` 내림차순으로 정렬하며, 같은 시각이면 ID가 큰 방이 먼저 온다. 종료 시각이 기록되지 않은 종료 방은 마지막에 표시한다. 다음 페이지가 없으면 `nextCursor`는 `null`이다. `totalCount`는 본인이 종료한 전체 방 수이고, 시각은 UTC다.
+
+- `reportStatus`는 미접수일 때 `null`이며, 접수된 경우 `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` 중 하나다. 강연 기록은 모든 행에서 열 수 있다. 완료된 보고서는 목록에서 바로 열 수 있고, 미접수 보고서의 수동 생성은 해당 강연 종료 화면에서 제공한다.
+- 목록이 보이는 동안 대기·생성 중인 보고서만 5초마다 확인한다. 미접수 상태이고 종료 후 2초가 지나지 않았으면 `serverTime` 기준으로 남은 시간 뒤 그 방만 한 번 더 확인한다. 뒤로 가면 목록과 스크롤을 복원하고 열었던 강연의 상태만 즉시 확인한다.
+- 탭 복귀 시 새로 종료된 방이 있으면 **새 강연 기록 보기**를 제공한다. 이 버튼을 눌렀을 때 최신 10개로 이동한다. 갱신 오류가 발생해도 기존 목록과 읽던 위치를 유지한다.
+
+세 API 모두 강연자 권한이 필요하다. 세션이 없으면 `401 UNAUTHENTICATED`, 권한이 없으면 `403 FORBIDDEN`이다. 잘못된 커서나 상태 조회 ID(양의 정수 1~50개 필요)는 `400 INVALID_INPUT`이다. 상태 조회는 요청한 ID 중 본인 소유의 종료된 방만 반환한다.
+
 ### [ROOM-08] 진행 중인 내 강연방 조회
 
 **GET** `/api/v1/rooms/live` — HOST

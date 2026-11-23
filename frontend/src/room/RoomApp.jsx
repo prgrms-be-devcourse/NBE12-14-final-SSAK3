@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { RoomWorkspace } from './RoomWorkspace.jsx'
 import { RoomControls } from './RoomControls.jsx'
 import { RoomReportStatus } from './RoomReportStatus.jsx'
+import { RoomHistory } from './RoomHistory.jsx'
 import { HomeRoomLists } from './HomeRoomLists.jsx'
 import { RoomShell } from './RoomShell.jsx'
 import { RoomInvitation } from './RoomInvitation.jsx'
@@ -17,7 +18,7 @@ import './room.css'
 const statusNames = { READY: '준비 중', LIVE: '진행 중', ENDED: '종료' }
 const time = value => value ? new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) : ''
 
-export function RoomApp() {
+export function RoomApp({ historyPage = false }) {
   const [user, setUser] = useState(null)
   const [error, setError] = useState(null)
   const [revision, setRevision] = useState(0)
@@ -29,8 +30,9 @@ export function RoomApp() {
   const navigate = useNavigate()
   const route = useLocation()
   const home = id === 'new'
-  function goHome(section) {
-    navigate('/host/rooms/new', { replace: home, state: { section } })
+  function goToSection(section) {
+    if (section === 'history') navigate('/host/rooms/history', { replace: historyPage })
+    else navigate('/host/rooms/new', { replace: home, state: { section } })
   }
   useEffect(() => {
     let active = true
@@ -56,17 +58,18 @@ export function RoomApp() {
       setLoggingOut(false); logoutLock.current = false
     }
   }
-  const shell = { user, logout, logoutDisabled: loggingOut || creating, home,
-    section: home ? route.state?.section || 'home' : null,
-    onNavigate: goHome, navigationDisabled: !user || creating || loggingOut }
+  const shell = { user, logout, logoutDisabled: loggingOut || creating,
+    section: historyPage ? 'history' : home ? route.state?.section || 'home' : null,
+    onNavigate: goToSection, navigationDisabled: !user || creating || loggingOut }
   const logoutNotice = logoutError && <p className="room-warning" role="alert">{logoutError}</p>
-  if (user && !error && !loggingOut && !home) {
+  if (user && !error && !loggingOut && !home && !historyPage) {
     return <RoomDetail key={`${user.userId}:${id}`} id={id} userId={user.userId} shell={shell} logoutNotice={logoutNotice} />
   }
   return <RoomShell {...shell}>
     {logoutNotice}
     {loggingOut ? <p role="status">로그아웃하고 있습니다.</p> : error ? <section className="room-card"><p role="alert">{errorText(error)}</p><button onClick={() => { setError(null); setRevision(v => v + 1) }}>다시 확인</button></section>
       : !user ? <p role="status">로그인 정보를 확인하고 있습니다.</p>
+        : historyPage ? <RoomHistory key={`${user.userId}:${route.key}`} userId={user.userId} />
         : <CreateRoom key={user.userId} user={user} onBusy={setCreating} />}
   </RoomShell>
 }

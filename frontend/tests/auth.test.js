@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { validateAuth } from '../src/auth/validation.js'
+import { returnPath } from '../src/room/state.js'
+
+test('로그인 후 내 강연 기록으로 복귀할 수 있다', () => {
+  assert.equal(returnPath('/host/rooms/history'), '/host/rooms/history')
+  assert.equal(returnPath('/host/rooms/history/other'), null)
+})
 
 const valid = { name: '강연자', email: 'host@example.com', password: 'password', confirm: 'password' }
 test('signup checks UTF-8 byte limit instead of just character count', () => {

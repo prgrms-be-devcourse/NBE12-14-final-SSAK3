@@ -17,6 +17,7 @@ createRoot(document.getElementById('root')).render(
       <Route path="/" element={<EntryPage />} />
       <Route path="/login" element={<AuthPage />} />
       <Route path="/signup" element={<AuthPage />} />
+      <Route path="/host/rooms/history" element={<RoomApp historyPage />} />
       <Route path="/host/rooms/:roomId" element={<RoomApp />} />
       <Route path="/host/rooms/:roomId/report" element={<HostReportPage />} />
       <Route path="/join/:joinCode" element={<AudienceEntryPage />} />

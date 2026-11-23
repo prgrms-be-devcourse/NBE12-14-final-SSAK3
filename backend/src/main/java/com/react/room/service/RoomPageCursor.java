@@ -6,24 +6,24 @@ import com.react.global.exception.ErrorCode;
 import java.time.DateTimeException;
 import java.time.LocalDateTime;
 
-// Both sort keys travel with the cursor, even when the room used as the boundary has since started.
-record ReadyRoomCursor(LocalDateTime createdAt, long roomId) {
+// Both sort keys travel with the cursor. A history entry may lack a recorded end time.
+record RoomPageCursor(LocalDateTime time, long roomId) {
     String encode() {
-        return createdAt + "~" + roomId;
+        return (time == null ? "" : time.toString()) + "~" + roomId;
     }
 
-    static ReadyRoomCursor parse(String value) {
+    static RoomPageCursor parse(String value) {
         String[] parts = value.split("~", -1);
         if (parts.length != 2) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }
         try {
-            LocalDateTime createdAt = LocalDateTime.parse(parts[0]);
+            LocalDateTime time = parts[0].isEmpty() ? null : LocalDateTime.parse(parts[0]);
             long roomId = Long.parseLong(parts[1]);
-            if (roomId < 1 || createdAt.getYear() < 1000 || createdAt.getYear() > 9999) {
+            if (roomId < 1 || (time != null && (time.getYear() < 1000 || time.getYear() > 9999))) {
                 throw new BusinessException(ErrorCode.INVALID_INPUT);
             }
-            return new ReadyRoomCursor(createdAt, roomId);
+            return new RoomPageCursor(time, roomId);
         } catch (DateTimeException | NumberFormatException e) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }

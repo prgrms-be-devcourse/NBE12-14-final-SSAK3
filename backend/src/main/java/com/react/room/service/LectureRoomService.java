@@ -13,6 +13,8 @@ import com.react.room.dto.LiveRoomResponse;
 import com.react.room.dto.PublicRoomResponse;
 import com.react.room.dto.ReadyRoomPage;
 import com.react.room.dto.RoomDetailResponse;
+import com.react.room.dto.RoomHistoryPage;
+import com.react.room.dto.RoomHistoryStatuses;
 import com.react.room.dto.RoomInvitationResponse;
 import com.react.room.dto.StartRoomResponse;
 import com.react.room.entity.LectureRoom;
@@ -21,6 +23,7 @@ import com.react.room.event.RoomDeletedEvent;
 import com.react.room.event.RoomStatusChangedEvent;
 import com.react.room.repository.LectureParticipantRepository;
 import com.react.room.repository.LectureRoomRepository;
+import com.react.room.repository.RoomHistoryRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
@@ -47,8 +50,11 @@ public class LectureRoomService {
     private static final int JOIN_CODE_LENGTH = 12;
     private static final int MAX_CODE_ATTEMPTS = 10;
     private static final int READY_PAGE_SIZE = 3;
+    private static final int HISTORY_PAGE_SIZE = 10;
+    private static final int HISTORY_STATUS_BATCH_SIZE = 50;
 
     private final LectureRoomRepository lectureRoomRepository;
+    private final RoomHistoryRepository historyRepository;
     private final LectureParticipantRepository participantRepository;
     private final UserRepository userRepository;
     private final PollService pollService;
@@ -57,6 +63,7 @@ public class LectureRoomService {
 
     public LectureRoomService(
             LectureRoomRepository lectureRoomRepository,
+            RoomHistoryRepository historyRepository,
             LectureParticipantRepository participantRepository,
             UserRepository userRepository,
             PollService pollService,
@@ -65,6 +72,7 @@ public class LectureRoomService {
             String joinBaseUrl
     ) {
         this.lectureRoomRepository = lectureRoomRepository;
+        this.historyRepository = historyRepository;
         this.participantRepository = participantRepository;
         this.userRepository = userRepository;
         this.pollService = pollService;
@@ -115,7 +123,43 @@ public class LectureRoomService {
 
     public ReadyRoomPage readyRooms(Authentication authentication, String cursor) {
         User host = requireHost(authentication);
-        return readyPage(host, cursor == null ? null : ReadyRoomCursor.parse(cursor), READY_PAGE_SIZE);
+        RoomPageCursor boundary = cursor == null ? null : RoomPageCursor.parse(cursor);
+        if (boundary != null && boundary.time() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        return readyPage(host, boundary, READY_PAGE_SIZE);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public RoomHistoryPage history(Authentication authentication, String cursor) {
+        Instant serverTime = Instant.now();
+        long hostId = requireHost(authentication).getId();
+        RoomPageCursor boundary = cursor == null ? null : RoomPageCursor.parse(cursor);
+        var entries = historyRepository.page(hostId, boundary == null ? null : boundary.time(),
+                boundary == null ? null : boundary.roomId(), HISTORY_PAGE_SIZE + 1);
+        String nextCursor = null;
+        if (entries.size() > HISTORY_PAGE_SIZE) {
+            entries = entries.subList(0, HISTORY_PAGE_SIZE);
+            var last = entries.getLast();
+            nextCursor = new RoomPageCursor(last.endedAt(), last.roomId()).encode();
+        }
+        var rooms = entries.stream().map(entry -> new RoomHistoryPage.Room(entry.roomId(), entry.title(),
+                toInstant(entry.endedAt()), entry.reportStatus())).toList();
+        return new RoomHistoryPage(rooms, nextCursor, historyRepository.countEnded(hostId), serverTime);
+    }
+
+    public RoomHistoryPage.Count historyCount(Authentication authentication) {
+        return new RoomHistoryPage.Count(historyRepository.countEnded(requireHost(authentication).getId()));
+    }
+
+    public RoomHistoryStatuses historyStatuses(Authentication authentication, List<Long> roomIds) {
+        Instant serverTime = Instant.now();
+        long hostId = requireHost(authentication).getId();
+        if (roomIds.isEmpty() || roomIds.size() > HISTORY_STATUS_BATCH_SIZE
+                || roomIds.stream().anyMatch(id -> id == null || id < 1)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        return new RoomHistoryStatuses(historyRepository.statuses(hostId, roomIds), serverTime);
     }
 
     private List<LiveRoomResponse> liveRooms(User host) {
@@ -125,15 +169,15 @@ public class LectureRoomService {
                 .toList();
     }
 
-    private ReadyRoomPage readyPage(User host, ReadyRoomCursor cursor, int limit) {
+    private ReadyRoomPage readyPage(User host, RoomPageCursor cursor, int limit) {
         int fetchSize = limit == Integer.MAX_VALUE ? limit : limit + 1;
-        var rows = lectureRoomRepository.findReadyPage(host, cursor == null ? null : cursor.createdAt(),
+        var rows = lectureRoomRepository.findReadyPage(host, cursor == null ? null : cursor.time(),
                 cursor == null ? null : cursor.roomId(), PageRequest.of(0, fetchSize));
         String nextCursor = null;
         if (rows.size() > limit) {
             rows = rows.subList(0, limit);
             var last = rows.getLast();
-            nextCursor = new ReadyRoomCursor(last.getCreatedAt(), last.getId()).encode();
+            nextCursor = new RoomPageCursor(last.getCreatedAt(), last.getId()).encode();
         }
         var rooms = rows.stream()
                 .map(row -> new ReadyRoomPage.Room(row.getId(), row.getTitle(), toInstant(row.getCreatedAt())))
