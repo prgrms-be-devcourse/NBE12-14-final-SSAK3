@@ -87,7 +87,10 @@ class ReportExperimentTest(unittest.TestCase):
                            self.fixtures['scenarios'][3], 2939)
         self.assertFalse(any(r.get('text') == '삭제할 전사' for r in data['evidenceRecords']))
         draft = self.draft(data, 1301)
-        early = self.draft(data, 9001)['overview']['mainInterests'][0]
+        early_chat = {**next(r for r in data['evidenceRecords'] if r['id'] == 1301),
+                      'id': 1302, 'createdAt': run.iso(99), 'relatedWindows': [run.window(99, 2939)]}
+        data['evidenceRecords'].append(early_chat)
+        early = self.draft(data, 1302)['overview']['mainInterests'][0]
         draft['overview']['mainInterests'].append(early)
         final = run.assemble(draft, data)
         self.assertEqual(2, len(final['overview']['mainInterests'][0]['limitations']))
@@ -124,6 +127,31 @@ class ReportExperimentTest(unittest.TestCase):
         draft = self.draft(identifier=2001)
         next(r for r in self.data['evidenceRecords'] if r['id'] == 2001)['result']['status'] = 'OPEN'
         self.assert_failure(draft, 'INVALID_REPORT_EVIDENCE')
+
+    def test_stt_is_context_only(self):
+        self.assert_failure(self.draft(identifier=9001), 'INVALID_REPORT_EVIDENCE')
+
+    def test_poll_perspectives_keep_options_and_share_one_parent_reference(self):
+        poll = copy.deepcopy(self.fixtures['scenarios'][0]['poll'])
+        poll['question'] = '강연 속도를 어떻게 바꾸면 좋을까요?'
+        poll['options'] = [{'optionId': 3011, 'content': '빠르게'}, {'optionId': 3012, 'content': '천천히'}]
+        for response, answer in zip(poll['responses'], ('빠르게', '빠르게', '천천히')):
+            response['answer'] = answer
+        data = run.prepare('참석자 1 01:39\n전사', {'poll': poll}, 2939)
+        leaf = self.draft(data, 3001)['overview']['mainInterests'][0]
+        del leaf['perspectives']
+        left, right = copy.deepcopy(leaf), copy.deepcopy(leaf)
+        left['evidence'][0]['optionIds'] = [3011]
+        right['evidence'][0]['optionIds'] = [3012]
+        left['text'], right['text'] = '속도를 높여 달라는 응답', '속도를 늦춰 달라는 응답'
+        draft = self.draft()
+        draft['overview']['mainInterests'] = [{'text': '강연 속도에 의견이 갈렸습니다.', 'relatedWindows': [],
+                                               'evidence': [], 'perspectives': [left, right]}]
+        result = run.assemble(draft, data)['overview']['mainInterests'][0]
+        self.assertEqual([{'type': 'POLL_RESULT', 'id': 3001}], result['evidence'])
+        self.assertEqual([3012], result['perspectives'][1]['evidence'][0]['optionIds'])
+        right['evidence'][0]['optionIds'] = [999]
+        self.assert_failure(draft, 'INVALID_REPORT_EVIDENCE', data)
 
     def test_no_retry_and_no_error_body_leak(self):
         with patch('urllib.request.urlopen', side_effect=urllib.error.HTTPError('url', 403, 'secret error', {}, None)) as call:

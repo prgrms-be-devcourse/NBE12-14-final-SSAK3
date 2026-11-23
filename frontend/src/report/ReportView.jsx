@@ -40,18 +40,46 @@ function GapNotice({ gap }) {
     {' · '}{end ? <>복구 <ClockTime value={end} /></> : '복구 시각 미확인'} (한국 시간).
     누락된 강사 설명·답변은 확인할 수 없습니다.</p>
 }
-function RecordBody({ record, start }) {
+function pollOptions(poll) {
+  // Older reports identify choices by their label rather than their option ID.
+  return poll.options ?? Object.entries(poll.counts || {}).map(([label, count]) => ({
+    content: choices[label] || label, count,
+  }))
+}
+function UnderstandingResults({ item, recordIndex }) {
+  return item.evidence.filter(ref => ref.type === 'POLL_RESULT').map(ref => {
+    const poll = recordIndex.get(keyOf(ref.type, ref.id))?.[0]?.record.data
+    if (poll?.type !== 'UNDERSTANDING') return null
+    const options = pollOptions(poll)
+    if (options.filter(option => option.count > 0).length < 2) return null
+    return <section key={ref.id} className="report-understanding" aria-label="이해도 체크 최종 결과">
+      <strong>{poll.question}</strong>
+      <p>시작 <ClockTime value={poll.openedAt} /> · 마감 <ClockTime value={poll.closedAt} /> (한국 시간)</p>
+      <p>{options.map(option => `${option.content} ${option.count}명`).join(' · ')} · 미응답 {poll.unrespondedParticipants}명</p>
+    </section>
+  })
+}
+function RecordBody({ record, start, optionIds = [] }) {
   const r = record.data
   if (record.type === 'STT_SEGMENT') return <>
     <p className="report-muted">발언 시각 <ClockTime value={r.startAt} /> ~ <ClockTime value={r.endAt} /> (한국 시간)</p>
     <p className="report-original">{r.transcript}</p>
   </>
-  if (record.type === 'CHAT_MESSAGE') return <p className="report-original">{r.text}</p>
+  if (record.type === 'CHAT_MESSAGE') return <>
+    <p className="report-muted">작성 시각 <ClockTime value={r.createdAt} /> (한국 시간)</p>
+    <p className="report-original">{r.text}</p>
+  </>
   return <div className="report-poll">
     <p><strong>{r.question}</strong></p>
     <p className="report-muted">시작 {elapsed(r.openedAt, start)} · 마감 {elapsed(r.closedAt, start)} · 마감된 최종 결과</p>
     <p>전체 {r.totalParticipants ?? '확인 필요'}명 · 응답 {r.respondedParticipants ?? '확인 필요'}명 · 미응답 {r.unrespondedParticipants ?? '확인 필요'}명</p>
-    <ul>{Object.entries(r.counts || {}).map(([name, count]) => <li key={name}><span>{choices[name] || name}</span><strong>{count}명</strong></li>)}</ul>
+    <ul>{pollOptions(r).map(option => {
+      const selected = optionIds?.includes(option.optionId)
+      return <li key={option.optionId ?? option.content} className={selected ? 'report-option-selected' : undefined}>
+        <span>{option.content}{selected && <small>이 입장의 근거</small>}</span>
+        <strong>{option.count}명</strong>
+      </li>
+    })}</ul>
     <small>미응답은 모르겠음으로 집계하지 않습니다. 시작 구간에 연결된 최종 결과이며 해당 분의 실시간 상태가 아닙니다.</small>
   </div>
 }
@@ -65,9 +93,9 @@ function Evidence({ item, recordIndex, timeline, room, jump }) {
         const found = related[0]
         return <div className="report-evidence-record" key={keyOf(ref.type, ref.id)}>
           <span className="report-tag">실제 기록 · {labels[ref.type] || ref.type}</span>
-          {found ? <><RecordBody record={found.record} start={room.startedAt} />
+          {found ? <><RecordBody record={found.record} start={room.startedAt} optionIds={ref.optionIds} />
             {related.map(({ record, index }) => <button className="report-text-button" key={index}
-              onClick={() => jump(index, record)}>해당 시간대 기록 보기 · {elapsed(timeline[index].startAt, room.startedAt)} ↗</button>)}
+              onClick={() => jump(index, record, ref.optionIds)}>해당 시간대 기록 보기 · {elapsed(timeline[index].startAt, room.startedAt)} ↗</button>)}
           </> : <p>연결된 근거 기록을 확인할 수 없습니다.</p>}
         </div>
       })}</div>
@@ -88,21 +116,16 @@ export function ReportView({ content, room }) {
   useEffect(() => () => clearTimeout(highlightTimer.current), [])
   useEffect(() => {
     if (!highlight) return
-    const node = document.getElementById(highlight)
+    const node = document.getElementById(highlight.id)
     node?.scrollIntoView({ behavior: 'auto', block: 'center' })
     node?.focus({ preventScroll: true })
     clearTimeout(highlightTimer.current)
     highlightTimer.current = setTimeout(() => setHighlight(null), 4000)
   }, [highlight])
-  function jump(index, record) {
+  function jump(index, record, optionIds) {
     setOpened(previous => new Set([...previous, index]))
     const id = targetId(index, record.type, record.id)
-    // Repeated activation should still focus the same target.
-    if (highlight === id) {
-      document.getElementById(id)?.scrollIntoView({ block: 'center' })
-      document.getElementById(id)?.focus({ preventScroll: true })
-    }
-    setHighlight(id)
+    setHighlight({ id, optionIds })
   }
   const hasRecords = timeline.some(row => records(row).length || row.sttGaps?.length || row.audienceOpinions?.length)
   return <>
@@ -117,7 +140,9 @@ export function ReportView({ content, room }) {
         <header><span className="report-number">{number}</span><h3>{title}</h3><p>{description}</p></header>
         {!content.overview[key]?.length && <p className="report-empty">이 항목에 표시할 요약이 없습니다.</p>}
         {(content.overview[key] || []).map((item, i) => <article className="report-card" key={i}>
-          <p className="report-card-text">{item.text}</p><Limits values={item.limitations} />
+          <p className="report-card-text">{item.text}</p>
+          {key === 'reviewPoints' && !item.perspectives?.length && <UnderstandingResults item={item} recordIndex={recordIndex} />}
+          <Limits values={item.limitations} />
           {item.perspectives?.length ? <div>{item.perspectives.map((perspective, n) => <section className="report-perspective" key={n}>
             <strong>의견 {n + 1}</strong><p>{perspective.text}</p><Limits values={perspective.limitations} /><Evidence item={perspective} recordIndex={recordIndex} timeline={timeline} room={room} jump={jump} />
           </section>)}</div> : <Evidence item={item} recordIndex={recordIndex} timeline={timeline} room={room} jump={jump} />}
@@ -148,8 +173,10 @@ export function ReportView({ content, room }) {
               {!rows.some(r => r.type === type) && <p className="report-muted">이 구간에 해당 기록이 없습니다.</p>}
               {rows.filter(r => r.type === type).sort((a, b) => Date.parse(a.time) - Date.parse(b.time) || a.id - b.id).map(record => {
                 const id = targetId(index, record.type, record.id)
-                return <article tabIndex={-1} id={id} key={id} className={`report-record ${highlight === id ? 'report-highlight' : ''}`}>
-                  {record.type !== 'STT_SEGMENT' && <time>{elapsed(record.time, room.startedAt)}</time>}<RecordBody record={record} start={room.startedAt} />
+                const active = highlight?.id === id
+                return <article tabIndex={-1} id={id} key={id} className={`report-record ${active ? 'report-highlight' : ''}`}>
+                  {record.type !== 'STT_SEGMENT' && <time>{elapsed(record.time, room.startedAt)}</time>}
+                  <RecordBody record={record} start={room.startedAt} optionIds={active ? highlight.optionIds : undefined} />
                 </article>
               })}
             </section>)}

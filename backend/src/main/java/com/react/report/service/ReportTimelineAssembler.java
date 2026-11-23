@@ -56,9 +56,7 @@ public final class ReportTimelineAssembler {
         }
         for (var gap : input.stt().gaps()) {
             if (placeInterval(gap.startedAt(), gap.endedAt(), window -> window.gaps.add(gap))) {
-                String end = gap.endedAt() == null ? "복구 시각 미확인" : KOREAN_TIME.format(gap.endedAt());
-                limitations.add("%s ~ %s (한국 시간) · 발언 기록이 없어 설명·답변 여부를 확인하기 어렵습니다."
-                        .formatted(KOREAN_TIME.format(gap.startedAt()), end));
+                limitations.add(gapLimitation(gap));
             }
         }
         for (var chat : input.chats()) {
@@ -138,8 +136,7 @@ public final class ReportTimelineAssembler {
         if (analysis.status() == AiAnalysisStatus.FAILED) {
             window.opinions.add(new ReportTimeline.Opinion(analysis.analysisId(), analysis.status(), analysis.startAt(),
                     analysis.endAt(), null, null, null, List.of(), List.of(), null));
-            limitations.add("%s ~ %s (한국 시간) · 청중 의견 AI 분석 실패. 해당 구간의 채팅 원문은 그대로 표시합니다."
-                    .formatted(KOREAN_TIME.format(analysis.startAt()), KOREAN_TIME.format(analysis.endAt())));
+            limitations.add(analysisFailureLimitation(analysis.startAt(), analysis.endAt()));
             return;
         }
         for (var topic : analysis.topics()) {
@@ -147,6 +144,17 @@ public final class ReportTimelineAssembler {
                     analysis.startAt(), analysis.endAt(), topic.topic(), topic.category(), topic.summary(),
                     List.of(topic.groupId()), List.copyOf(topic.messageIds()), topic.messageCount()));
         }
+    }
+
+    static String gapLimitation(SttRecordsView.Gap gap) {
+        String end = gap.endedAt() == null ? "복구 시각 미확인" : KOREAN_TIME.format(gap.endedAt());
+        return "%s ~ %s (한국 시간) · 발언 기록이 없어 설명·답변 여부를 확인하기 어렵습니다."
+                .formatted(KOREAN_TIME.format(gap.startedAt()), end);
+    }
+
+    static String analysisFailureLimitation(Instant start, Instant end) {
+        return "%s ~ %s (한국 시간) · 청중 의견 AI 분석 실패. 해당 구간의 채팅 원문은 그대로 표시합니다."
+                .formatted(KOREAN_TIME.format(start), KOREAN_TIME.format(end));
     }
 
     private static final class WindowData {

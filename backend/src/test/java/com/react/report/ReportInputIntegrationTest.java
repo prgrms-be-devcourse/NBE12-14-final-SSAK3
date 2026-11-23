@@ -1,12 +1,18 @@
 package com.react.report;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.domain.TopicCategory;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
+import com.react.report.dto.ReportContent;
 import com.react.report.dto.ReportInput;
+import com.react.report.service.ReportGenerationException;
 import com.react.report.service.ReportInputService;
+import com.react.report.service.ReportOverviewClient;
+import com.react.report.service.ReportOverviewService;
+import com.react.report.service.ReportOverviewValidator;
 import com.react.stt.dto.SttRecordsView;
 import com.react.stt.service.SttSessionService;
 import org.flywaydb.core.Flyway;
@@ -25,10 +31,17 @@ import javax.sql.DataSource;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -43,6 +56,7 @@ class ReportInputIntegrationTest {
     @Autowired ReportInputService service;
     @Autowired SttSessionService stt;
     @Autowired ObjectMapper objectMapper;
+    @Autowired ReportOverviewValidator validator;
     private String email;
     private long host;
 
@@ -245,6 +259,84 @@ class ReportInputIntegrationTest {
                 e -> assertThat(e.getErrorCode()).isEqualTo(code));
     }
 
+    @Test
+    void 마감_후_재설명_채팅은_작성_구간에_남고_모호한_채팅은_원문으로만_보인다() {
+        long room = room(90);
+        analysis(room, 0, 30, "COMPLETED");
+        analysis(room, 30, 60, "COMPLETED");
+        analysis(room, 60, 90, "FAILED");
+        long first = participant(room);
+        long second = participant(room);
+        long check = poll(room, "UNDERSTANDING", 35, 50, 2);
+        jdbc.sql("UPDATE polls SET question = '가스비 계산을 이해하셨나요?' WHERE id = ?").param(check).update();
+        vote(check, option(check, "이해됨", "UNDERSTOOD", 1), first, 40);
+        vote(check, option(check, "헷갈림", "CONFUSED", 2), second, 42);
+        option(check, "모르겠음", "NOT_UNDERSTOOD", 3);
+        long vagueChat = chat(room, first, 60, "다시 보여주세요");
+        long specificChat = chat(room, second, 90, "아까 가스비 계산 예시를 다시 보여주세요");
+        long otherRoom = room(90);
+        long foreignChat = chat(otherRoom, participant(otherRoom), 90);
+
+        var client = mock(ReportOverviewClient.class);
+        var draft = objectMapper.createObjectNode();
+        var overview = draft.putObject("overview");
+        overview.putArray("mainInterests");
+        overview.putArray("suggestions");
+        var item = overview.putArray("reviewPoints").addObject();
+        item.put("text", "가스비 계산 예시의 재설명을 요청한 채팅이 있었습니다.");
+        item.putArray("perspectives");
+        var refs = item.putArray("evidence");
+        refs.addObject().put("type", "POLL_RESULT").put("id", check);
+        var chatRef = refs.addObject().put("type", "CHAT_MESSAGE").put("id", specificChat);
+        when(client.generate(any())).thenAnswer(invocation -> {
+            JsonNode payload = invocation.getArgument(0);
+            var messages = payload.get("evidenceRecords").valueStream()
+                    .filter(r -> r.path("type").asText().equals("CHAT_MESSAGE")).toList();
+            assertThat(messages).extracting(r -> r.path("id").longValue())
+                    .containsExactly(vagueChat, specificChat).doesNotContain(foreignChat);
+            assertThat(messages).allSatisfy(r -> assertThat(r.at("/data/participantId").asText()).matches("p[12]"));
+            item.set("relatedWindows", payload.get("windows"));
+            return draft;
+        });
+        var reports = new ReportOverviewService(service, client, validator, objectMapper);
+        var content = reports.generate(room, email);
+        assertThat(content.overview().at("/reviewPoints/0/evidence")).hasSize(2);
+        assertThat(content.timeline().getFirst().understandingChecks()).singleElement()
+                .satisfies(p -> assertThat(p.closedAt()).isEqualTo(UTC_START.plusSeconds(50)));
+        assertThat(content.timeline().getLast().chatMessages()).extracting(c -> c.messageId())
+                .containsExactly(vagueChat, specificChat);
+        assertThat(content.timeline().getLast().chatMessages().getLast().createdAt()).isEqualTo(UTC_START.plusSeconds(90));
+        assertThat(content.dataLimitations()).anyMatch(note -> note.contains("분석 실패"));
+        verify(client).generate(any());
+
+        chatRef.put("id", foreignChat);
+        assertThatThrownBy(() -> reports.generate(room, email)).isInstanceOfSatisfying(ReportGenerationException.class,
+                e -> assertThat(e.reason()).isEqualTo(ReportGenerationException.Reason.INVALID_REPORT_EVIDENCE));
+        verify(client, times(2)).generate(any());
+    }
+
+    @Test
+    void 기록이_없거나_청중_응답이_없으면_LLM을_호출하지_않고_원문과_빈_요약을_반환한다() {
+        long room = room(10);
+        analysis(room, 0, 10, "COMPLETED");
+        var client = mock(ReportOverviewClient.class);
+        var reports = new ReportOverviewService(service, client, validator, objectMapper);
+        var empty = reports.generate(room, email);
+        assertThat(empty.dataLimitations()).anyMatch(note -> note.contains("수집된 기록이 없어"));
+        segment(session(room, 0, 8), 100, 200, 1);
+        long silentPoll = poll(room, "GENERAL", 2, 7, 1);
+        option(silentPoll, "예제", null, 1);
+        var sttOnly = reports.generate(room, email);
+        for (ReportContent result : List.of(empty, sttOnly)) {
+            assertThat(result.overview().properties()).hasSize(3);
+            assertThat(result.overview()).allMatch(node -> node.isArray() && node.isEmpty());
+        }
+        assertThat(sttOnly.timeline().getFirst().sttSegments()).hasSize(1);
+        assertThat(sttOnly.timeline().getFirst().polls().getFirst().respondedParticipants()).isZero();
+        assertThat(sttOnly.dataLimitations()).anyMatch(note -> note.contains("청중 반응 기록이 부족"));
+        verifyNoInteractions(client);
+    }
+
     private record Fixture(long room, long firstChat, long repeatedChat, long atBoundary, long atEnd,
                            long firstSession, long secondSession, long firstSegment, long secondSegment,
                            long gap, long group, long general, long check) {}
@@ -322,9 +414,13 @@ class ReportInputIntegrationTest {
     }
 
     private long chat(long room, long participant, int second) {
+        return chat(room, participant, second, "예제 다시 보여주세요");
+    }
+
+    private long chat(long room, long participant, int second, String text) {
         return insert("""
-                INSERT INTO chat_messages(lecture_room_id,participant_id,content,received_at) VALUES (?, ?, '예제 다시 보여주세요', ?)
-                """, room, participant, START.plusSeconds(second));
+                INSERT INTO chat_messages(lecture_room_id,participant_id,content,received_at) VALUES (?, ?, ?, ?)
+                """, room, participant, text, START.plusSeconds(second));
     }
 
     private long analysis(long room, int start, int end, String status) {
