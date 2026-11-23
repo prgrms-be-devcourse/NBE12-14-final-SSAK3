@@ -5,6 +5,7 @@ import { SttPanel } from '../stt/SttPanel.jsx'
 import { SavedSpeech } from './SavedSpeech.jsx'
 import { PollCreatePanel } from '../poll/PollCreatePanel.jsx'
 import { UnderstandingSummary } from '../poll/UnderstandingSummary.jsx'
+import { PollResults } from '../poll/PollResults.jsx'
 
 const compactLayout = '(max-width: 960px)'
 const tabs = [{ id: 'ai', label: 'AI 요약' }, { id: 'chat', label: '채팅' }]
@@ -54,6 +55,8 @@ export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError 
     {live && <PollCreatePanel roomId={room.roomId} ending={ending} />}
 
     <UnderstandingSummary roomId={room.roomId} />
+
+    <PollResults roomId={room.roomId} />
 
     {compact && <div className="room-panel-tabs" role="tablist" aria-label="강연 패널">
       {tabs.map(({ id, label }) => <button key={id} id={`room-tab-${id}`} role="tab"

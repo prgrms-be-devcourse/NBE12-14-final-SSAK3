@@ -29,7 +29,7 @@ const summary = page => page.getByRole('region', { name: '이해도 체크 결�
 
 async function setup(page, context, { open = null, closed = [] } = {}) {
   await setupRecording(context)
-  const state = { open, closed, results: null, subscribed: new Set(), push: {}, resultReads: 0 }
+  const state = { open, closed, results: null, subscribed: new Set(), push: {}, senders: {}, resultReads: 0 }
   await context.routeWebSocket('**/ws', socket => {
     socket.onMessage(frame => {
       const message = frame.toString()
@@ -38,8 +38,10 @@ async function setup(page, context, { open = null, closed = [] } = {}) {
       if (message.startsWith('SUBSCRIBE\n') && destination) {
         const id = /^id:(.+)$/m.exec(message)[1]
         state.subscribed.add(destination)
-        state.push[destination] = event => socket.send(
-          `MESSAGE\ndestination:${destination}\nsubscription:${id}\nmessage-id:${crypto.randomUUID()}\n\n${JSON.stringify(event)}\0`)
+        // 같은 토픽을 여러 패널이 구독하므로 구독자 모두에게 보낸다.
+        const senders = (state.senders[destination] ??= [])
+        senders.push(event => socket.send(`MESSAGE\ndestination:${destination}\nsubscription:${id}\nmessage-id:${crypto.randomUUID()}\n\n${JSON.stringify(event)}\0`))
+        state.push[destination] = event => senders.forEach(send => send(event))
       }
     })
   })
