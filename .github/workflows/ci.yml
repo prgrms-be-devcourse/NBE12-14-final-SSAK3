@@ -1,4 +1,3 @@
-
 name: CI
 
 on:
@@ -224,6 +223,9 @@ jobs:
       EC2_INSTANCE_ID: i-0ee8e414fbadab01a
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -238,26 +240,58 @@ jobs:
 
           test -n "$AWS_REGION"
           test -n "$EC2_INSTANCE_ID"
-
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
 
           aws sts get-caller-identity \
             --query Account \
             --output text
 
-      - name: Send deployment command via SSM
+      - name: Send deployment files and command via SSM
         id: deploy
         shell: bash
         run: |
           set -euo pipefail
 
-          # 비밀값은 전달하지 않고 배포할 이미지의 SHA만 전달
+          # Git에 있는 배포 파일만 전달한다. 비밀값은 포함하지 않는다.
+          COMPOSE_B64="$(base64 -w 0 infra/deploy/compose.prod.yaml)"
+          SCRIPT_B64="$(base64 -w 0 infra/deploy/deploy.sh)"
+          COMPOSE_SHA="$(sha256sum infra/deploy/compose.prod.yaml | cut -d ' ' -f 1)"
+          SCRIPT_SHA="$(sha256sum infra/deploy/deploy.sh | cut -d ' ' -f 1)"
+
+          # SSM으로 파일 내용을 나누어 전달한 뒤 EC2에서 복원·검증한다.
           jq -n \
-            --arg command "/opt/react/deploy.sh ${GITHUB_SHA}" \
-            '{
-              commands: [$command],
-              executionTimeout: ["900"]
-            }' > ssm-params.json
+            --arg compose "$COMPOSE_B64" \
+            --arg script "$SCRIPT_B64" \
+            --arg compose_sha "$COMPOSE_SHA" \
+            --arg script_sha "$SCRIPT_SHA" \
+            --arg image_tag "$GITHUB_SHA" '
+              def chunks: [range(0; length; 1500) as $i | .[$i:$i+1500]];
+              {
+                commands: (
+                  [
+                    "set -eu",
+                    "install -d -m 700 -o root -g root /opt/react",
+                    ": > /opt/react/.compose.prod.yaml.b64",
+                    ": > /opt/react/.deploy.sh.b64"
+                  ]
+                  + ($compose | chunks | map("printf %s " + (. | @sh) + " >> /opt/react/.compose.prod.yaml.b64"))
+                  + ($script | chunks | map("printf %s " + (. | @sh) + " >> /opt/react/.deploy.sh.b64"))
+                  + [
+                    "base64 -d /opt/react/.compose.prod.yaml.b64 > /opt/react/.compose.prod.yaml.new",
+                    "base64 -d /opt/react/.deploy.sh.b64 > /opt/react/.deploy.sh.new",
+                    ("echo " + $compose_sha + "  /opt/react/.compose.prod.yaml.new | sha256sum -c -"),
+                    ("echo " + $script_sha + "  /opt/react/.deploy.sh.new | sha256sum -c -"),
+                    "chmod 600 /opt/react/.compose.prod.yaml.new",
+                    "chmod 700 /opt/react/.deploy.sh.new",
+                    "bash -n /opt/react/.deploy.sh.new",
+                    "mv -f /opt/react/.compose.prod.yaml.new /opt/react/compose.prod.yaml",
+                    "mv -f /opt/react/.deploy.sh.new /opt/react/deploy.sh",
+                    "rm -f /opt/react/.compose.prod.yaml.b64 /opt/react/.deploy.sh.b64",
+                    ("/opt/react/deploy.sh " + $image_tag)
+                  ]
+                ),
+                executionTimeout: ["900"]
+              }' > ssm-params.json
 
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$EC2_INSTANCE_ID" \
