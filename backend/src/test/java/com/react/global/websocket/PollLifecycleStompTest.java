@@ -4,6 +4,7 @@ import com.react.auth.entity.User;
 import com.react.poll.dto.CreatePollRequest;
 import com.react.poll.dto.PollView;
 import com.react.poll.entity.PollType;
+import com.react.poll.service.PollExpiryProcessor;
 import com.react.poll.service.PollService;
 import com.react.room.entity.LectureRoom;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** 강연자가 이해도 체크를 열고 닫으면 같은 방 청중의 /polls 구독에 바로 POLL_CREATED·POLL_CLOSED 가 온다. */
 class PollLifecycleStompTest extends StompIntegrationTestSupport {
     @Autowired PollService pollService;
+    @Autowired PollExpiryProcessor expiry;
 
     private String hostEmail;
     private LectureRoom room;
@@ -71,6 +73,22 @@ class PollLifecycleStompTest extends StompIntegrationTestSupport {
         assertThat(((Number) data.get("pollId")).longValue()).isEqualTo(poll.pollId());
         assertThat(data.get("closeReason")).isEqualTo("HOST");
         assertThat(data).containsOnlyKeys("pollId", "roomId", "closedAt", "closeReason");
+    }
+
+    @Test
+    void 청중은_제한_시간이_지나_서버가_마감하면_받는다() throws Exception {
+        PollView poll = pollService.create(room.getId(), hostEmail,
+                new CreatePollRequest(PollType.UNDERSTANDING, null, null, 60));
+        assertThat(StompTestClient.nextOfType(audience, "POLL_CREATED", 5000)).isNotNull();
+        jdbc.sql("UPDATE polls SET created_at = DATE_SUB(created_at, INTERVAL 5 MINUTE), closes_at = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE id = ?")
+                .param(poll.pollId()).update();
+
+        expiry.closeExpiredPolls();
+
+        Map<String, Object> event = StompTestClient.nextOfType(audience, "POLL_CLOSED", 5000);
+        assertThat(event).as("만료 마감 이벤트가 와야 한다").isNotNull();
+        assertThat(((Number) data(event).get("pollId")).longValue()).isEqualTo(poll.pollId());
+        assertThat(data(event).get("closeReason")).isEqualTo("TIMEOUT");
     }
 
     @Test

@@ -164,6 +164,33 @@ public class PollService {
         return open.size();
     }
 
+    /**
+     * 제한 시간이 지난 투표 하나를 TIMEOUT 으로 마감한다. 그 사이에 강연자가 닫았거나 강연이 끝나 이미 마감됐다면 아무것도 하지 않는다.
+     * 잠금 순서는 강연방(공유) → 투표(쓰기)라 수동 마감·응답 저장·강연 종료와 같은 순서로 직렬화된다.
+     *
+     * @return 이번에 마감했으면 true
+     */
+    @Transactional
+    public boolean closeIfExpired(long roomId, long pollId) {
+        if (rooms.lockRoomForShare(roomId).isEmpty()) {
+            return false;
+        }
+        Poll poll = polls.findForUpdate(roomId, pollId).orElse(null);
+        if (poll == null || poll.getStatus() != PollStatus.OPEN || !poll.isExpired(now())) {
+            return false;
+        }
+        poll.expire(rooms.countParticipantsAtTimeout(roomId, poll.getId(), poll.getClosesAt()));
+        publishClosed(poll);
+        return true;
+    }
+
+    /** 마감 시각이 지난 OPEN 투표의 (강연방, 투표) 번호. 스케줄러가 하나씩 closeIfExpired 로 넘긴다. */
+    public List<long[]> findExpiredPolls() {
+        return polls.findTop100ByStatusAndClosesAtLessThanEqualOrderByClosesAtAsc(PollStatus.OPEN, now()).stream()
+                .map(poll -> new long[] {poll.getLectureRoomId(), poll.getId()})
+                .toList();
+    }
+
     public PollListView list(long roomId, String hostEmail, PollStatus status) {
         var room = rooms.findRoom(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
