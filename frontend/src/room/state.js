@@ -2,7 +2,7 @@ export const draftKey = 'react:room-draft:v1'
 export const emptyDraft = { title: '', description: '', uncertain: false }
 
 export function returnPath(value) {
-  return /^(?:\/host\/rooms\/(?:new|[1-9]\d*(?:\/report)?)|\/dev\/rooms\/[1-9]\d*\/ai)$/.test(value || '') ? value : null
+  return /^(?:\/host\/rooms\/(?:new|history|[1-9]\d*(?:\/report)?)|\/dev\/rooms\/[1-9]\d*\/ai)$/.test(value || '') ? value : null
 }
 
 export function loginFor(path) {

@@ -97,6 +97,21 @@ for (const [kind, options, transcript] of [
       await back.click()
       await expect(page).toHaveURL(roomPath)
       await expect(open).toBeVisible()
+
+      if (options.isMobile) await page.getByRole('button', { name: '메뉴 열기' }).click()
+      await page.getByRole('button', { name: '내 강연 기록', exact: true }).click()
+      const historyPath = '/host/rooms/history'
+      await expect(page).toHaveURL(historyPath)
+      await expect(page.getByText(title, { exact: true })).toBeVisible()
+      const record = page.getByRole('link', { name: '강연 기록 열기' })
+      await expect(record).toHaveAttribute('href', roomPath)
+      await expect(open).toHaveAttribute('href', reportPath)
+      await open.click()
+      await expect(heading).toBeVisible()
+      await page.goBack()
+      await expect(page).toHaveURL(historyPath)
+      await record.click()
+      await expect(page).toHaveURL(roomPath)
       expect(reportRequests).not.toContain(`POST ${reportApi}`)
     } finally {
       await context.close()

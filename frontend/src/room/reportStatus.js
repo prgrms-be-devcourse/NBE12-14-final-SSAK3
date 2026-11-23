@@ -1,6 +1,6 @@
 import { request } from '../stt/api.js'
 
-const receiptGraceMs = 2000
+export const receiptGraceMs = 2000
 const reportStates = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']
 
 export function roomReportSource(roomId, endedAt, onAccessError) {

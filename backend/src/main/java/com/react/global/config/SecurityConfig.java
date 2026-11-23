@@ -136,6 +136,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/v1/rooms/*",
+                                "/api/v1/rooms/history/latest",
+                                "/api/v1/rooms/history/statuses",
                                 "/api/v1/rooms/*/invitation"
                         ).hasRole("HOST")
 

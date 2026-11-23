@@ -1,16 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react'
 import './host-layout.css'
 
-function HostMenu({ mobile = false, home, section, canInvite, inviteOpen, navigationDisabled, choose }) {
+function HostMenu({ mobile = false, section, canInvite, inviteOpen, navigationDisabled, choose }) {
   function navigationItem(target, label) {
     return <button type="button" className="host-menu-item" disabled={navigationDisabled}
-      aria-current={home && section === target ? 'location' : undefined} onClick={() => choose(target)}>
+      aria-current={section === target ? 'location' : undefined} onClick={() => choose(target)}>
       <i aria-hidden="true" className={`host-glyph host-glyph-${target}`} />{label}
     </button>
   }
   return <nav aria-label="강연자 메뉴" className="host-menu">
     {navigationItem('home', '홈')}
     {navigationItem('new', '새 강연방')}
+    {navigationItem('history', '내 강연 기록')}
     {canInvite && <button type="button" className="host-menu-item host-invite-action"
       id={mobile ? undefined : 'host-invite-trigger'} aria-haspopup="dialog" aria-expanded={inviteOpen}
       aria-controls={inviteOpen ? 'host-invite-panel' : undefined} onClick={() => choose('invite')}>
@@ -19,7 +20,7 @@ function HostMenu({ mobile = false, home, section, canInvite, inviteOpen, naviga
   </nav>
 }
 
-export function RoomShell({ user, logout, logoutDisabled, onNavigate, home, section = 'home', canInvite,
+export function RoomShell({ user, logout, logoutDisabled, onNavigate, section, canInvite,
   inviteOpen, onToggleInvite, navigationDisabled = false, children }) {
   const drawer = useRef(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -36,7 +37,7 @@ export function RoomShell({ user, logout, logoutDisabled, onNavigate, home, sect
     if (target === 'invite') onToggleInvite()
     else onNavigate(target)
   }
-  const menuProps = { home, section, canInvite, inviteOpen, navigationDisabled, choose }
+  const menuProps = { section, canInvite, inviteOpen, navigationDisabled, choose }
 
   return <div className="room-app host-shell">
     <header className="host-bar">
