@@ -64,10 +64,8 @@
 | `main` Push | 실행 | 실행 | 실행 |
 | `main`에서 배포 옵션을 선택한 수동 실행 | 실행 | 실행 | 실행 |
 
-### SCRUM-88 검증을 위한 일시적 예외
-
-SCRUM-88 작업 브랜치 `chore/SCRUM-88-ghcr-image-publish`에서는 최초 배포 및 마지막 시험 배포를 위해 임시로 이미지 게시와 EC2 배포를 허용했다.
-
+- **SCRUM-88:** 
+- GitHub Actions CI/CD, GHCR 이미지 게시, AWS SSM 자동배포 구현 및 최초 배포 검증 완료. 작업 브랜치 임시 배포 조건 제거. 최종 통합 배포는 `develop` → `main` Merge 시 검증 예정
 - 작업 브랜치 일반 Push: CI 및 GHCR 게시, EC2 배포 없음
 - 커밋 메시지에 `[deploy-ec2]`가 포함된 지정된 작업자 Push: CI·이미지 게시 성공 후 EC2 배포
 - 임시 수동 배포 경로도 작업 브랜치에 허용됨
