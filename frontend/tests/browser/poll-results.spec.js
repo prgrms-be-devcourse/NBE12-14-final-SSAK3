@@ -24,7 +24,7 @@ const card = (page, pollId) => panel(page).getByRole('listitem', { name: `질문
 
 async function setup(page, context, { open = [], closed = [], results: initial = {} } = {}) {
   await setupRecording(context)
-  const state = { open, closed, results: initial, subscribed: new Set(), push: {}, senders: {}, reads: [] }
+  const state = { open, closed, results: initial, subscribed: new Set(), push: {}, senders: {}, reads: [], listReads: [], resultStatus: {} }
   await context.routeWebSocket('**/ws', socket => {
     socket.onMessage(frame => {
       const message = frame.toString()
@@ -51,12 +51,14 @@ async function setup(page, context, { open = [], closed = [], results: initial =
       return ok({ joinCode: 'WORKSHOP', joinUrl: 'http://127.0.0.1:5174/join/WORKSHOP', qrText: 'http://127.0.0.1:5174/join/WORKSHOP' })
     }
     if (url.pathname === `${base}/polls`) {
+      state.listReads.push(url.searchParams.get('status'))
       const polls = url.searchParams.get('status') === 'OPEN' ? state.open : state.closed
       return ok({ polls, serverTime: '2026-11-21T03:00:00Z' })
     }
     const read = /\/polls\/(\d+)\/results$/.exec(url.pathname)
     if (read) {
       state.reads.push(Number(read[1]))
+      if (state.resultStatus[read[1]]) return route.fulfill({ status: state.resultStatus[read[1]], json: { code: 'ERROR' } })
       return ok(state.results[read[1]])
     }
     if (url.pathname === `${base}/messages`) return ok({ messages: [], nextCursor: null, hasNext: false })
@@ -124,10 +126,13 @@ test('새 일반 투표가 열리면 목록에 나타나고 다른 투표의 이
 
   state.open = [poll(502, 'OPEN'), poll(900, 'OPEN', 'UNDERSTANDING')]
   state.results[502] = results(502, 'OPEN', [0, 0], 4)
+  state.results[900] = { ...results(900, 'OPEN', [0, 0], 4), type: 'UNDERSTANDING' }
   state.push[pollsTopic]({ type: 'POLL_CREATED', data: { ...poll(502, 'OPEN'), type: 'GENERAL' } })
 
   await expect(card(page, 502).getByText('진행 중')).toBeVisible()
-  expect(state.reads).not.toContain(900)
+  // 이해도 체크 결과도 같은 조회에서 받지만 투표 현황에는 일반 투표만 나온다.
+  await expect.poll(() => state.reads.includes(900)).toBe(true)
+  await expect(card(page, 900)).toHaveCount(0)
 })
 
 test('투표가 한 번도 없으면 투표 현황을 보이지 않는다', async ({ page, context }) => {
@@ -153,10 +158,58 @@ test('마감된 투표에 늦게 도착한 응답 이벤트는 확정된 결과�
   await expect(card(page, 501).getByText('마감')).toBeVisible()
   await expect(card(page, 501).getByRole('listitem').filter({ hasText: '선택지 1' })).toContainText('6명')
 
+  // 같은 토픽의 이벤트는 순서대로 처리되므로, 늦은 이벤트 뒤에 진행 중인 다른 투표의 이벤트를 보내 그것이 반영되면
+  // 앞선 이벤트도 이미 처리된 것이다.
+  state.open = [poll(502, 'OPEN')]
+  state.results[502] = results(502, 'OPEN', [0, 0], 10)
+  state.push[pollsTopic]({ type: 'POLL_CREATED', data: { ...poll(502, 'OPEN'), type: 'GENERAL' } })
+  await expect(card(page, 502)).toBeVisible()
   state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
     pollId: 501, totalParticipants: 10, respondedParticipants: 1, unrespondedParticipants: 9, counts: { 5010: 1, 5011: 0 } } })
-  // 늦은 이벤트가 처리될 시간을 주고도 최종 결과가 그대로인지 확인한다.
-  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)))
+  state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
+    pollId: 502, totalParticipants: 10, respondedParticipants: 3, unrespondedParticipants: 7, counts: { 5020: 3, 5021: 0 } } })
+  await expect(card(page, 502).getByRole('listitem').filter({ hasText: '선택지 1' })).toContainText('3명')
   await expect(card(page, 501).getByRole('listitem').filter({ hasText: '선택지 1' })).toContainText('6명')
   await expect(card(page, 501)).toContainText('응답 8명')
+})
+
+test('이해도 체크 패널과 투표 현황은 같은 연결과 목록 조회를 함께 쓴다', async ({ page, context }) => {
+  const state = await setup(page, context, {
+    open: [poll(502, 'OPEN'), poll(900, 'OPEN', 'UNDERSTANDING')], closed: [poll(501, 'CLOSED')],
+    results: { 501: results(501, 'CLOSED', [2, 2], 4), 502: results(502, 'OPEN', [1, 0], 4),
+      900: { ...results(900, 'OPEN', [0, 0], 4), type: 'UNDERSTANDING' } },
+  })
+  await page.goto(`/host/rooms/${roomId}`)
+  await expect(card(page, 502)).toBeVisible()
+  await expect(page.getByRole('region', { name: '이해도 체크 결과' })).toBeVisible()
+
+  // 패널이 둘이어도 결과 토픽 구독은 한 번이고, 마감 목록과 각 투표의 결과도 한 번씩만 받는다.
+  // (OPEN 목록은 투표 생성 패널이 따로 폴링하므로 세지 않는다.)
+  await expect.poll(() => state.subscribed.has(resultsTopic)).toBe(true)
+  expect(state.senders[resultsTopic]).toHaveLength(1)
+  expect(state.listReads.filter(status => status === 'CLOSED')).toHaveLength(1)
+  expect([...state.reads].sort()).toEqual([501, 502, 900])
+})
+
+test('투표 하나의 결과 조회가 실패해도 나머지 목록은 계속 보인다', async ({ page, context }) => {
+  const state = await setup(page, context, {
+    open: [poll(503, 'OPEN')], closed: [poll(501, 'CLOSED'), poll(502, 'CLOSED')],
+    results: { 501: results(501, 'CLOSED', [2, 2], 4), 503: results(503, 'OPEN', [1, 0], 4) },
+  })
+  state.resultStatus[502] = 404
+  await page.goto(`/host/rooms/${roomId}`)
+
+  // 404 인 투표만 빠지고 패널은 닫히지 않는다.
+  await expect(card(page, 503)).toBeVisible()
+  await expect(card(page, 501)).toBeVisible()
+  await expect(card(page, 502)).toHaveCount(0)
+
+  // 이후 갱신에서 503 조회가 일시적으로 실패해도 마지막으로 받은 값을 유지한다.
+  await expect.poll(() => state.subscribed.has(pollsTopic)).toBe(true)
+  state.resultStatus[503] = 500
+  state.open = [poll(503, 'OPEN'), poll(504, 'OPEN')]
+  state.results[504] = results(504, 'OPEN', [0, 0], 4)
+  state.push[pollsTopic]({ type: 'POLL_CREATED', data: { ...poll(504, 'OPEN'), type: 'GENERAL' } })
+  await expect(card(page, 504)).toBeVisible()
+  await expect(card(page, 503).getByRole('listitem').filter({ hasText: '선택지 1' })).toContainText('1명')
 })

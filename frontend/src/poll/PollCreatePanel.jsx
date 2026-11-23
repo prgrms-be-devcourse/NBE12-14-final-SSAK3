@@ -178,7 +178,8 @@ export function PollCreatePanel({ roomId, ending = false }) {
             if (!poll?.pollId) throw new Error('POLL_RESPONSE_MISSING')
 
             setActivePoll(poll)
-            setDraft(emptyDraft())
+            // 이해도 체크를 시작해도 작성 중이던 일반 투표 입력은 그대로 둔다.
+            if (body.type === 'GENERAL') setDraft(emptyDraft())
 
             if (poll.serverTime) {
                 offset.current = Date.parse(poll.serverTime) - Date.now()
@@ -190,7 +191,9 @@ export function PollCreatePanel({ roomId, ending = false }) {
                 setError('이미 진행 중인 투표가 있습니다. 상태를 다시 확인합니다.')
                 reload()
             } else if (e.code === 'INVALID_INPUT') {
-                setError('질문과 선택지, 제한 시간을 확인해 주세요.')
+                setError(body.type === 'GENERAL'
+                    ? '질문과 선택지, 제한 시간을 확인해 주세요.'
+                    : '체크 시간을 10~300초로 확인해 주세요.')
             } else if (e.status === 403) {
                 setError('투표를 생성할 권한이 없습니다.')
             } else if (e.code === 'ROOM_NOT_LIVE' || e.code === 'ROOM_ENDED') {
@@ -247,7 +250,7 @@ export function PollCreatePanel({ roomId, ending = false }) {
     const blocked = busy || ending || checking || Boolean(loadError) || unknown
 
     return <section className="room-card room-poll" aria-labelledby="poll-title">
-        <h2 id="poll-title">일반 투표</h2>
+        <h2 id="poll-title">투표</h2>
 
         {checking ? <p role="status">진행 중인 투표를 확인하고 있습니다.</p> : <>
             {loadError && <div className="room-warning" role="alert">

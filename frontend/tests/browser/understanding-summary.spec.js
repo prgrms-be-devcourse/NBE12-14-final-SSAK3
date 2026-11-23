@@ -193,10 +193,16 @@ test('마감된 이해도 체크에 늦게 도착한 응답 이벤트는 확정�
   await expect(card(page, 1).getByText('마감', { exact: true })).toBeVisible()
   await expect(option(page, 1, '이해됨')).toContainText('5명')
 
+  // 다음 체크가 열린 뒤 늦은 이벤트와 새 체크의 이벤트를 차례로 보낸다. 새 체크가 반영되면 앞선 늦은 이벤트도 처리된 것이다.
+  state.open = understanding(502, 'OPEN')
+  state.results[502] = results(502, 'OPEN', [0, 0, 0], 12)
+  state.push[pollsTopic]({ type: 'POLL_CREATED', data: understanding(502, 'OPEN') })
+  await expect(card(page, 2)).toBeVisible()
   state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
     pollId: 501, totalParticipants: 12, respondedParticipants: 1, unrespondedParticipants: 11, counts: { 1: 1 } } })
-  // 늦은 이벤트가 처리될 시간을 주고도 최종 결과가 그대로인지 확인한다.
-  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)))
+  state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
+    pollId: 502, totalParticipants: 12, respondedParticipants: 4, unrespondedParticipants: 8, counts: { 1: 4 } } })
+  await expect(option(page, 2, '이해됨')).toContainText('4명')
   await expect(option(page, 1, '이해됨')).toContainText('5명')
   await expect(total(page, 1, '미응답')).toContainText('3명')
 })

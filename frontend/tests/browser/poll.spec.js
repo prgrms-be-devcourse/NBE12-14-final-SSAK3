@@ -186,7 +186,7 @@ test('강연자는 투표를 생성하고 새로고침 후 복원하고 마감�
 
     await expect(
         panel.getByRole('heading', {
-            name: '일반 투표',
+            name: '투표',
         }),
     ).toBeVisible()
 
