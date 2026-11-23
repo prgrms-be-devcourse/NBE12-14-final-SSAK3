@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import javax.sql.DataSource;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -70,12 +71,21 @@ class SttSessionTest {
     @Test
     void startReplayStopAndEndedRoomConflict() throws Exception {
         var key = UUID.randomUUID();
-        mvc.perform(start(key).with(user(email).roles("HOST"))).andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.canRecord").value(true));
-        mvc.perform(start(key).with(user(email).roles("HOST"))).andExpect(status().isOk())
+        Instant beforeStart = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        var created = mvc.perform(start(key).with(user(email).roles("HOST"))).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.canRecord").value(true)).andReturn().getResponse();
+        var session = json.readTree(created.getContentAsByteArray()).path("data");
+        Instant firstSample = Instant.parse(session.path("serverTime").asText());
+        assertThat(firstSample).isBetween(beforeStart, Instant.now());
+        long id = session.path("sttSessionId").asLong();
+        Instant beforeReplay = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        var replay = mvc.perform(start(key).with(user(email).roles("HOST"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.roomId").value(room))
-                .andExpect(jsonPath("$.data.sttSessionId").isNumber());
-        long id = service.start(room, email, key).session().sttSessionId();
+                .andExpect(jsonPath("$.data.sttSessionId").value(id))
+                .andExpect(jsonPath("$.data.startedAt").value(session.path("startedAt").asText()))
+                .andReturn().getResponse();
+        Instant replaySample = Instant.parse(json.readTree(replay.getContentAsByteArray()).at("/data/serverTime").asText());
+        assertThat(replaySample).isBetween(beforeReplay, Instant.now());
         mvc.perform(post("/api/v1/rooms/{room}/stt/sessions/{id}/stop", room, id)
                         .with(csrf()).with(user(email).roles("HOST")).contentType("application/json")
                         .content("{\"reason\":\"MANUAL_STOP\"}"))
