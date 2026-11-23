@@ -52,3 +52,9 @@ test('the latest closed understanding check is picked, ignoring general polls', 
   assert.equal(latestUnderstanding([{ pollId: 3, type: 'GENERAL' }]), null)
   assert.equal(latestUnderstanding(undefined), null)
 })
+
+test('a late event never overwrites a closed result', () => {
+  const closed = { ...results, status: 'CLOSED', totalParticipants: 12, respondedParticipants: 9 }
+  const late = { pollId: 501, totalParticipants: 12, respondedParticipants: 3, unrespondedParticipants: 9, counts: { 1: 3 } }
+  assert.equal(applyCounts(closed, late), closed)
+})

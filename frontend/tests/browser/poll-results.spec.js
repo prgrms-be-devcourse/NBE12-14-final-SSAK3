@@ -137,3 +137,26 @@ test('투표가 한 번도 없으면 투표 현황을 보이지 않는다', asyn
   await expect.poll(() => state.subscribed.has(resultsTopic)).toBe(true)
   await expect(panel(page)).toHaveCount(0)
 })
+
+test('마감된 투표에 늦게 도착한 응답 이벤트는 확정된 결과를 덮어쓰지 않는다', async ({ page, context }) => {
+  const state = await setup(page, context, {
+    open: [poll(501, 'OPEN')], results: { 501: results(501, 'OPEN', [1, 0], 10) },
+  })
+  await page.goto(`/host/rooms/${roomId}`)
+  await expect(card(page, 501).getByText('진행 중')).toBeVisible()
+  await expect.poll(() => state.subscribed.has(pollsTopic) && state.subscribed.has(resultsTopic)).toBe(true)
+
+  state.open = []
+  state.closed = [poll(501, 'CLOSED')]
+  state.results[501] = results(501, 'CLOSED', [6, 2], 10)
+  state.push[pollsTopic]({ type: 'POLL_CLOSED', data: { pollId: 501, roomId, closeReason: 'HOST' } })
+  await expect(card(page, 501).getByText('마감')).toBeVisible()
+  await expect(card(page, 501).getByRole('listitem').filter({ hasText: '선택지 1' })).toContainText('6명')
+
+  state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
+    pollId: 501, totalParticipants: 10, respondedParticipants: 1, unrespondedParticipants: 9, counts: { 5010: 1, 5011: 0 } } })
+  // 늦은 이벤트가 처리될 시간을 주고도 최종 결과가 그대로인지 확인한다.
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)))
+  await expect(card(page, 501).getByRole('listitem').filter({ hasText: '선택지 1' })).toContainText('6명')
+  await expect(card(page, 501)).toContainText('응답 8명')
+})

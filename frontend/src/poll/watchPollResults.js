@@ -9,6 +9,8 @@ export function watchPollResults({ roomId, onPolls, onConnection, onDenied }) {
   const base = `/rooms/${encodeURIComponent(roomId)}/polls`
   const hostHeaders = { 'X-Chat-Role': 'HOST' }
   const finals = new Map()
+  // 마감 이벤트를 받은 투표. 늦게 도착한 응답 이벤트가 확정된 집계를 덮어쓰지 않도록 이후 결과 이벤트를 무시한다.
+  const closed = new Set()
   let active = true
   let revision = 0
   let current = []
@@ -57,6 +59,7 @@ export function watchPollResults({ roomId, onPolls, onConnection, onDenied }) {
     try { event = JSON.parse(frame.body) } catch { return }
     const data = event?.data
     if (data?.roomId !== Number(roomId)) return
+    if (event.type === 'POLL_CLOSED') closed.add(data.pollId)
     // 새 투표가 열리거나 보던 투표가 마감되면 목록과 결과를 서버에서 다시 받는다.
     if ((event.type === 'POLL_CREATED' && data.type === 'GENERAL')
       || (event.type === 'POLL_CLOSED' && current.some(poll => poll.pollId === data.pollId))) void sync()
@@ -65,7 +68,10 @@ export function watchPollResults({ roomId, onPolls, onConnection, onDenied }) {
   function handleResults(frame) {
     let event
     try { event = JSON.parse(frame.body) } catch { return }
-    if (!isResultsEvent(event) || !current.some(poll => poll.pollId === event.data?.pollId)) return
+    const pollId = event?.data?.pollId
+    // 진행 중인 투표의 응답만 반영한다. 마감된 투표의 집계는 서버가 확정한 값이다.
+    if (!isResultsEvent(event) || closed.has(pollId)
+      || !current.some(poll => poll.pollId === pollId && poll.status === 'OPEN')) return
     // 응답 이벤트가 먼저 오면 진행 중인 조회 결과보다 새 것이므로 앞선 조회는 버린다.
     revision++
     show(current.map(poll => applyCounts(poll, event.data)))

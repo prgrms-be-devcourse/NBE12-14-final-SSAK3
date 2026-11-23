@@ -133,3 +133,24 @@ test('이해도 체크가 한 번도 없으면 결과 패널을 보이지 않는
   await expect.poll(() => state.subscribed.has(resultsTopic)).toBe(true)
   await expect(summary(page)).toHaveCount(0)
 })
+
+test('마감된 이해도 체크에 늦게 도착한 응답 이벤트는 확정된 결과를 덮어쓰지 않는다', async ({ page, context }) => {
+  const state = await setup(page, context, { open: understanding('OPEN') })
+  state.results = results('OPEN', [1, 0, 0], 10)
+  await page.goto(`/host/rooms/${roomId}`)
+  await expect(summary(page).getByText('진행 중')).toBeVisible()
+  await expect.poll(() => state.subscribed.has(pollsTopic) && state.subscribed.has(resultsTopic)).toBe(true)
+
+  state.open = null
+  state.closed = [{ ...understanding('CLOSED'), closedAt: '2026-11-21T03:01:00Z' }]
+  state.results = results('CLOSED', [5, 3, 1], 12)
+  state.push[pollsTopic]({ type: 'POLL_CLOSED', data: { pollId: 501, roomId, closeReason: 'HOST' } })
+  await expect(summary(page).getByText('마감', { exact: true })).toBeVisible()
+  await expect(summary(page).getByRole('listitem').filter({ hasText: '이해됨' })).toContainText('5명')
+
+  state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
+    pollId: 501, totalParticipants: 12, respondedParticipants: 1, unrespondedParticipants: 11, counts: { 1: 1 } } })
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)))
+  await expect(summary(page).getByRole('listitem').filter({ hasText: '이해됨' })).toContainText('5명')
+  await expect(summary(page).getByText('미응답', { exact: true }).locator('xpath=..')).toContainText('3명')
+})
