@@ -91,6 +91,11 @@ test('강연자는 투표를 생성하고 새로고침 후 복원하고 마감�
 
         // 진행 중인 투표 목록
         if (path === `${base}/polls` && method === 'GET') {
+            // 이해도 체크 결과 패널이 마감된 투표 목록을 조회한다. 일반 투표만 있으므로 비어 있다.
+            if (url.searchParams.get('status') === 'CLOSED') {
+                return ok({ polls: [], serverTime: new Date().toISOString() })
+            }
+
             expect(url.searchParams.get('status')).toBe('OPEN')
 
             state.listReads++
