@@ -15,13 +15,14 @@ public record ReportInput(long roomId, Instant startedAt, Instant endedAt, SttRe
                           List<Chat> chats, List<Analysis> analyses, List<Poll> polls) {
 
     public record Window(Instant startAt, Instant endAt) {
+        public static long indexForPoint(Instant time, Instant roomStart, Instant roomEnd) {
+            // 종료 정각은 다음 분이 아니라 직전 구간에 연결한다.
+            Instant point = time.equals(roomEnd) && time.isAfter(roomStart) ? time.minusNanos(1) : time;
+            return Duration.between(roomStart, point).getSeconds() / 60;
+        }
+
         public static Window forPoint(Instant time, Instant roomStart, Instant roomEnd) {
-            long seconds = Duration.between(roomStart, time).getSeconds();
-            // 종료 정각이 분 경계여도 빈 다음 구간을 만들지 않는다.
-            if (time.equals(roomEnd) && seconds > 0) {
-                seconds--;
-            }
-            Instant start = roomStart.plusSeconds(seconds / 60 * 60);
+            Instant start = roomStart.plusSeconds(indexForPoint(time, roomStart, roomEnd) * 60);
             Instant end = start.plusSeconds(60);
             return new Window(start, end.isAfter(roomEnd) ? roomEnd : end);
         }

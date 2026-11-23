@@ -31,6 +31,8 @@ Response — 202 Accepted
 
 SCRUM-158의 내부 진입점은 `ReportInputService.collect(roomId, hostEmail)`이다. 호출자는 인증된 강연자의 이메일을 전달한다. 서비스는 방 소유권과 종료 여부를 확인한 후 같은 DB 스냅샷에서 입력을 읽는다. 다른 방이나 강연자 채팅을 가리키는 AI 근거 연결이 발견되면 `REPORT_INPUT_NOT_READY`로 수집을 중단한다.
 
+SCRUM-159의 `ReportInputService.collectTimeline(roomId, hostEmail)`은 같은 수집 절차로 읽은 한 강연방의 기록을 시간순으로 묶어 `timeline`과 보고서 전체의 `dataLimitations`를 반환한다. 구간을 구성할 때는 저장된 DB 기록만 사용한다.
+
 수집 대상: `stt_segments`(실제 발언), `stt_gaps`(누락 구간), `chat_messages`(청중 채팅 원문), `ai_analyses`·`ai_topic_groups`(저장된 분석 구간과 주제별 의견 요약), `polls`·`poll_options`·`poll_responses`(일반 투표와 이해도 체크 `type=UNDERSTANDING` 의 마감된 결과).
 
 채팅 원문은 해당 강연방에서 청중이 작성한 메시지(`participant_id IS NOT NULL`)만 수집한다. 강연자가 채팅으로만 남긴 답변은 보고서 입력에서 제외하며, 강연자의 설명은 저장된 STT 발언을 근거로 확인한다.
@@ -45,7 +47,7 @@ SCRUM-158의 내부 진입점은 `ReportInputService.collect(roomId, hostEmail)`
 
 시간대별 연결 기준
 
-강연 시작 시각과 종료 시각이 같은 초이고 표시할 기록이 있으면, 타임라인에 해당 시각을 한 번 표시하고 각 기록을 그 아래에 한 번씩 연결한다. 이때 시작 시각과 종료 시각은 실제 저장된 동일 시각을 사용한다.
+타임라인의 첫 구간은 강연을 시작한 시각에 열린다. 예를 들어 10:00:15부터 10:02:25까지의 강연은 10:00:15~10:01:15, 10:01:15~10:02:15, 10:02:15~10:02:25로 나눈다. 기록이 없는 분도 순서대로 유지한다. 시작 시각과 종료 시각이 같으면 표시할 기록이 있을 때만 그 시각의 구간 하나를 만든다.
 
 | 데이터 | 연결 기준 |
 | --- | --- |
@@ -54,7 +56,11 @@ SCRUM-158의 내부 진입점은 `ReportInputService.collect(roomId, hostEmail)`
 | 채팅 | 서버 수신 시각 |
 | 이해도 체크 | 투표를 연 시각(`created_at`)이 속한 구간에 연결하고 `openedAt`·`closedAt` 을 함께 기록 |
 | 일반 투표 | 투표를 연 시각(`created_at`)이 속한 구간에 한 번 표시하고 시작 시각(`openedAt`)·실제 마감 시각(`closedAt`)·최종 집계를 함께 제공 |
-| AI 의견 요약 | 같은 `startedAt` 기준 30초 분석 구간과 근거 메시지 시각 |
+| AI 의견 요약 | 저장된 30초 분석 구간이 속한 분에 연결한다. 각 주제는 원문 메시지 ID를 참조한다. |
+
+발언과 누락 구간이 분 경계를 걸치면 실제로 겹치는 각 분에서 **같은 ID와 원래 시작·종료 시각**을 보여준다. 예를 들어 위 강연에서 10:01:10~10:01:20 발언은 첫째·둘째 구간에 모두 보인다. 10:01:15에 끝나는 발언은 첫째 구간에만, 10:01:15에 시작하고 끝나는 발언은 둘째 구간에만 보인다. 강연 종료 시각에 시작하고 끝나는 기록은 마지막 구간에 한 번 포함한다.
+
+발언의 추정 시각이 강연 시간과 전혀 겹치지 않으면 타임라인에서 제외하고, 보고서 전체의 `dataLimitations`에 ‘강연 시간에 연결할 수 없는 발언 1건이 있습니다.’처럼 발언 수를 안내한다. 원문은 강연방의 ‘저장된 발언 보기’에서 확인할 수 있다. 일부라도 겹치는 발언은 해당 구간에 원문 그대로 연결하며 이 건수에서 제외한다.
 
 종료된 강연의 보고서를 만들 때 STT 누락 구간의 `endedAt`이 `null`이면 누락 시작부터 **강연 종료 시각**까지 겹치는 60초 구간에 안내를 표시한다. 보고서에는 원래 시작 시각과 `endedAt: null`을 유지하고, 화면에는 ‘누락 시작 10:28:20 · 복구 시각 미확인’처럼 표시한다. 같은 시간대에 저장된 청중 채팅과 투표는 각자의 연결 기준에 따라 그대로 포함한다.
 
@@ -67,7 +73,7 @@ SCRUM-158의 내부 진입점은 `ReportInputService.collect(roomId, hostEmail)`
 이해 부족 라운드 표시를 포함할 때는 POLL-06의 기준을 따른다. `lackCount = CONFUSED + NOT_UNDERSTOOD`, `lackRatio`의 분모는 응답자 수이며 소수 첫째 자리로 반올림한다. 기본 `minCount=3`, `ratio=40` 기준을 모두 충족할 때 `lowUnderstanding=true`다. 이 수치는 해당 라운드의 관찰 결과이며 강의 전체의 이해도나 설명 실패를 뜻하지 않는다. 진행 중 라운드가 남거나 마감 집계가 확정되지 않았다면 `REPORT_INPUT_NOT_READY`로 처리한다.
 
 
-기본 구간: 보고서는 강연 `startedAt` 기준 60초 단위 `[start, end)`로 분할한다. AI 분석은 같은 `startedAt` 기준 30초 `[start, end)` 구간이므로, 하나의 정규 보고서 구간에는 시간 범위가 포함되는 AI 분석 구간 결과 두 개를 연결한다. 종료 시 30초 미만 잔여 분석 구간은 마지막 보고서 구간에 연결한다. 보고서는 저장된 `ai_analyses`·`ai_topic_groups`를 재사용하며, 빈 분석 구간의 `COMPLETED`는 그룹 0개로 표현한다.
+하나의 60초 구간에는 같은 강연 시작 시각을 기준으로 한 30초 AI 분석 최대 두 개가 들어간다. 마지막 30초 미만의 분석은 마지막 보고서 구간에 연결한다. `audienceOpinions`는 저장된 주제마다 분석 ID·실제 분석 시작/종료 시각·원문 메시지 ID를 제공한다. 주제가 없는 `COMPLETED`는 항목을 추가하지 않는다. `FAILED`는 해당 분석 시각과 실패 상태 한 건을 남긴다. 이때도 `chatMessages`에서 원문을 읽을 수 있다.
 
 보고서의 중심은 강연 전체 기간의 기록을 종합한 `overview`다. 60초 구간은 기록과 근거를 시간대별로 찾아보기 위한 단위이며, 각 구간마다 별도의 회고 해석을 생성하지 않는다. 이번 범위에서 `timeline.aiInterpretation`은 제외한다. `timeline`은 서버가 원문·집계·누락 구간과 저장된 청중 의견 분석 결과를 연결해 구성하고, 기존 AI 의견 요약은 원문과 구분하여 표시한다. 새 보고서 LLM은 전체 강연을 종합한 요약을 작성하며 각 요약 항목에서 관련 구간과 근거를 참조한다.
 
@@ -125,7 +131,7 @@ SCRUM-158의 내부 진입점은 `ReportInputService.collect(roomId, hostEmail)`
 
 데이터 한계는 보고서 전체의 `dataLimitations`와 영향받는 각 요약 항목 및 `perspectives` 입장의 `limitations`에 표시한다. 두 필드는 서버가 실제 입력 기록·STT 누락 구간·청중 분석 실패 상태를 기준으로 구성하는 안내 문자열 배열이며, LLM에 생성이나 판정을 맡기지 않는다. 항목·입장에 적용되는 한계가 없으면 `limitations`는 빈 배열이다. 서버는 검증된 관련 시간대와 근거 기록의 범위를 실제 누락·실패 구간과 대조해 영향을 연결한다. 각 입장의 한계는 해당 입장에 유지하고 상위 항목에도 중복을 제거해 반영한다. 보고서 전체의 한계를 무관한 모든 항목에 일괄 복사하지 않는다. 구간에 관한 안내에는 해당 시간대를 포함하며, 원문이 남아 있는 분석 실패와 STT 기록 누락을 서로 다른 한계로 표현한다. 최종 저장·조회 JSON에 서버가 구성한 한계를 포함하고 조회 시 LLM을 호출하지 않는다.
 
-보고서 JSON 예시
+아래 예시는 전체 보고서에서 1분 구간 하나를 발췌한 것이다. 투표는 그 분에 열렸으므로 이후에 마감된 최종 결과도 이 구간에서 확인한다. 예시에서는 선택지별 ID와 비율을 생략했다.
 
 ```json
 {
@@ -149,12 +155,12 @@ SCRUM-158의 내부 진입점은 `ReportInputService.collect(roomId, hostEmail)`
       "startAt": "2026-11-17T01:12:00Z",
       "endAt": "2026-11-17T01:13:00Z",
       "sttSegments": [
-        { "segmentId": 9001, "transcript": "Redis는 메모리 기반 데이터 저장소입니다." }
+        { "segmentId": 9001, "startAt": "2026-11-17T01:12:05Z", "endAt": "2026-11-17T01:12:12Z", "transcript": "Redis는 메모리 기반 데이터 저장소입니다." }
       ],
       "sttGaps": [],
       "chatMessages": [
         { "messageId": 1001, "text": "Redis를 사용하는 이유가 궁금합니다.", "createdAt": "2026-11-17T01:12:10Z" },
-        { "messageId": 1003, "text": "Redis 도입 이유를 더 설명해 주세요.", "createdAt": "2026-11-17T01:12:30Z" }
+        { "messageId": 1003, "text": "Redis 도입 이유를 더 설명해 주세요.", "createdAt": "2026-11-17T01:12:25Z" }
       ],
       "understandingChecks": [
         {
@@ -173,19 +179,29 @@ SCRUM-158의 내부 진입점은 `ReportInputService.collect(roomId, hostEmail)`
       ],
       "audienceOpinions": [
         {
+          "analysisId": 301,
+          "status": "COMPLETED",
+          "startAt": "2026-11-17T01:12:00Z",
+          "endAt": "2026-11-17T01:12:30Z",
           "topic": "Redis 사용 이유",
-          "category": "MIXED",
+          "category": "QUESTION",
           "summary": "Redis 도입 이유를 궁금해하는 의견이 있었습니다.",
           "topicGroupIds": [401],
-          "sourceMessageIds": [1001, 1003]
+          "sourceMessageIds": [1001, 1003],
+          "messageCount": 2
         }
       ],
       "polls": [
-        { "pollId": 501, "type": "GENERAL", "question": "Redis가 필요한 이유를 이해했나요?", "respondedParticipants": 12 }
+        {
+          "pollId": 501, "type": "GENERAL", "question": "어떤 예제를 더 보고 싶나요?",
+          "openedAt": "2026-11-17T01:12:40Z", "closedAt": "2026-11-17T01:13:30Z",
+          "totalParticipants": 20, "respondedParticipants": 12, "unrespondedParticipants": 8,
+          "responseRate": 60.0, "counts": { "캐시": 8, "세션": 4 }
+        }
       ]
     }
   ],
-  "dataLimitations": ["STT 전사 시각은 브라우저 추정값입니다."],
+  "dataLimitations": ["강연 시간에 연결할 수 없는 발언 1건이 있습니다. 원문은 강연방의 ‘저장된 발언 보기’에서 확인할 수 있습니다."],
   "evidencePolicy": "동일 시간대의 관찰은 인과관계를 의미하지 않습니다."
 }
 ```

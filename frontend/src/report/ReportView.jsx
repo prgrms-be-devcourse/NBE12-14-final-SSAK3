@@ -5,6 +5,9 @@ const groups = [['mainInterests', '01', '주요 관심사', '청중의 관심이
   ['suggestions', '03', '다음 강연을 위한 제안', '다음 설명을 준비하는 아이디어']]
 const labels = { CHAT_MESSAGE: '청중 질문·의견', STT_SEGMENT: '강사 발언', POLL_RESULT: '투표·이해도 체크' }
 const choices = { UNDERSTOOD: '이해됨', CONFUSED: '헷갈림', NOT_UNDERSTOOD: '모르겠음' }
+const koreanClock = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit',
+})
 export function elapsed(value, start) {
   const seconds = Math.floor((Date.parse(value) - Date.parse(start)) / 1000)
   if (!Number.isFinite(seconds) || seconds < 0) return '시각 확인 필요'
@@ -24,9 +27,26 @@ function Limits({ values = [] }) {
     <strong>데이터 한계</strong><ul>{values.map((s, i) => <li key={i}>{s}</li>)}</ul>
   </aside>
 }
+function ClockTime({ value }) {
+  const date = new Date(value)
+  if (!value || !Number.isFinite(date.getTime())) return '시각 확인 필요'
+  const fraction = date.getMilliseconds() ? `.${String(date.getMilliseconds()).padStart(3, '0')}` : ''
+  return <time dateTime={value}>{koreanClock.format(date)}{fraction}</time>
+}
+function GapNotice({ gap }) {
+  const start = gap.startedAt ?? gap.startAt
+  const end = gap.endedAt ?? gap.endAt
+  return <p className="report-limits">발언 기록 없음 · 누락 시작 <ClockTime value={start} />
+    {' · '}{end ? <>복구 <ClockTime value={end} /></> : '복구 시각 미확인'} (한국 시간).
+    누락된 강사 설명·답변은 확인할 수 없습니다.</p>
+}
 function RecordBody({ record, start }) {
   const r = record.data
-  if (record.type !== 'POLL_RESULT') return <p className="report-original">{r.transcript ?? r.text}</p>
+  if (record.type === 'STT_SEGMENT') return <>
+    <p className="report-muted">발언 시각 <ClockTime value={r.startAt} /> ~ <ClockTime value={r.endAt} /> (한국 시간)</p>
+    <p className="report-original">{r.transcript}</p>
+  </>
+  if (record.type === 'CHAT_MESSAGE') return <p className="report-original">{r.text}</p>
   return <div className="report-poll">
     <p><strong>{r.question}</strong></p>
     <p className="report-muted">시작 {elapsed(r.openedAt, start)} · 마감 {elapsed(r.closedAt, start)} · 마감된 최종 결과</p>
@@ -114,21 +134,22 @@ export function ReportView({ content, room }) {
           const isOpen = event.currentTarget.open
           setOpened(prev => { if (prev.has(index) === isOpen) return prev; const next = new Set(prev); isOpen ? next.add(index) : next.delete(index); return next })
         }}>
-          <summary><span className="report-window-time">{elapsed(row.startAt, room.startedAt)}—{elapsed(row.endAt, room.startedAt)}</span>
+          <summary><span className="report-window-time">{elapsed(row.startAt, room.startedAt)}
+            {Date.parse(row.startAt) !== Date.parse(row.endAt) && `—${elapsed(row.endAt, room.startedAt)}`}</span>
             <span className="report-window-count">{count ? `실제 기록 ${count}건` : '실제 기록 없음'}</span>
             {(gaps.length > 0 || opinions.some(o => o.status === 'FAILED')) && <span className="report-warning-tag">누락·실패 안내</span>}
             {opinions.some(o => o.status !== 'FAILED') && <span className="report-tag report-ai">AI 요약</span>}
           </summary>
           <div className="report-window-body">
-            {gaps.map((gap, n) => <p className="report-limits" key={n}>발언 기록 없음 · {elapsed(gap.startAt ?? gap.startedAt, room.startedAt)}~{gap.endAt || gap.endedAt ? elapsed(gap.endAt ?? gap.endedAt, room.startedAt) : '종료 시각 미확인'}. 설명·답변 여부를 판단할 수 없습니다.</p>)}
+            {gaps.map(gap => <GapNotice key={gap.gapId ?? gap.id} gap={gap} />)}
             {opinions.filter(o => o.status === 'FAILED').map((o, n) => <p className="report-limits" key={n}>청중 의견 AI 분석 실패 · {elapsed(o.startAt, room.startedAt)}~{elapsed(o.endAt, room.startedAt)}. 남아 있는 원문 기록을 확인해 주세요.</p>)}
             {Object.entries(labels).map(([type, label]) => <section className="report-record-group" key={type}>
               <h4>{label} <span className="report-tag">실제 기록</span></h4>
               {!rows.some(r => r.type === type) && <p className="report-muted">이 구간에 해당 기록이 없습니다.</p>}
-              {rows.filter(r => r.type === type).sort((a, b) => (a.time || '').localeCompare(b.time || '') || a.id - b.id).map(record => {
+              {rows.filter(r => r.type === type).sort((a, b) => Date.parse(a.time) - Date.parse(b.time) || a.id - b.id).map(record => {
                 const id = targetId(index, record.type, record.id)
                 return <article tabIndex={-1} id={id} key={id} className={`report-record ${highlight === id ? 'report-highlight' : ''}`}>
-                  <time>{elapsed(record.time, room.startedAt)}</time><RecordBody record={record} start={room.startedAt} />
+                  {record.type !== 'STT_SEGMENT' && <time>{elapsed(record.time, room.startedAt)}</time>}<RecordBody record={record} start={room.startedAt} />
                 </article>
               })}
             </section>)}
