@@ -3,3 +3,5 @@ gradlew text eol=lf
 *.bat text eol=crlf
 infra/terraform/*.sh text eol=lfinfra/preview/*.yaml text eol=lf
 infra/preview/*.html text eol=lf
+
+infra/deploy/*.sh text eol=lf
