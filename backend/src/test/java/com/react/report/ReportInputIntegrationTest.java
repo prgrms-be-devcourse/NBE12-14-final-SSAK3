@@ -1,11 +1,14 @@
 package com.react.report;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.domain.TopicCategory;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
 import com.react.report.dto.ReportInput;
 import com.react.report.service.ReportInputService;
+import com.react.stt.dto.SttRecordsView;
+import com.react.stt.service.SttSessionService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +41,8 @@ class ReportInputIntegrationTest {
     @Autowired JdbcClient jdbc;
     @Autowired DataSource dataSource;
     @Autowired ReportInputService service;
+    @Autowired SttSessionService stt;
+    @Autowired ObjectMapper objectMapper;
     private String email;
     private long host;
 
@@ -103,6 +108,49 @@ class ReportInputIntegrationTest {
     }
 
     @Test
+    void 분별_타임라인에_같은_방의_원문과_분석_근거_및_마감_집계만_연결한다() {
+        Fixture a = fillLecture(room(90));
+        Fixture b = fillLecture(room(90));
+        for (Fixture own : new Fixture[]{a, b}) {
+            var report = service.collectTimeline(own.room(), email);
+            assertThat(report.timeline()).hasSize(2);
+            var first = report.timeline().getFirst();
+            var last = report.timeline().getLast();
+            assertThat(first.chatMessages()).extracting(c -> c.messageId()).containsExactly(own.firstChat(), own.repeatedChat());
+            assertThat(last.chatMessages()).extracting(c -> c.messageId()).containsExactly(own.atBoundary(), own.atEnd());
+            assertThat(first.sttSegments()).extracting(s -> s.segmentId())
+                    .containsExactly(own.firstSegment(), own.secondSegment());
+            assertThat(first.sttGaps()).extracting(g -> g.gapId()).containsExactly(own.gap());
+            assertThat(last.sttSegments()).isEmpty();
+            assertThat(last.sttGaps()).isEmpty();
+            assertThat(first.polls()).singleElement().satisfies(p -> {
+                assertThat(p.pollId()).isEqualTo(own.general());
+                assertThat(p.closedAt()).isEqualTo(UTC_START.plusSeconds(64));
+                assertThat(p.options()).extracting(o -> o.count()).containsExactly(0L, 1L);
+            });
+            assertThat(first.understandingChecks()).isEmpty();
+            assertThat(last.polls()).isEmpty();
+            assertThat(last.understandingChecks()).singleElement().satisfies(p -> {
+                assertThat(p.pollId()).isEqualTo(own.check());
+                assertThat(p.unrespondedParticipants()).isEqualTo(2);
+                assertThat(p.lackCount()).isOne();
+                assertThat(p.lowUnderstanding()).isFalse();
+            });
+            assertThat(first.audienceOpinions()).singleElement().satisfies(opinion -> {
+                assertThat(opinion.topicGroupIds()).containsExactly(own.group());
+                assertThat(opinion.sourceMessageIds()).containsExactly(own.firstChat(), own.repeatedChat());
+            });
+            assertThat(last.audienceOpinions()).singleElement().satisfies(opinion -> {
+                assertThat(opinion.status()).isEqualTo(AiAnalysisStatus.FAILED);
+                assertThat(opinion.startAt()).isEqualTo(UTC_START.plusSeconds(60));
+                assertThat(opinion.endAt()).isEqualTo(UTC_START.plusSeconds(90));
+                assertThat(opinion.sourceMessageIds()).isEmpty();
+            });
+            assertThat(report.dataLimitations()).anySatisfy(notice -> assertThat(notice).contains("분석 실패"));
+        }
+    }
+
+    @Test
     void 종료가_정확히_분_경계일_때와_시작과_같은_초일_때_마지막_채팅을_한번만_수집한다() {
         for (int duration : new int[]{60, 0}) {
             long room = room(duration);
@@ -115,7 +163,44 @@ class ReportInputIntegrationTest {
                 assertThat(chat.messageId()).isEqualTo(message);
                 assertThat(chat.window()).isEqualTo(new ReportInput.Window(UTC_START, UTC_START.plusSeconds(duration)));
             });
+            assertThat(service.collectTimeline(room, email).timeline()).singleElement().satisfies(window -> {
+                assertThat(window.startAt()).isEqualTo(UTC_START);
+                assertThat(window.endAt()).isEqualTo(UTC_START.plusSeconds(duration));
+                assertThat(window.chatMessages()).extracting(c -> c.messageId()).containsExactly(message);
+            });
         }
+    }
+
+    @Test
+    void 강연_밖의_발언은_건수로_안내하고_저장된_발언에서는_그대로_읽을_수_있다() throws Exception {
+        long room = room(38);
+        analysis(room, 0, 30, "COMPLETED");
+        analysis(room, 30, 38, "FAILED");
+        long session = session(room, 0, 38);
+        long before = segment(session, -20_000, -19_000, 5);
+        long spanningStart = segment(session, -300, 200, 10);
+        long after = segment(session, 45_000, 46_000, 35);
+        segment(session(room(38), 0, 38), -12_000, -11_000, 5);
+
+        var report = service.collectTimeline(room, email);
+        var json = objectMapper.readTree(objectMapper.writeValueAsBytes(report));
+        assertThat(json.path("timeline").size()).isOne();
+        var window = json.at("/timeline/0");
+        assertThat(window.path("sttSegments").size()).isOne();
+        assertThat(window.at("/sttSegments/0/segmentId").asLong()).isEqualTo(spanningStart);
+        assertThat(window.at("/sttSegments/0/transcript").asText()).isEqualTo("같은 발언");
+        assertThat(Instant.parse(window.at("/sttSegments/0/startAt").asText())).isEqualTo(UTC_START.minusMillis(300));
+        assertThat(Instant.parse(window.at("/sttSegments/0/endAt").asText())).isEqualTo(UTC_START.plusMillis(200));
+        assertThat(window.at("/audienceOpinions/0/status").asText()).isEqualTo("FAILED");
+        assertThat(Instant.parse(window.at("/audienceOpinions/0/startAt").asText())).isEqualTo(UTC_START.plusSeconds(30));
+        assertThat(Instant.parse(window.at("/audienceOpinions/0/endAt").asText())).isEqualTo(UTC_START.plusSeconds(38));
+        assertThat(report.dataLimitations()).anySatisfy(notice -> assertThat(notice).contains("강연 시간에 연결할 수 없는 발언 2건", "저장된 발언 보기"));
+
+        var saved = stt.records(room, email, null, null);
+        assertThat(saved.segments()).extracting(SttRecordsView.Segment::segmentId)
+                .containsExactly(before, spanningStart, after);
+        assertThat(saved.segments().getFirst().segmentStartAt()).isEqualTo(UTC_START.minusSeconds(20));
+        assertThat(saved.segments().getLast().segmentEndAt()).isEqualTo(UTC_START.plusSeconds(46));
     }
 
     @Test
@@ -156,10 +241,13 @@ class ReportInputIntegrationTest {
     private void expectError(long room, String hostEmail, ErrorCode code) {
         assertThatThrownBy(() -> service.collect(room, hostEmail)).isInstanceOfSatisfying(BusinessException.class,
                 e -> assertThat(e.getErrorCode()).isEqualTo(code));
+        assertThatThrownBy(() -> service.collectTimeline(room, hostEmail)).isInstanceOfSatisfying(BusinessException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(code));
     }
 
     private record Fixture(long room, long firstChat, long repeatedChat, long atBoundary, long atEnd,
-                           long firstSession, long secondSession, long gap, long group, long general, long check) {}
+                           long firstSession, long secondSession, long firstSegment, long secondSegment,
+                           long gap, long group, long general, long check) {}
 
     private Fixture fillLecture(long room) {
         long first = participant(room);
@@ -173,8 +261,8 @@ class ReportInputIntegrationTest {
 
         long session = session(room, 0, 20);
         long next = session(room, 30, 55);
-        segment(next, 31);
-        segment(session, 0);
+        long secondSegment = segment(next, 31_120, 32_120, 33);
+        long firstSegment = segment(session, 120, 1_120, 2);
         long gap = insert("""
                 INSERT INTO stt_gaps(stt_session_id,event_key,started_at,ended_at,reason)
                 VALUES (?, 'gap1', ?, ?, 'ERROR')
@@ -200,7 +288,8 @@ class ReportInputIntegrationTest {
         long confused = option(check, "헷갈림", "CONFUSED", 2);
         option(check, "모르겠음", "NOT_UNDERSTOOD", 3);
         vote(check, confused, second, 73);
-        return new Fixture(room, firstChat, repeated, boundary, end, session, next, gap, group, general, check);
+        return new Fixture(room, firstChat, repeated, boundary, end, session, next, firstSegment, secondSegment,
+                gap, group, general, check);
     }
 
     private long room(int duration) {
@@ -223,12 +312,13 @@ class ReportInputIntegrationTest {
                 """, room, START.plusSeconds(start), START.plusSeconds(end));
     }
 
-    private void segment(long session, int second) {
-        var start = START.plusSeconds(second).plusNanos(120_000_000);
-        jdbc.sql("""
+    private long segment(long session, int startMillis, int endMillis, int receivedSecond) {
+        var start = START.plusNanos(startMillis * 1_000_000L);
+        var end = START.plusNanos(endMillis * 1_000_000L);
+        return insert("""
                 INSERT INTO stt_segments(stt_session_id,segment_key,transcript,segment_start_at,segment_end_at,received_at)
-                VALUES (?, 'seg1', '같은 발언', ?, ?, ?)
-                """).params(session, start, start.plusSeconds(1), start.plusSeconds(2)).update();
+                VALUES (?, ?, '같은 발언', ?, ?, ?)
+                """, session, UUID.randomUUID().toString(), start, end, START.plusSeconds(receivedSecond));
     }
 
     private long chat(long room, long participant, int second) {

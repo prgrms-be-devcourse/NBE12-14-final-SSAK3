@@ -13,6 +13,7 @@ import com.react.poll.entity.PollType;
 import com.react.poll.entity.UnderstandingStatus;
 import com.react.poll.service.PollResultMath;
 import com.react.report.dto.ReportInput;
+import com.react.report.dto.ReportTimeline;
 import com.react.report.repository.ReportInputRepository;
 import com.react.stt.service.SttSessionService;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,11 @@ public class ReportInputService {
     private final AiAnalysisRepository analyses;
     private final AiAnalysisQueryRepository topics;
     private final AiAnalysisWindowCalculator windows = new AiAnalysisWindowCalculator();
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ReportTimeline collectTimeline(long roomId, String hostEmail) {
+        return ReportTimelineAssembler.assemble(collect(roomId, hostEmail));
+    }
 
     /** hostEmail은 인증된 강연자 이메일이다. 모든 조회가 같은 DB 스냅샷을 읽는다. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)

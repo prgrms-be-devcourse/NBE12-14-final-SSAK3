@@ -25,7 +25,10 @@ function contentFor(kind) {
   const missing = kind === 'missing-data'
   const chats = noAudience ? [] : source.chats
   const segments = kind === 'empty' ? [] : syntheticSegments.filter(s => !missing || s.startAt < at(1080) || s.startAt >= at(1440))
-  const gap = { id: 4001, startAt: at(1080), endAt: at(1440) }
+  if (missing) segments.push({ segmentId: 9030, startAt: at(-0.25), endAt: at(62.125),
+    transcript: '강연 시작에 걸친 발언 예시입니다. 오늘은 가스가 계산되는 과정을 함께 살펴봅니다.' })
+  const gap = { gapId: 4001, startedAt: at(1080), endedAt: at(1440) }
+  const openGap = { gapId: 4002, startedAt: at(2900), endedAt: null }
   const understanding = { pollId: 2001, type: 'UNDERSTANDING', question: '지금 설명을 이해하셨나요?',
     openedAt: at(1140), closedAt: at(1200), respondedParticipants: 2, totalParticipants: 4,
     unrespondedParticipants: 2, counts: { UNDERSTOOD: 1, CONFUSED: 1, NOT_UNDERSTOOD: 0 } }
@@ -50,6 +53,11 @@ function contentFor(kind) {
   // Displayable limitations come from the server in production; this adapter simulates them.
   for (const items of Object.values(overview)) for (const item of items) {
     if (missing) item.limitations = [...dataLimitations]
+  }
+  if (missing) {
+    timeline.at(-1).sttGaps.push(openGap)
+    dataLimitations.push('48:20에 STT 누락이 시작되었으며 복구 시각을 확인할 수 없습니다.',
+      '강연 시간에 연결할 수 없는 발언 2건이 있습니다. 원문은 강연방의 ‘저장된 발언 보기’에서 확인할 수 있습니다.')
   }
   if (kind === 'empty') dataLimitations.push('수집된 기록이 없어 요약할 수 없습니다.')
   if (kind === 'stt') dataLimitations.push('청중 반응 기록이 부족해 관심사와 보충 설명 지점을 판단하기 어렵습니다.')
