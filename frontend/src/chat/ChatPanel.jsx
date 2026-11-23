@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import React, { useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { randomUuid } from '../uuid.js'
 import { mergeMessages } from './history.js'
 import { openRoomChat } from './roomChat.js'
@@ -33,7 +33,7 @@ export function ChatPanel(props) {
   return <RoomChatPanel key={scope} storageKey={scope} {...props} />
 }
 
-function RoomChatPanel({ roomId, live, viewer, since, onAccessError, storageKey }) {
+function RoomChatPanel({ roomId, live, viewer, since, onAccessError, storageKey, visible = true, rememberPositionRef }) {
   const [messages, setMessages] = useState([])
   const [connected, setConnected] = useState(false)
   const [history, setHistory] = useState('loading')
@@ -125,7 +125,8 @@ function RoomChatPanel({ roomId, live, viewer, since, onAccessError, storageKey 
       {live && !connected && !denied && <span>연결 확인 중</span>}
     </div>
     {denied ? <p role="alert">채팅을 이용할 권한이 없어요.</p> : <>
-      <MessageList messages={messages} viewer={viewer} history={history} />
+      <MessageList messages={messages} viewer={viewer} history={history}
+                   visible={visible} rememberPositionRef={rememberPositionRef} />
       {history === 'failed' && <div className="chat-feedback" role="alert">채팅 내역을 불러오지 못했어요.
         <button type="button" onClick={() => channel.current?.refresh()}>다시 불러오기</button></div>}
       {writable && <form className="chat-composer" onSubmit={submit}>
@@ -152,12 +153,23 @@ function RoomChatPanel({ roomId, live, viewer, since, onAccessError, storageKey 
   </section>
 }
 
-function MessageList({ messages, viewer, history }) {
+function MessageList({ messages, viewer, history, visible, rememberPositionRef }) {
   const list = useRef(null)
   const pinned = useRef(true)
+  const readingTop = useRef(0)
   const [seen, setSeen] = useState(0)
   const latest = messages.at(-1)?.messageId ?? 0
   const latestRef = useRef(latest)
+
+  function rememberPosition() {
+    const node = list.current
+    // 패널을 숨긴 뒤 도착한 scroll 이벤트는 마지막으로 보던 위치를 바꾸지 않는다.
+    if (!node?.clientHeight) return
+    readingTop.current = node.scrollTop
+    pinned.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 16
+    if (pinned.current) setSeen(latestRef.current)
+  }
+  useImperativeHandle(rememberPositionRef, () => rememberPosition)
 
   function goToLatest() {
     const node = list.current
@@ -168,8 +180,11 @@ function MessageList({ messages, viewer, history }) {
   }
   useLayoutEffect(() => {
     latestRef.current = latest
-    if (pinned.current) goToLatest()
-  }, [latest])
+    if (visible && pinned.current) goToLatest()
+  }, [latest, visible])
+  useLayoutEffect(() => {
+    if (visible && !pinned.current) list.current.scrollTop = readingTop.current
+  }, [visible])
   useLayoutEffect(() => {
     const observer = new ResizeObserver(() => { if (pinned.current) goToLatest() })
     observer.observe(list.current)
@@ -179,11 +194,7 @@ function MessageList({ messages, viewer, history }) {
   const unseen = seen && !pinned.current ? messages.filter(message => message.messageId > seen).length : 0
   return <div className="chat-stream">
     <div role="log" aria-label="채팅 메시지" aria-live="polite" aria-relevant="additions" tabIndex={0} ref={list} className="chat-log"
-      onScroll={() => {
-        const node = list.current
-        pinned.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 16
-        if (pinned.current) setSeen(latest)
-      }}>
+      onScroll={rememberPosition}>
       {messages.length > 0 ? <ol>{messages.map(message => {
         const mine = message.sender.type === viewer.type && message.sender.id === viewer.id
         return <li key={message.messageId} className={mine ? 'chat-own' : undefined}>

@@ -1,4 +1,4 @@
-import React, { useState, useSyncExternalStore } from 'react'
+import React, { useRef, useState, useSyncExternalStore } from 'react'
 import { AudienceRoomPanel } from '../ai/AudienceAnalysisPage.jsx'
 import { ChatPanel } from '../chat/ChatPanel.jsx'
 import { SttPanel } from '../stt/SttPanel.jsx'
@@ -22,7 +22,13 @@ function isCompact() {
 export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError }) {
   const compact = useSyncExternalStore(watchLayout, isCompact)
   const [activeTab, setActiveTab] = useState('ai')
+  const rememberChatPosition = useRef(null)
   const live = room.status === 'LIVE'
+
+  function selectTab(target) {
+    if (activeTab === 'chat' && target !== 'chat') rememberChatPosition.current?.()
+    setActiveTab(target)
+  }
 
   function changeTabByKey(event) {
     let target
@@ -31,7 +37,7 @@ export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError 
     else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') target = activeTab === 'ai' ? 'chat' : 'ai'
     else return
     event.preventDefault()
-    setActiveTab(target)
+    selectTab(target)
     document.getElementById(`room-tab-${target}`).focus()
   }
 
@@ -59,7 +65,7 @@ export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError 
       {tabs.map(({ id, label }) => <button key={id} id={`room-tab-${id}`} role="tab"
                                            aria-controls={`room-panel-${id}`} aria-selected={activeTab === id}
                                            tabIndex={activeTab === id ? 0 : -1}
-                                           onClick={() => setActiveTab(id)} onKeyDown={changeTabByKey}>
+                                           onClick={() => selectTab(id)} onKeyDown={changeTabByKey}>
         {label}
       </button>)}
     </div>}
@@ -70,6 +76,7 @@ export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError 
 
     <div className="room-chat" {...panelProps('chat')}>
       <ChatPanel roomId={room.roomId} live={live}
+                 visible={!compact || activeTab === 'chat'} rememberPositionRef={rememberChatPosition}
                  viewer={{ type: 'HOST', id: userId }}
                  since={room.startedAt} onAccessError={onAccessError} />
     </div>

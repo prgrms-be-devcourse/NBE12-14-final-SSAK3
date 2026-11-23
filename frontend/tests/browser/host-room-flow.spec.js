@@ -77,15 +77,32 @@ test('모바일에서 AI 요약과 채팅을 오가도 녹음과 입력이 유�
   await message.fill('작성 중인 질문')
   const log = chat.getByRole('log')
   await expect(log.getByText('질문 24', { exact: true })).toBeVisible()
-  await log.evaluate(el => { el.scrollTop = 120 })
-  await expect.poll(() => log.evaluate(el => el.scrollTop)).toBe(120)
   await expect(ai).toBeHidden()
   await expect(page.getByText('기록 저장', { exact: true })).toBeVisible()
   await expect(button(page, '녹음 중지')).toBeVisible()
+  await expect.poll(() => log.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(10)
+
+  // scroll 이벤트가 전달되기 전에 탭을 숨긴다.
+  await log.evaluate(el => {
+    el.scrollTop = 120
+    document.getElementById('room-tab-ai').click()
+  })
+  await expect(ai).toBeVisible()
+  await aiTab.press('ArrowRight')
+  // 다시 보인 패널의 ResizeObserver까지 실행된 뒤 읽던 위치를 확인한다.
+  const restored = await log.evaluate(el => new Promise(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve(el.scrollTop)))
+  }))
+  expect(restored).toBe(120)
+
   await chatTab.press('ArrowLeft')
   await expect(aiTab).toBeFocused()
   await expect(ai).toBeVisible()
+  room.messages.push({ ...room.messages.at(-1), messageId: 25, content: '새로 도착한 질문' })
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.locator('#room-panel-chat').getByText('새로 도착한 질문')).toHaveCount(1)
   await aiTab.press('ArrowRight')
+  await expect(chat.getByRole('button', { name: '새 메시지 1개 ↓' })).toBeVisible()
   await expect(chatTab).toBeFocused()
   await expect(message).toHaveValue('작성 중인 질문')
   await expect.poll(() => log.evaluate(el => el.scrollTop)).toBe(120)
