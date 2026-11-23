@@ -1,6 +1,6 @@
 package com.react.ai.service;
 
-import com.react.ai.dto.AudienceMessage;
+import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 
 import java.util.List;
@@ -10,7 +10,7 @@ import java.util.List;
  */
 @FunctionalInterface
 public interface AudienceAnalysisLlmClient {
-    AudienceAnalysisLlmResponse analyze(List<AudienceMessage> messages);
+    AudienceAnalysisLlmResponse analyze(List<AudienceAnalysisInputMessage> messages);
 
     default String modelName() {
         return null;

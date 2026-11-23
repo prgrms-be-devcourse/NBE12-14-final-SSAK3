@@ -7,7 +7,7 @@ import com.react.ai.config.AudienceAnalysisRetryProperties;
 import com.react.ai.domain.AiAnalysisFinalizationStatus;
 import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
-import com.react.ai.dto.AudienceMessage;
+import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
 import com.react.ai.exception.GeminiAudienceAnalysisException;
 import com.react.ai.repository.AiAnalysisFinalizationRepository;
@@ -104,13 +104,13 @@ class AiAnalysisEndToEndIntegrationTest {
         TestRoom room = insertRoom("LIVE", LIVE_START, null);
         long messageId = insertAudienceMessage(room, "재시도할 청중 질문", LIVE_START.plusSeconds(5));
         FakeAudienceAnalysisLlm fake = new FakeAudienceAnalysisLlm();
-        fake.rateLimitOnce(room.roomId());
+        fake.rateLimitOnce();
 
         scheduler(audienceService(fake), LIVE_START.plusSeconds(31)).processCompletedRegularWindows();
 
         long analysisId = analysisId(room.roomId(), LIVE_START, LIVE_START.plusSeconds(30));
         assertAnalysisStatus(analysisId, "COMPLETED");
-        assertThat(fake.callsFor(room.roomId())).isEqualTo(2);
+        assertThat(fake.calls()).isEqualTo(2);
         assertThat(topicGroupMessageIds(analysisId)).containsExactly(messageId);
         assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?")
                 .param(analysisId).query(Long.class).single()).isEqualTo(1L);
@@ -230,19 +230,16 @@ class AiAnalysisEndToEndIntegrationTest {
 
     private static final class FakeAudienceAnalysisLlm implements AudienceAnalysisLlmClient {
         private final AtomicInteger calls = new AtomicInteger();
-        private final Map<Long, AtomicInteger> callsByRoom = new HashMap<>();
-        private final Set<Long> rateLimitOnceRooms = new HashSet<>();
+        private boolean rateLimitOnce;
 
-        void rateLimitOnce(long roomId) {
-            rateLimitOnceRooms.add(roomId);
+        void rateLimitOnce() {
+            rateLimitOnce = true;
         }
 
         @Override
-        public AudienceAnalysisLlmResponse analyze(java.util.List<AudienceMessage> candidates) {
-            long roomId = candidates.getFirst().roomId();
-            int roomCalls = callsByRoom.computeIfAbsent(roomId, ignored -> new AtomicInteger()).incrementAndGet();
-            calls.incrementAndGet();
-            if (rateLimitOnceRooms.contains(roomId) && roomCalls == 1) {
+        public AudienceAnalysisLlmResponse analyze(java.util.List<AudienceAnalysisInputMessage> candidates) {
+            int currentCall = calls.incrementAndGet();
+            if (rateLimitOnce && currentCall == 1) {
                 throw new GeminiAudienceAnalysisException(GeminiAudienceAnalysisErrorCode.RATE_LIMIT, true,
                         Duration.ZERO, "fake rate limit");
             }
@@ -250,7 +247,7 @@ class AiAnalysisEndToEndIntegrationTest {
                 throw new GeminiAudienceAnalysisException(GeminiAudienceAnalysisErrorCode.INVALID_RESPONSE, false,
                         null, "fake invalid response");
             }
-            String sourceIds = candidates.stream().map(AudienceMessage::messageId)
+            String sourceIds = candidates.stream().map(AudienceAnalysisInputMessage::messageId)
                     .map(String::valueOf).collect(Collectors.joining(","));
             return new AudienceAnalysisLlmResponse("""
                     {"topics":[{"topic":"테스트 주제","summary":"청중 메시지를 요약했습니다.",
@@ -265,11 +262,6 @@ class AiAnalysisEndToEndIntegrationTest {
 
         int calls() {
             return calls.get();
-        }
-
-        int callsFor(long roomId) {
-            AtomicInteger count = callsByRoom.get(roomId);
-            return count == null ? 0 : count.get();
         }
     }
 }

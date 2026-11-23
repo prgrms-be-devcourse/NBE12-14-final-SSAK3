@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.react.ai.config.GeminiAudienceAnalysisProperties;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
-import com.react.ai.dto.AudienceMessage;
+import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
 import com.react.ai.exception.GeminiAudienceAnalysisException;
 import org.springframework.http.HttpHeaders;
@@ -36,7 +36,7 @@ public class GeminiAudienceAnalysisLlmClient implements AudienceAnalysisLlmClien
             category는 QUESTION, OPINION, REQUEST, CONFUSION, MIXED 중 하나만 사용한다.
             topic과 summary는 한국어로 간결하게 작성한다. summary는 강연자가 논의 흐름을 파악할 수 있도록 중립적으로 작성하며, 찬성·우려·반대 입장이 함께 있으면 양쪽을 모두 명확히 표현한다. 질문·요청·이해 부족 표현이 있으면 의견으로 바꾸거나 누락하지 말고, 각 질문·의견·요청의 핵심 내용을 빠뜨리지 않고 함께 요약한다.
             실제 메시지에 없는 질문·의견·사실, 발표자의 견해, 기술적 결론을 만들지 않는다. 합의나 결론이 없으면 합의된 것처럼 요약하지 않으며, 반대 의견을 하나의 합의된 의견으로 왜곡하지 않는다.
-            한 메시지는 최대 한 주제에만 연결하고, sourceMessageIds에는 입력 messages에 포함된 정수 ID만 사용한다.
+            한 메시지는 최대 한 주제에만 연결하고, sourceMessageIds에는 입력 messages에 포함된 대표 messageId 정수만 사용한다. occurrenceCount는 같은 원문이 실제로 발생한 횟수일 뿐, 고유 청중 수·찬성 수·동의 수가 아니므로 그렇게 해석하거나 요약하지 않는다.
             분석할 의견이 없으면 topics 빈 배열을 반환한다. JSON 외의 설명이나 Markdown은 반환하지 않는다.
             """;
 
@@ -52,7 +52,7 @@ public class GeminiAudienceAnalysisLlmClient implements AudienceAnalysisLlmClien
     }
 
     @Override
-    public AudienceAnalysisLlmResponse analyze(List<AudienceMessage> messages) {
+    public AudienceAnalysisLlmResponse analyze(List<AudienceAnalysisInputMessage> messages) {
         validateConfiguration();
         validateInput(messages);
 
@@ -208,7 +208,7 @@ public class GeminiAudienceAnalysisLlmClient implements AudienceAnalysisLlmClien
         }
     }
 
-    private void validateInput(List<AudienceMessage> messages) {
+    private void validateInput(List<AudienceAnalysisInputMessage> messages) {
         if (messages == null || messages.isEmpty()) {
             throw failure(GeminiAudienceAnalysisErrorCode.INPUT_LIMIT_EXCEEDED, false, null,
                     "Gemini 분석 입력이 비어 있습니다.");
@@ -217,7 +217,12 @@ public class GeminiAudienceAnalysisLlmClient implements AudienceAnalysisLlmClien
             throw failure(GeminiAudienceAnalysisErrorCode.INPUT_LIMIT_EXCEEDED, false, null,
                     "Gemini 분석 입력 메시지 수가 상한을 초과했습니다.");
         }
-        int inputCharacters = messages.stream().map(AudienceMessage::content)
+        if (messages.stream().anyMatch(message -> message.messageId() <= 0 || message.content() == null
+                || message.content().isBlank() || message.occurrenceCount() <= 0)) {
+            throw failure(GeminiAudienceAnalysisErrorCode.INPUT_LIMIT_EXCEEDED, false, null,
+                    "Gemini 분석 입력 메시지가 올바르지 않습니다.");
+        }
+        int inputCharacters = messages.stream().map(AudienceAnalysisInputMessage::content)
                 .mapToInt(content -> content == null ? 0 : content.length()).sum();
         if (inputCharacters > properties.maxInputCharacters()) {
             throw failure(GeminiAudienceAnalysisErrorCode.INPUT_LIMIT_EXCEEDED, false, null,
@@ -225,7 +230,7 @@ public class GeminiAudienceAnalysisLlmClient implements AudienceAnalysisLlmClien
         }
     }
 
-    private String createRequest(List<AudienceMessage> messages) {
+    private String createRequest(List<AudienceAnalysisInputMessage> messages) {
         ObjectNode request = objectMapper.createObjectNode();
         request.putObject("systemInstruction").putArray("parts").addObject().put("text", SYSTEM_INSTRUCTION);
         ArrayNode contents = request.putArray("contents");
@@ -241,13 +246,14 @@ public class GeminiAudienceAnalysisLlmClient implements AudienceAnalysisLlmClien
         return request.toString();
     }
 
-    private String messagePayload(List<AudienceMessage> messages) {
+    private String messagePayload(List<AudienceAnalysisInputMessage> messages) {
         ObjectNode payload = objectMapper.createObjectNode();
         ArrayNode messageArray = payload.putArray("messages");
-        for (AudienceMessage message : messages) {
+        for (AudienceAnalysisInputMessage message : messages) {
             ObjectNode item = messageArray.addObject();
             item.put("messageId", message.messageId());
             item.put("content", message.content());
+            item.put("occurrenceCount", message.occurrenceCount());
         }
         return payload.toString();
     }
