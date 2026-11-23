@@ -19,6 +19,7 @@ public enum ErrorCode {
     // 리소스 오류: 404
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 대상을 찾을 수 없습니다."),
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "강연방을 찾을 수 없습니다."),
+    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "이 강연방의 보고서를 찾을 수 없습니다."),
     INVALID_JOIN_CODE(HttpStatus.NOT_FOUND, "유효하지 않은 강연 참여 코드입니다."),
     POLL_NOT_FOUND(HttpStatus.NOT_FOUND, "투표를 찾을 수 없습니다."),
 
@@ -32,7 +33,7 @@ public enum ErrorCode {
     POLL_ALREADY_CLOSED(HttpStatus.CONFLICT, "이미 종료된 투표입니다."),
     POLL_CLOSED(HttpStatus.CONFLICT, "종료된 투표에는 응답할 수 없습니다."),
     ALREADY_VOTED(HttpStatus.CONFLICT, "이미 응답한 투표입니다."),
-    ROOM_NOT_ENDED(HttpStatus.CONFLICT, "강연이 종료된 후 보고서를 생성할 수 있습니다."),
+    ROOM_NOT_ENDED(HttpStatus.CONFLICT, "강연이 끝나면 회고 보고서가 자동으로 생성됩니다."),
     REPORT_INPUT_NOT_READY(HttpStatus.CONFLICT, "회고 보고서 생성에 필요한 데이터가 준비되지 않았습니다."),
 
     // 요청 제한: 429

@@ -44,6 +44,11 @@
 .room-app #create-error { color:#b3261e; font-size:14px; min-height:20px; margin:4px 0 20px; }
 .room-grid { display:grid; grid-template-columns:1.1fr 1fr; gap:24px; align-items:start; }
 .room-ended { grid-template-columns:1fr; }
+.room-report-status { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 24px; }
+.room-report-status h2 { margin:0 0 4px; }
+.room-report-status p { margin:0; color:#515c61; }
+.room-report-status a { display:inline-block; padding:10px 16px; border-radius:9px; background:#087f5b; font-weight:600; }
+.room-app .room-report-status a { color:white; }
 .room-description { white-space:pre-wrap; overflow-wrap:anywhere; margin-bottom:36px; }
 .room-app dl { border-top:1px solid #e7e9ec; padding-top:24px; display:grid; grid-template-columns:90px 1fr; gap:12px; font-size:14px; }
 .room-app dt { color:#666c75; }

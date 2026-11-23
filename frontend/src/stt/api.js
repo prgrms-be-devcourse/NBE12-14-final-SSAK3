@@ -1,8 +1,9 @@
 export class ApiError extends Error {
-  constructor(status, code) {
+  constructor(status, code, timestamp) {
     super(code || `HTTP_${status}`)
     this.status = status
     this.code = code
+    this.timestamp = timestamp
   }
 }
 
@@ -76,7 +77,7 @@ export async function request(path, { method = 'GET', body, headers: extraHeader
   }
 
   if (!response.ok) {
-    throw new ApiError(response.status, json?.code)
+    throw new ApiError(response.status, json?.code, json?.timestamp)
   }
 
   return json?.data
