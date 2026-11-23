@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -55,6 +56,7 @@ class AiAnalysisEndToEndIntegrationTest {
     @Autowired AiAnalysisRepository analyses;
     @Autowired AiAnalysisTargetRoomRepository targetRooms;
     @Autowired AiAnalysisFinalizationRepository finalizations;
+    @Autowired ApplicationEventPublisher events;
     @Autowired AudienceMessageRepository messages;
     @Autowired AiLlmCallUsageRepository usages;
 
@@ -134,7 +136,7 @@ class AiAnalysisEndToEndIntegrationTest {
 
         FakeAudienceAnalysisLlm fake = new FakeAudienceAnalysisLlm();
         AiAnalysisFinalizationService service = new AiAnalysisFinalizationService(finalizations, analyses,
-                audienceService(fake), new AiAnalysisWindowCalculator());
+                audienceService(fake), new AiAnalysisWindowCalculator(), events);
         AiAnalysisFinalizationRepository.EndedRoom endedRoom = new AiAnalysisFinalizationRepository.EndedRoom(
                 room.roomId(), FINALIZATION_START, endedAt);
 

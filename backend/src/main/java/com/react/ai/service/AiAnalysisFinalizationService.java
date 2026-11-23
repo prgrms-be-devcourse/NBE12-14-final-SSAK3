@@ -1,11 +1,13 @@
 package com.react.ai.service;
 
 import com.react.ai.domain.AiAnalysisStatus;
+import com.react.ai.event.AiAnalysisFinalized;
 import com.react.ai.repository.AiAnalysisFinalizationRepository;
 import com.react.ai.repository.AiAnalysisRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +27,7 @@ public class AiAnalysisFinalizationService {
     private final AiAnalysisRepository analyses;
     private final AudienceAnalysisService audienceAnalysisService;
     private final AiAnalysisWindowCalculator calculator;
+    private final ApplicationEventPublisher events;
 
     public FinalizationRun processPendingRooms(int maxRooms, int maxWindowsPerRoom, Duration leaseDuration) {
         List<AiAnalysisFinalizationRepository.EndedRoom> candidates = finalizations.findCandidates(maxRooms);
@@ -87,6 +90,7 @@ public class AiAnalysisFinalizationService {
             if (allTerminal(expected, latest)) {
                 int failedAnalysisCount = failedCount(expected, latest);
                 if (finalizations.complete(room.roomId(), claimToken, failedAnalysisCount)) {
+                    events.publishEvent(new AiAnalysisFinalized(room.roomId()));
                     return FinalizationRoomResult.completed(failedAnalysisCount);
                 }
                 return FinalizationRoomResult.skipped();
@@ -95,9 +99,11 @@ public class AiAnalysisFinalizationService {
                 return FinalizationRoomResult.deferred();
             }
         } catch (IllegalArgumentException e) {
-            return finalizations.markFailed(room.roomId(), claimToken, "INVALID_LECTURE_TIME")
-                    ? FinalizationRoomResult.failed()
-                    : FinalizationRoomResult.skipped();
+            if (finalizations.markFailed(room.roomId(), claimToken, "INVALID_LECTURE_TIME")) {
+                events.publishEvent(new AiAnalysisFinalized(room.roomId()));
+                return FinalizationRoomResult.failed();
+            }
+            return FinalizationRoomResult.skipped();
         } catch (RuntimeException e) {
             finalizations.release(room.roomId(), claimToken);
             throw e;

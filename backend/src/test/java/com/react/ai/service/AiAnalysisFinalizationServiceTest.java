@@ -1,10 +1,12 @@
 package com.react.ai.service;
 
 import com.react.ai.domain.AiAnalysisStatus;
+import com.react.ai.event.AiAnalysisFinalized;
 import com.react.ai.repository.AiAnalysisFinalizationRepository;
 import com.react.ai.repository.AiAnalysisRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -19,6 +21,7 @@ class AiAnalysisFinalizationServiceTest {
     private final AiAnalysisRepository analyses = mock(AiAnalysisRepository.class);
     private final AudienceAnalysisService audience = mock(AudienceAnalysisService.class);
     private final AiAnalysisWindowCalculator calculator = new AiAnalysisWindowCalculator();
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final LocalDateTime startedAt = LocalDateTime.of(2026, 11, 18, 10, 0);
     private final LocalDateTime endedAt = startedAt.plusSeconds(75);
     private final AiAnalysisFinalizationRepository.EndedRoom room =
@@ -27,7 +30,7 @@ class AiAnalysisFinalizationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AiAnalysisFinalizationService(finalizations, analyses, audience, calculator);
+        service = new AiAnalysisFinalizationService(finalizations, analyses, audience, calculator, events);
         when(finalizations.claim(eq(room), any(), eq(Duration.ofSeconds(90)))).thenReturn(true);
         when(finalizations.renewLease(eq(10L), any(), eq(Duration.ofSeconds(90)))).thenReturn(true);
         when(finalizations.complete(eq(10L), any(), anyInt())).thenReturn(true);
@@ -50,6 +53,7 @@ class AiAnalysisFinalizationServiceTest {
         order.verify(audience).process(10L, startedAt.plusSeconds(30), startedAt.plusSeconds(60));
         order.verify(audience).process(10L, startedAt.plusSeconds(60), endedAt);
         verify(finalizations).complete(eq(10L), any(), eq(0));
+        verify(events).publishEvent(new AiAnalysisFinalized(10L));
     }
 
     @Test
@@ -65,6 +69,7 @@ class AiAnalysisFinalizationServiceTest {
         verify(finalizations).release(eq(10L), any());
         verify(finalizations, never()).complete(anyLong(), any(), anyInt());
         verifyNoInteractions(audience);
+        verifyNoInteractions(events);
     }
 
     @Test
@@ -78,6 +83,7 @@ class AiAnalysisFinalizationServiceTest {
         service.processRoom(room, 3, Duration.ofSeconds(90));
 
         verify(finalizations).complete(eq(10L), any(), eq(1));
+        verify(events).publishEvent(new AiAnalysisFinalized(10L));
         verifyNoInteractions(audience);
     }
 
@@ -151,6 +157,18 @@ class AiAnalysisFinalizationServiceTest {
         verifyNoInteractions(audience);
         verify(finalizations).complete(eq(10L), any(), eq(0));
         verify(finalizations, never()).release(anyLong(), any());
+    }
+
+    @Test
+    void 강연_시간_오류가_확정되면_해당_방의_종결을_알린다() {
+        var invalid = new AiAnalysisFinalizationRepository.EndedRoom(10L, startedAt, startedAt.minusSeconds(1));
+        when(finalizations.claim(eq(invalid), any(), any())).thenReturn(true);
+        when(finalizations.markFailed(eq(10L), any(), eq("INVALID_LECTURE_TIME"))).thenReturn(true);
+
+        service.processRoom(invalid, 3, Duration.ofSeconds(90));
+
+        verify(events).publishEvent(new AiAnalysisFinalized(10L));
+        verifyNoInteractions(audience);
     }
 
     private AiAnalysisRepository.Analysis analysis(LocalDateTime start, LocalDateTime end, AiAnalysisStatus status) {
