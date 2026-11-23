@@ -65,7 +65,7 @@ function RecordingView({ recorder, integrated, ending, reconnect }) {
         <p>{segment.transcript}</p>
       </li>)}</ol>
       {state.interim && <div className="stt-interim"><span>인식 중 · 변경될 수 있음</span><p>{state.interim}</p></div>}
-      <footer>최근 확정 발언 30건을 표시합니다. 발언 시각은 브라우저가 전사를 처음 확인하고 확정한 시각을 기준으로 추정합니다.</footer>
+      <footer>최근 확정 발언 30건을 표시합니다. 발언 시각은 브라우저가 전사를 처음 확인하고 확정한 때를 서버 시계 기준으로 추정합니다.</footer>
     </Transcript>
     {state.archived > 0 && <aside className="stt-archive">
       <h3>별도 보관 기록 {state.archived}건</h3>
@@ -84,12 +84,8 @@ export function SttPanel({ userId, roomId, authRevision = 0, onRecorder, ending 
   useEffect(() => { if (authRevision && recorder) recorder.retry() }, [authRevision, recorder])
   useEffect(() => {
     const key = `${userId}:${roomId}`
-    // Use elapsed monotonic time so a wall-clock adjustment does not reverse a segment.
-    const origin = Date.now()
-    const elapsed = performance.now()
     const controller = new Recorder({ userId, roomId, api: sttApi(roomId), store: createStore(key),
-      acquire: () => acquireTab(key), speechFactory: createSpeech,
-      now: () => new Date(origin + performance.now() - elapsed).toISOString() })
+      acquire: () => acquireTab(key), speechFactory: createSpeech })
     setRecorder(controller)
     onRecorder?.(controller)
     let cancelled = false

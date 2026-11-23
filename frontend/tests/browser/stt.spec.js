@@ -10,15 +10,26 @@ async function connect(page) {
 
 test('start, interim, final, stop use real UI with server confirmation', async ({ page, context }) => {
   const state = await setup(context)
+  const serverTime = '2026-11-18T01:00:00.000Z'
+  state.serverTime = () => serverTime
+  await page.clock.install({ time: new Date('2026-11-18T00:55:00.000Z') })
   await connect(page)
   await page.getByRole('button', { name: '녹음 시작', exact: true }).click()
   await expect(page.locator('.stt-live')).toHaveText('인식 중')
   await page.evaluate(() => window.testSpeech.emit('트랜잭션은', false))
   await expect(page.locator('.stt-interim')).toContainText('트랜잭션은')
   expect(state.sends).toHaveLength(0)
+  // The user changes the wall clock while the same utterance is being recognized.
+  await page.clock.setSystemTime(new Date('2026-11-18T03:00:00.000Z'))
+  await page.clock.fastForward(1000)
   await page.evaluate(() => window.testSpeech.emit('트랜잭션은 하나의 작업 단위입니다.'))
   await expect.poll(() => state.sends.length).toBe(1)
   expect(state.sends[0].segmentKey).toMatch(/^[0-9a-f-]{36}$/)
+  const start = Date.parse(state.sends[0].segmentStartAt)
+  const end = Date.parse(state.sends[0].segmentEndAt)
+  expect(start).toBeGreaterThanOrEqual(Date.parse(serverTime))
+  expect(end - start).toBeGreaterThanOrEqual(1000)
+  expect(end).toBeLessThan(Date.parse(serverTime) + 60000)
   await expect(page.locator('.stt-interim')).toHaveCount(0)
   await page.getByRole('button', { name: '녹음 종료', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('녹음이 종료되었습니다')
@@ -36,6 +47,7 @@ test('IndexedDB survives refresh and retry preserves UUID without automatically 
   await page.evaluate(() => window.testSpeech.emit('복구할 발언'))
   await expect.poll(() => state.sends.length).toBeGreaterThan(0)
   const first = state.sends[0]
+  state.serverTime = () => '2026-11-25T03:15:00.000Z'
   state.offline = false
   page.on('dialog', dialog => dialog.accept())
   await page.reload()

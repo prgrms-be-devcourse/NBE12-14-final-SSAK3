@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test } from '@playwright/test'
+import { installTestSpeech } from '../browser/stt-fixture.js'
 
 async function createRoom(host, title) {
   const password = randomUUID()
@@ -44,6 +45,64 @@ async function enterAsAudience(audience, { roomId, invitation }) {
   await expect(audience.getByText('연결 확인 중', { exact: true })).toHaveCount(0)
   return messages
 }
+
+test('강사 시계가 5분 느려도 발언과 인식 중단·복구가 서버 시각으로 저장된다', async ({ page: host, context }) => {
+  await installTestSpeech(context)
+  await host.clock.setFixedTime(new Date(Date.now() - 5 * 60_000))
+  const { roomId } = await createRoom(host, '서버 시각 기준 녹음')
+  await host.getByRole('button', { name: '강연 시작', exact: true }).click()
+
+  const sttPath = `/api/v1/rooms/${roomId}/stt`
+  function responseAt(suffix, method = 'POST') {
+    return host.waitForResponse(response => new URL(response.url()).pathname === sttPath + suffix
+      && response.request().method() === method)
+  }
+  const started = responseAt('/sessions')
+  await host.getByRole('button', { name: '녹음 시작', exact: true }).click()
+  const startResponse = await started
+  expect(startResponse.status()).toBe(201)
+  const { sttSessionId, serverTime } = (await startResponse.json()).data
+  const session = `/sessions/${sttSessionId}`
+  const startedMs = Date.parse(serverTime)
+  await expect(host.locator('.stt-live')).toHaveText('인식 중')
+  const segment = responseAt(session + '/segments')
+  await host.evaluate(() => window.testSpeech.emit('첫 발언입니다.'))
+  const segmentResponse = await segment
+  expect(segmentResponse.status()).toBe(201)
+  const stored = (await segmentResponse.json()).data
+  expect(Date.parse(stored.segmentStartAt)).toBeGreaterThanOrEqual(startedMs)
+  expect(stored.segmentEndAt).toBe(stored.segmentStartAt)
+  expect(Math.floor(Date.parse(stored.segmentEndAt) / 1000)).toBeLessThanOrEqual(Date.parse(stored.receivedAt) / 1000)
+
+  const opened = responseAt(session + '/gaps')
+  await host.evaluate(() => {
+    window.testSpeech.onerror({ error: 'not-allowed' })
+    window.testSpeech.onend()
+  })
+  const openResponse = await opened
+  expect(openResponse.status()).toBe(201)
+  const gap = (await openResponse.json()).data
+  // 누락 구간은 초 단위로 저장하므로 같은 초의 발언보다 이르게 보일 수 있다.
+  expect(Date.parse(gap.startedAt)).toBeGreaterThanOrEqual(Math.floor(startedMs / 1000) * 1000)
+  const resumed = responseAt('/sessions')
+  const closed = responseAt(session + `/gaps/${gap.gapId}/close`, 'PATCH')
+  await host.getByRole('button', { name: '녹음 재개', exact: true }).click()
+  const resumeResponse = await resumed
+  expect(resumeResponse.status()).toBe(200)
+  const freshSample = Date.parse((await resumeResponse.json()).data.serverTime)
+  const closeResponse = await closed
+  expect(closeResponse.status()).toBe(200)
+  const endedAt = (await closeResponse.json()).data.endedAt
+  expect(Date.parse(endedAt)).toBeGreaterThanOrEqual(Math.floor(freshSample / 1000) * 1000)
+
+  const records = await host.request.get(new URL(sttPath + '/segments', host.url()).href)
+  expect(records.status()).toBe(200)
+  const { segments, gaps } = (await records.json()).data
+  expect(segments).toHaveLength(1)
+  expect(segments[0]).toMatchObject({ segmentId: stored.segmentId, segmentStartAt: stored.segmentStartAt })
+  expect(gaps).toHaveLength(1)
+  expect(gaps[0]).toMatchObject({ gapId: gap.gapId, startedAt: gap.startedAt, endedAt })
+})
 
 test('강연자가 준비 중인 방을 삭제하면 독립된 청중 창이 실제 ROOM_DELETED를 받고 자동 퇴장한다', async ({ page: host, browser }, info) => {
   const title = '청중 대기와 방 삭제 확인'

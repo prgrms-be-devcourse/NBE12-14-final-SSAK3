@@ -1,14 +1,15 @@
 import { ApiError, isTemporary } from './api.js'
 
 const RETRIES = [1000, 2000, 4000, 8000, 16000]
+const clockUnavailable = '서버 시각을 확인하지 못했습니다. 녹음을 다시 시작해 주세요.'
 const fresh = () => ({ version: 1, startKey: null, session: null, ownsSession: false, queue: [], archived: [],
   gap: null, stopReason: null, retryPaused: false, retryCount: 0, wasListening: false })
 
 export class Recorder {
   constructor({ userId, roomId, api, store, acquire, speechFactory,
-    uuid = () => crypto.randomUUID(), now = () => new Date().toISOString(),
+    uuid = () => crypto.randomUUID(), monotonicNow = () => performance.now(),
     schedule = (fn, delay) => setTimeout(fn, delay), cancel = id => clearTimeout(id) }) {
-    Object.assign(this, { userId, roomId, api, store, acquire, uuid, now, schedule, cancel })
+    Object.assign(this, { userId, roomId, api, store, acquire, uuid, monotonicNow, schedule, cancel })
     this.data = fresh()
     this.listeners = new Set()
     this.saving = Promise.resolve()
@@ -22,7 +23,8 @@ export class Recorder {
     this.authOk = true
     this.visible = true
     this.eligible = false
-    this.speech = speechFactory({ onResult: value => this.result(value), onEnd: error => this.interrupted(error), now })
+    this.speech = speechFactory({ onResult: value => this.result(value), onEnd: error => this.interrupted(error),
+      now: () => this.eventTime() })
     this.publish()
   }
 
@@ -148,6 +150,19 @@ export class Recorder {
     this.visible = true
   }
 
+  syncClock(serverTime) {
+    const epoch = typeof serverTime === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(serverTime)
+      ? Date.parse(serverTime) : NaN
+    // Anchor at receipt so network delay cannot move a gap into the server's future.
+    this.clock = Number.isFinite(epoch) ? { epoch, receivedAt: this.monotonicNow() } : null
+    return Boolean(this.clock)
+  }
+
+  eventTime() {
+    const elapsed = Math.floor(this.monotonicNow() - this.clock.receivedAt)
+    return new Date(this.clock.epoch + elapsed).toISOString()
+  }
+
   init() {
     if (!this.initializing) this.initializing = this.initialize()
     return this.initializing
@@ -186,15 +201,18 @@ export class Recorder {
         this.eligible = session.canRecord
         this.phase = session.canRecord ? 'paused' : 'ended'
         if (session.canRecord && !this.data.stopReason) {
+          this.syncClock(session.serverTime)
           const existing = records.gaps.find(gap => gap.sessionId === session.sttSessionId && !gap.endedAt)
           const awaitingClose = this.data.queue.some(item => item.kind === 'gapClose')
           if (!this.data.gap && existing && !awaitingClose) {
             this.data.gap = { key: this.uuid(), gapId: existing.gapId, startedAt: existing.startedAt }
           }
-          if (!this.data.gap) {
+          if (!this.clock) this.message = clockUnavailable
+          else if (this.data.gap) this.message = '음성 인식이 중단되어 있습니다. 녹음 재개를 눌러 주세요.'
+          else if (this.data.everStarted || this.data.wasListening) {
             this.openGap('ERROR')
             this.message = '이전 녹음의 정확한 중단 시각을 확인할 수 없습니다. 녹음 재개를 눌러 주세요.'
-          } else this.message = '음성 인식이 중단되어 있습니다. 녹음 재개를 눌러 주세요.'
+          } else this.message = '시작한 녹음 세션이 있습니다. 녹음 재개를 눌러 주세요.'
         } else if (!session.canRecord && session.status === 'RECORDING') {
           this.data.stopReason = 'MANUAL_STOP'
           this.message = '강연이 종료되어 녹음을 재개할 수 없습니다.'
@@ -215,9 +233,9 @@ export class Recorder {
   }
 
   openGap(reason) {
-    if (this.data.gap || !this.data.session || !this.eligible || this.data.stopReason) return
+    if (!this.clock || this.data.gap || !this.data.session || !this.eligible || this.data.stopReason) return
     const key = this.uuid()
-    const startedAt = this.now()
+    const startedAt = this.eventTime()
     this.data.gap = { key, startedAt, gapId: null }
     this.data.queue.push({ id: this.uuid(), kind: 'gapOpen', gapKey: key,
       body: { startKey: this.data.startKey, eventKey: key, reason, startedAt } })
@@ -227,7 +245,7 @@ export class Recorder {
     const gap = this.data.gap
     if (!gap) return
     this.data.queue.push({ id: this.uuid(), kind: 'gapClose', gapKey: gap.key, gapId: gap.gapId,
-      body: { startKey: this.data.startKey, endedAt: this.now() } })
+      body: { startKey: this.data.startKey, endedAt: this.eventTime() } })
     this.data.gap = null
   }
 
@@ -313,6 +331,7 @@ export class Recorder {
       if (!this.data.startKey || this.data.session?.status !== 'RECORDING' && this.data.session) {
         if (this.data.queue.length) throw new Error('PENDING_RECORDS')
         this.data = { ...fresh(), archived: this.data.archived, startKey: this.uuid() }
+        this.clock = null
         this.recent = []
       }
       // Save the key before POST: a lost response must never generate another key.
@@ -332,6 +351,12 @@ export class Recorder {
       if (!session.canRecord) {
         this.phase = 'ended'
         this.message = '강연·세션이 종료되었거나 다른 녹음 세션이 진행 중입니다.'
+        await this.persist()
+        return
+      }
+      if (!this.syncClock(session.serverTime)) {
+        this.phase = 'paused'
+        this.message = clockUnavailable
         await this.persist()
         return
       }
@@ -537,7 +562,7 @@ export class Recorder {
 
   async exportRecords() {
     await this.verifyLocalAccess()
-    return JSON.stringify({ roomId: this.roomId, exportedAt: this.now(),
+    return JSON.stringify({ roomId: this.roomId, exportedAt: new Date().toISOString(),
       notice: '추정 시각입니다. 서버 보고서에 자동 반영되지 않습니다.',
       records: this.data.archived }, null, 2)
   }
