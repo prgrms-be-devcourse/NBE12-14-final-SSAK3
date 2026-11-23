@@ -10,6 +10,8 @@ export function watchUnderstandingSummary({ roomId, onResults, onConnection, onD
   let active = true
   let revision = 0
   let current = null
+  // 마감 이벤트를 받은 투표. 늦게 도착한 응답 이벤트가 확정된 집계를 덮어쓰지 않도록 이후 결과 이벤트를 무시한다.
+  const closed = new Set()
 
   function show(results) {
     current = results
@@ -48,6 +50,7 @@ export function watchUnderstandingSummary({ roomId, onResults, onConnection, onD
     try { event = JSON.parse(frame.body) } catch { return }
     const data = event?.data
     if (data?.roomId !== Number(roomId)) return
+    if (event.type === 'POLL_CLOSED') closed.add(data.pollId)
     // 새 체크가 열리거나 보던 체크가 마감되면 집계를 서버에서 다시 받는다. 마감 값은 서버가 확정한다.
     if ((event.type === 'POLL_CREATED' && data.type === 'UNDERSTANDING')
       || (event.type === 'POLL_CLOSED' && data.pollId === current?.pollId)) void sync()
@@ -56,7 +59,9 @@ export function watchUnderstandingSummary({ roomId, onResults, onConnection, onD
   function handleResults(frame) {
     let event
     try { event = JSON.parse(frame.body) } catch { return }
-    if (!isResultsEvent(event) || !current || event.data?.pollId !== current.pollId) return
+    // 진행 중인 체크의 응답만 반영한다. 마감된 체크의 집계는 서버가 확정한 값이다.
+    if (!isResultsEvent(event) || !current || current.status !== 'OPEN' || closed.has(current.pollId)
+      || event.data?.pollId !== current.pollId) return
     // 응답 이벤트가 먼저 오면 진행 중인 조회 결과보다 새 것이므로 앞선 조회는 버린다.
     revision++
     show(applyCounts(current, event.data))

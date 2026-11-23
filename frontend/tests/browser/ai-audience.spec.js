@@ -11,7 +11,7 @@ const card = (page, name) => page.getByRole('article', { name, exact: true })
 async function setup(page) {
   await page.clock.install()
   const state = { analyses: [analysis(2, [topic(21, 'Redis 사용 사례'), topic(22, 'MySQL과의 차이')]), analysis(1)],
-    expanded: null, calls: [], sourceCalls: [], error: 0, sourceErrors: {}, authenticated: true, roomError: 0 }
+    expanded: null, calls: [], sourceCalls: [], error: 0, sourceErrors: {}, authenticated: true, roomError: 0, settled: 0 }
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname
     const ok = data => route.fulfill({ json: { data } })
@@ -29,8 +29,10 @@ async function setup(page) {
       if (state.error === 'offline') return route.abort()
       if (state.error) return fail(state.error)
       if (state.analysisResponseGate) await state.analysisResponseGate
-      return ok({ roomId: 10, analyses: url.searchParams.get('limit') === '50' && state.expanded ? state.expanded : state.analyses,
+      await ok({ roomId: 10, analyses: url.searchParams.get('limit') === '50' && state.expanded ? state.expanded : state.analyses,
         lastCompletedAt: null })
+      state.settled++
+      return
     }
     const source = path.match(/topic-groups\/(\d+)\/messages$/)
     if (source) {
@@ -50,6 +52,11 @@ async function open(page) {
   await expect(page.getByRole('heading', { name: 'Redis 사용 사례', exact: true })).toBeVisible()
 }
 async function tick(page) { await page.clock.runFor(5001) }
+// 목이 응답을 보냈고 화면이 그 응답을 처리할 때까지 기다린다. 진행 중인 조회가 있으면 폴링이 건너뛰므로 느린 CI 에서 어긋난다.
+async function settle(page, state) {
+  await expect.poll(() => state.settled === state.calls.length).toBe(true)
+  await page.evaluate(() => new Promise(resolve => { const { port1, port2 } = new MessageChannel(); port1.onmessage = resolve; port2.postMessage(0) }))
+}
 
 test('ended room shows audience summaries inline; lazy sources reuse cache and open independently', async ({ page }) => {
   const state = await setup(page)
@@ -169,6 +176,7 @@ test('new empty, pending, processing and failed intervals preserve last summary 
 test('polling keeps running after lecture end, pauses while hidden and resumes immediately', async ({ page }) => {
   const state = await setup(page); await open(page)
   await tick(page); await expect.poll(() => state.calls.length).toBe(2)
+  await settle(page, state)
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
     document.dispatchEvent(new Event('visibilitychange'))
