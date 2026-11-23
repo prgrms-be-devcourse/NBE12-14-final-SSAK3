@@ -49,6 +49,8 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       REDIS_HOST: redis
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_REPORT_MODEL: ${OPENAI_REPORT_MODEL:-gpt-6-luna}
       ROOM_JOIN_BASE_URL: ${ROOM_JOIN_BASE_URL:-http://localhost:5173}
 
       # SCRUM-128: 청중 최초 입장의 중복 요청 처리

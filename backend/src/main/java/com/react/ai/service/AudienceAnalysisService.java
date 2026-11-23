@@ -39,19 +39,20 @@ public class AudienceAnalysisService {
     private final AiLlmCallUsageRepository usages;
     private final AudienceAnalysisCostProperties costProperties;
     private final AiLlmCostCalculator costCalculator;
+    private final AiAnalysisCompletionService completions;
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                    AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser) {
         this(analyses, messages, llmClient, jsonParser,
                 new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), null,
-                new AudienceAnalysisCostProperties(null, null));
+                new AudienceAnalysisCostProperties(null, null), noOpCompletions(analyses));
     }
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                    AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser,
                                    AudienceAnalysisRetryProperties retryProperties) {
         this(analyses, messages, llmClient, jsonParser, retryProperties, null,
-                new AudienceAnalysisCostProperties(null, null));
+                new AudienceAnalysisCostProperties(null, null), noOpCompletions(analyses));
     }
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
@@ -59,6 +60,16 @@ public class AudienceAnalysisService {
                                    AudienceAnalysisRetryProperties retryProperties,
                                    AiLlmCallUsageRepository usages,
                                    AudienceAnalysisCostProperties costProperties) {
+        this(analyses, messages, llmClient, jsonParser, retryProperties, usages, costProperties,
+                noOpCompletions(analyses));
+    }
+
+    public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
+                                   AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser,
+                                   AudienceAnalysisRetryProperties retryProperties,
+                                   AiLlmCallUsageRepository usages,
+                                   AudienceAnalysisCostProperties costProperties,
+                                   AiAnalysisCompletionService completions) {
         this.analyses = analyses;
         this.messages = messages;
         this.llmClient = llmClient;
@@ -67,6 +78,7 @@ public class AudienceAnalysisService {
         this.usages = usages;
         this.costProperties = costProperties;
         this.costCalculator = new AiLlmCostCalculator();
+        this.completions = completions;
     }
 
     public AiAnalysisProcessResult process(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {
@@ -82,7 +94,7 @@ public class AudienceAnalysisService {
         try {
             List<AudienceMessage> candidates = messages.findAudienceMessages(roomId, windowStartAt, windowEndAt);
             if (candidates.isEmpty()) {
-                if (!analyses.completeEmpty(acquired.analysis().id())) {
+                if (!completions.completeEmpty(roomId, acquired.analysis().id())) {
                     throw new IllegalStateException("빈 분석 구간을 완료 상태로 변경할 수 없습니다.");
                 }
                 return new AiAnalysisProcessResult(acquired.analysis().id(), AiAnalysisStatus.COMPLETED, true, 0);
@@ -95,7 +107,7 @@ public class AudienceAnalysisService {
             }
             AiAnalysisResult result = jsonParser.parse(response.content());
             validateSourceMessages(candidates, result);
-            analyses.saveCompleted(acquired.analysis().id(), result, response.modelName());
+            completions.completeWithTopics(roomId, acquired.analysis().id(), result, response.modelName());
             return new AiAnalysisProcessResult(acquired.analysis().id(), AiAnalysisStatus.COMPLETED, true,
                     result.topics().size());
         } catch (Exception e) {
@@ -248,5 +260,9 @@ public class AudienceAnalysisService {
             return "INVALID_LLM_RESPONSE";
         }
         return "AI_ANALYSIS_PROCESSING_FAILED";
+    }
+
+    private static AiAnalysisCompletionService noOpCompletions(AiAnalysisRepository analyses) {
+        return new AiAnalysisCompletionService(analyses, event -> { });
     }
 }

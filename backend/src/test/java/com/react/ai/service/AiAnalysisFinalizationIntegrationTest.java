@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -30,6 +31,7 @@ class AiAnalysisFinalizationIntegrationTest {
     @Autowired AiAnalysisRepository analyses;
     @Autowired AudienceMessageRepository messages;
     @Autowired AiAnalysisJsonParser parser;
+    @Autowired ApplicationEventPublisher events;
 
     private AiAnalysisFinalizationRepository.EndedRoom room;
 
@@ -61,7 +63,7 @@ class AiAnalysisFinalizationIntegrationTest {
             return new AudienceAnalysisLlmResponse("{\"topics\":[]}", "test");
         }, parser);
         AiAnalysisFinalizationService service = new AiAnalysisFinalizationService(
-                finalizations, analyses, audience, new AiAnalysisWindowCalculator());
+                finalizations, analyses, audience, new AiAnalysisWindowCalculator(), events);
 
         service.processRoom(room, 3, Duration.ofSeconds(90));
 
@@ -85,7 +87,7 @@ class AiAnalysisFinalizationIntegrationTest {
             return new AudienceAnalysisLlmResponse("{\"topics\":[]}", "test");
         }, parser);
         AiAnalysisFinalizationService service = new AiAnalysisFinalizationService(
-                finalizations, analyses, audience, new AiAnalysisWindowCalculator());
+                finalizations, analyses, audience, new AiAnalysisWindowCalculator(), events);
 
         service.processRoom(emptyRoom, 3, Duration.ofSeconds(90));
 

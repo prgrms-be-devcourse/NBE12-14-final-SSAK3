@@ -35,6 +35,15 @@ public class AiAnalysisQueryRepository {
                 """).params(roomId, limit).query(AnalysisRow.class).list();
     }
 
+    /** AFTER_COMMIT 방송용 조회다. FAILED/PENDING/PROCESSING 분석은 이벤트 대상이 아니다. */
+    public Optional<AnalysisRow> findCompletedAnalysis(long roomId, long analysisId) {
+        return jdbc.sql("""
+                SELECT id AS analysis_id, window_start_at, window_end_at, status, completed_at
+                FROM ai_analyses
+                WHERE lecture_room_id = ? AND id = ? AND status = 'COMPLETED'
+                """).params(roomId, analysisId).query(AnalysisRow.class).optional();
+    }
+
     public Optional<LocalDateTime> findLastCompletedAt(long roomId) {
         return jdbc.sql("""
                 SELECT MAX(completed_at)

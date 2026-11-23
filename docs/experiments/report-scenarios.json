@@ -43,6 +43,10 @@
       "poll": {
         "id": 3001,
         "question": "추가로 보고 싶은 예시는?",
+        "options": [
+          { "optionId": 3011, "content": "가스 한도 소진" },
+          { "optionId": 3012, "content": "상태 변화" }
+        ],
         "responses": [
           {
             "id": 3101,

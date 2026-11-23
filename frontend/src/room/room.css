@@ -142,6 +142,18 @@
   width: min(180px, 100%);
 }
 
+.room-poll .room-poll-understanding {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #dde3e8;
+}
+
+.room-poll .room-poll-understanding .room-caption {
+  margin: 0;
+}
+
 .room-poll .room-poll-error {
   margin: 16px 0;
   color: #b3261e;

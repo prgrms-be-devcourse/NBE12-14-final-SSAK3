@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyCounts, latestUnderstanding, percentage } from '../src/poll/understandingSummary.js'
+import { applyCounts, percentage } from '../src/poll/understandingSummary.js'
 
 const options = [
   { optionId: 1, content: '이해됨', understandingStatus: 'UNDERSTOOD' },
@@ -46,9 +46,8 @@ test('an event for another poll leaves the screen as it is', () => {
   assert.equal(applyCounts(null, { pollId: 501 }), null)
 })
 
-test('the latest closed understanding check is picked, ignoring general polls', () => {
-  const polls = [{ pollId: 3, type: 'GENERAL' }, { pollId: 1, type: 'UNDERSTANDING' }, { pollId: 2, type: 'UNDERSTANDING' }]
-  assert.equal(latestUnderstanding(polls).pollId, 2)
-  assert.equal(latestUnderstanding([{ pollId: 3, type: 'GENERAL' }]), null)
-  assert.equal(latestUnderstanding(undefined), null)
+test('a late event never overwrites a closed result', () => {
+  const closed = { ...results, status: 'CLOSED', totalParticipants: 12, respondedParticipants: 9 }
+  const late = { pollId: 501, totalParticipants: 12, respondedParticipants: 3, unrespondedParticipants: 9, counts: { 1: 3 } }
+  assert.equal(applyCounts(closed, late), closed)
 })

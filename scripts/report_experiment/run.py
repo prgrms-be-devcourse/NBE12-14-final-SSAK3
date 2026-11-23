@@ -115,6 +115,8 @@ def prepare(source, scenario, duration):
             lack = counts['CONFUSED'] + counts['NOT_UNDERSTOOD']
             ratio = round(lack / responded * 100, 1) if responded else 0.0
             result.update(lackCount=lack, lackRatio=ratio, lowUnderstanding=lack >= 3 and ratio >= 40)
+        else:
+            result['options'] = [{**option, 'count': counts[option['content']]} for option in p['options']]
         records.append({'type': 'POLL_RESULT', 'id': p.get('pollId', p.get('id')), 'roomId': room_id,
                         'result': result, 'relatedWindows': [window(p['openedAtSeconds'], duration)]})
     if scenario.get('gap'):
@@ -145,10 +147,11 @@ def limitations(data, windows=None):
                 notes.append(f"{interval['startAt']} ~ {interval['endAt']}: {message}")
     if windows is None:
         notes.append(data['timestampNote'])
-        if not data['evidenceRecords']:
-            notes.append('수집된 기록이 없어 요약할 수 없습니다.')
-        elif not has_audience(data):
-            notes.append('청중 반응 기록이 부족해 관심사와 보충 설명 지점을 판단하기 어렵습니다.')
+        if not has_audience(data):
+            if any(r['type'] == 'STT_SEGMENT' for r in data['evidenceRecords']):
+                notes.append('청중 반응 기록이 부족해 관심사와 보충 설명 지점을 판단하기 어렵습니다.')
+            else:
+                notes.append('수집된 기록이 없어 요약할 수 없습니다.')
     return unique(notes)
 
 
@@ -157,17 +160,37 @@ def assemble(draft, data):
     records = {(r['type'], r['id']): r for r in data['evidenceRecords']}
     allowed_windows = {window_key(w) for w in data['windows']}
 
-    def validate_leaf(leaf):
+    summarized_checks = set()
+
+    def validate_leaf(leaf, group_name, stance=False):
         evidence_windows = set()
+        audience_types, mixed_checks = set(), set()
         for ref in leaf['evidence']:
             record = records.get((ref['type'], ref['id']))
             if record is None or record['roomId'] != data['roomId']:
                 raise ReportFailure('INVALID_REPORT_EVIDENCE')
-            if record['type'] == 'POLL_RESULT' and record['result']['status'] != 'CLOSED':
-                raise ReportFailure('INVALID_REPORT_EVIDENCE')
+            if record['type'] == 'POLL_RESULT':
+                result = record['result']
+                if result['status'] != 'CLOSED' or result['respondedParticipants'] == 0:
+                    raise ReportFailure('INVALID_REPORT_EVIDENCE')
+                if stance and result['type'] == 'GENERAL' and not ref.get('optionIds'):
+                    raise ReportFailure('INVALID_REPORT_EVIDENCE')
+                if 'optionIds' in ref:
+                    eligible = {o['optionId'] for o in result.get('options', []) if o['count'] > 0}
+                    if result['type'] != 'GENERAL' or not set(ref['optionIds']) <= eligible:
+                        raise ReportFailure('INVALID_REPORT_EVIDENCE')
+                audience_types.add(result['type'])
+                if result['type'] == 'UNDERSTANDING' and sum(n > 0 for n in result['counts'].values()) > 1:
+                    mixed_checks.add(record['id'])
+            elif record['type'] == 'CHAT_MESSAGE':
+                audience_types.add('CHAT_MESSAGE')
             evidence_windows.update(window_key(w) for w in record['relatedWindows'])
+        if audience_types == {'UNDERSTANDING'}:
+            if stance or (mixed_checks and (group_name != 'reviewPoints' or mixed_checks & summarized_checks)):
+                raise ReportFailure('INVALID_REPORT_EVIDENCE')
+            summarized_checks.update(mixed_checks)
         selected = {window_key(w) for w in leaf['relatedWindows']}
-        if selected != evidence_windows or not selected <= allowed_windows:
+        if not audience_types or selected != evidence_windows or not selected <= allowed_windows:
             raise ReportFailure('INVALID_REPORT_EVIDENCE')
         if not leaf['text'].strip():
             raise ReportFailure('INVALID_REPORT_FORMAT')
@@ -176,18 +199,25 @@ def assemble(draft, data):
         leaf['limitations'] = limitations(data, leaf['relatedWindows'])
 
     overview = copy.deepcopy(draft['overview'])
-    for group in overview.values():
+    for group_name, group in overview.items():
         for item in group:
             if not item['text'].strip():
                 raise ReportFailure('INVALID_REPORT_FORMAT')
             if item['perspectives']:
+                used_choices = set()
                 for perspective in item['perspectives']:
-                    validate_leaf(perspective)
-                item['evidence'] = unique([e for p in item['perspectives'] for e in p['evidence']])
+                    validate_leaf(perspective, group_name, stance=True)
+                    choices = {(e['id'], option_id) for e in perspective['evidence']
+                               for option_id in e.get('optionIds', [])}
+                    if choices & used_choices:
+                        raise ReportFailure('INVALID_REPORT_EVIDENCE')
+                    used_choices.update(choices)
+                item['evidence'] = unique([{'type': e['type'], 'id': e['id']}
+                                           for p in item['perspectives'] for e in p['evidence']])
                 item['relatedWindows'] = sorted(unique([w for p in item['perspectives'] for w in p['relatedWindows']]), key=window_key)
                 item['limitations'] = unique([s for p in item['perspectives'] for s in p['limitations']])
             else:
-                validate_leaf(item)
+                validate_leaf(item, group_name)
     timeline = []
     for w in data['windows']:
         row = {**w, **{k: [] for k in ('sttSegments', 'sttGaps', 'chatMessages', 'understandingChecks', 'audienceOpinions', 'polls')}}
@@ -224,10 +254,12 @@ def api_key():
 
 
 def request_once(data, model, key):
+    model_input = {**data, 'evidenceRecords': [r for r in data['evidenceRecords']
+                   if r['type'] != 'POLL_RESULT' or r['result']['respondedParticipants'] > 0]}
     body = {'model': model, 'store': False, 'reasoning': {'effort': 'low'},
             'service_tier': 'default',
             'instructions': (RESOURCES / 'report-system-prompt.txt').read_text(encoding='utf-8'),
-            'input': json.dumps(data, ensure_ascii=False),
+            'input': json.dumps(model_input, ensure_ascii=False),
             'text': {'format': {'type': 'json_schema', 'name': 'lecture_report', 'strict': True,
                                 'schema': read_json(RESOURCES / 'report-draft.schema.json')}}}
     request = urllib.request.Request('https://api.openai.com/v1/responses',

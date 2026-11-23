@@ -10,26 +10,28 @@ const options = [
   { optionId: 2, content: '헷갈림', understandingStatus: 'CONFUSED' },
   { optionId: 3, content: '모르겠음', understandingStatus: 'NOT_UNDERSTOOD' },
 ]
-const row = (count, responded, total) => [count, Math.round(count * 1000 / (responded || 1)) / 10,
-  Math.round(count * 1000 / (total || 1)) / 10]
-const results = (status, counts, total) => {
+const rate = (part, whole) => (whole ? Math.round(part * 1000 / whole) / 10 : 0)
+const results = (pollId, status, counts, total) => {
   const responded = counts.reduce((sum, count) => sum + count, 0)
   return {
-    pollId: 501, type: 'UNDERSTANDING', status, closesAt: '2026-11-21T03:01:00Z',
+    pollId, type: 'UNDERSTANDING', status, closesAt: '2026-11-21T03:01:00Z',
     totalParticipants: total, respondedParticipants: responded, unrespondedParticipants: total - responded,
-    responseRate: Math.round(responded * 1000 / total) / 10,
-    options: options.map((option, index) => {
-      const [count, ofResponses, ofAll] = row(counts[index], responded, total)
-      return { ...option, count, percentageOfResponses: ofResponses, percentageOfAllParticipants: ofAll }
-    }),
+    responseRate: rate(responded, total),
+    options: options.map((option, index) => ({ ...option, count: counts[index],
+      percentageOfResponses: rate(counts[index], responded), percentageOfAllParticipants: rate(counts[index], total) })),
     calculatedAt: '2026-11-21T03:00:30Z',
   }
 }
+const understanding = (pollId, status) => ({ pollId, roomId, type: 'UNDERSTANDING', status, options,
+  createdAt: '2026-11-21T03:00:00Z', closedAt: status === 'CLOSED' ? '2026-11-21T03:01:00Z' : null })
 const summary = page => page.getByRole('region', { name: '이해도 체크 결과' })
+const card = (page, number) => summary(page).getByRole('listitem', { name: `이해도 체크 ${number}`, exact: true })
+const option = (page, number, name) => card(page, number).getByRole('listitem').filter({ hasText: name })
+const total = (page, number, name) => card(page, number).getByText(name, { exact: true }).locator('xpath=..')
 
-async function setup(page, context, { open = null, closed = [] } = {}) {
+async function setup(page, context, { open = null, closed = [], results: initial = {} } = {}) {
   await setupRecording(context)
-  const state = { open, closed, results: null, subscribed: new Set(), push: {}, resultReads: 0 }
+  const state = { open, closed, results: initial, subscribed: new Set(), push: {}, senders: {}, resultReads: [] }
   await context.routeWebSocket('**/ws', socket => {
     socket.onMessage(frame => {
       const message = frame.toString()
@@ -38,14 +40,15 @@ async function setup(page, context, { open = null, closed = [] } = {}) {
       if (message.startsWith('SUBSCRIBE\n') && destination) {
         const id = /^id:(.+)$/m.exec(message)[1]
         state.subscribed.add(destination)
-        state.push[destination] = event => socket.send(
-          `MESSAGE\ndestination:${destination}\nsubscription:${id}\nmessage-id:${crypto.randomUUID()}\n\n${JSON.stringify(event)}\0`)
+        // 같은 토픽을 여러 패널이 구독하므로 구독자 모두에게 보낸다.
+        const senders = (state.senders[destination] ??= [])
+        senders.push(event => socket.send(`MESSAGE\ndestination:${destination}\nsubscription:${id}\nmessage-id:${crypto.randomUUID()}\n\n${JSON.stringify(event)}\0`))
+        state.push[destination] = event => senders.forEach(send => send(event))
       }
     })
   })
   await page.route('**/api/v1/**', route => {
-    const request = route.request()
-    const url = new URL(request.url())
+    const url = new URL(route.request().url())
     const ok = data => route.fulfill({ json: { data } })
     if (url.pathname === base) {
       return ok({ roomId, title: '이해도 테스트 강연', description: '', status: 'LIVE',
@@ -58,7 +61,8 @@ async function setup(page, context, { open = null, closed = [] } = {}) {
       const polls = url.searchParams.get('status') === 'OPEN' ? (state.open ? [state.open] : []) : state.closed
       return ok({ polls, serverTime: '2026-11-21T03:00:00Z' })
     }
-    if (url.pathname === `${base}/polls/501/results`) { state.resultReads++; return ok(state.results) }
+    const read = /\/polls\/(\d+)\/results$/.exec(url.pathname)
+    if (read) { state.resultReads.push(Number(read[1])); return ok(state.results[read[1]]) }
     if (url.pathname === `${base}/messages`) return ok({ messages: [], nextCursor: null, hasNext: false })
     if (url.pathname === `${base}/ai/analyses`) return ok({ roomId, analyses: [] })
     return route.fallback()
@@ -66,62 +70,104 @@ async function setup(page, context, { open = null, closed = [] } = {}) {
   return state
 }
 
-const understanding = status => ({ pollId: 501, roomId, type: 'UNDERSTANDING', status, options })
-
 test('진행 중인 이해도 체크는 응답 이벤트로 인원·비율이 갱신되고 미응답은 따로 보인다', async ({ page, context }) => {
-  const state = await setup(page, context, { open: understanding('OPEN') })
-  state.results = results('OPEN', [0, 0, 0], 20)
+  const state = await setup(page, context, {
+    open: understanding(501, 'OPEN'), results: { 501: results(501, 'OPEN', [0, 0, 0], 20) },
+  })
   await page.goto(`/host/rooms/${roomId}`)
 
-  await expect(summary(page)).toBeVisible()
-  await expect(summary(page).getByText('진행 중')).toBeVisible()
-  await expect(summary(page).getByText('미응답', { exact: true }).locator('xpath=..')).toContainText('20명')
+  await expect(card(page, 1)).toBeVisible()
+  await expect(card(page, 1).getByText('진행 중')).toBeVisible()
+  await expect(total(page, 1, '미응답')).toContainText('20명')
 
   await expect.poll(() => state.subscribed.has(resultsTopic)).toBe(true)
   state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
     pollId: 501, totalParticipants: 20, respondedParticipants: 12, unrespondedParticipants: 8,
     counts: { 1: 6, 2: 4, 3: 2 } } })
 
-  const understood = summary(page).getByRole('listitem').filter({ hasText: '이해됨' })
-  await expect(understood).toContainText('6명')
-  await expect(understood).toContainText('응답자의 50.0% · 전체의 30.0%')
-  await expect(summary(page).getByRole('listitem').filter({ hasText: '모르겠음' })).toContainText('2명')
-  await expect(summary(page).getByText('응답', { exact: true }).locator('xpath=..')).toContainText('12명 (60.0%)')
-  await expect(summary(page).getByText('미응답', { exact: true }).locator('xpath=..')).toContainText('8명')
+  await expect(option(page, 1, '이해됨')).toContainText('6명')
+  await expect(option(page, 1, '이해됨')).toContainText('응답자의 50.0% · 전체의 30.0%')
+  await expect(option(page, 1, '모르겠음')).toContainText('2명')
+  await expect(total(page, 1, '응답')).toContainText('12명 (60.0%)')
+  await expect(total(page, 1, '미응답')).toContainText('8명')
 })
 
 test('다른 투표의 결과 이벤트는 무시하고 마감되면 최종 결과를 다시 받는다', async ({ page, context }) => {
-  const state = await setup(page, context, { open: understanding('OPEN') })
-  state.results = results('OPEN', [1, 0, 0], 10)
+  const state = await setup(page, context, {
+    open: understanding(501, 'OPEN'), results: { 501: results(501, 'OPEN', [1, 0, 0], 10) },
+  })
   await page.goto(`/host/rooms/${roomId}`)
-  await expect(summary(page)).toBeVisible()
-  await expect.poll(() => state.subscribed.has(pollsTopic)).toBe(true)
-  await expect.poll(() => state.subscribed.has(resultsTopic)).toBe(true)
+  await expect(card(page, 1)).toBeVisible()
+  await expect.poll(() => state.subscribed.has(pollsTopic) && state.subscribed.has(resultsTopic)).toBe(true)
 
   state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
     pollId: 999, totalParticipants: 10, respondedParticipants: 9, unrespondedParticipants: 1, counts: { 1: 9 } } })
-  await expect(summary(page).getByRole('listitem').filter({ hasText: '이해됨' })).toContainText('1명')
+  await expect(option(page, 1, '이해됨')).toContainText('1명')
 
   state.open = null
-  state.closed = [{ ...understanding('CLOSED'), closedAt: '2026-11-21T03:01:00Z' }]
-  state.results = results('CLOSED', [5, 3, 1], 12)
+  state.closed = [understanding(501, 'CLOSED')]
+  state.results[501] = results(501, 'CLOSED', [5, 3, 1], 12)
   state.push[pollsTopic]({ type: 'POLL_CLOSED', data: { pollId: 501, roomId, closeReason: 'TIMEOUT' } })
 
-  await expect(summary(page).getByText('마감', { exact: true })).toBeVisible()
-  await expect(summary(page).getByRole('listitem').filter({ hasText: '이해됨' })).toContainText('5명')
-  await expect(summary(page).getByText('미응답', { exact: true }).locator('xpath=..')).toContainText('3명')
+  await expect(card(page, 1).getByText('마감', { exact: true })).toBeVisible()
+  await expect(option(page, 1, '이해됨')).toContainText('5명')
+  await expect(total(page, 1, '미응답')).toContainText('3명')
 })
 
-test('진행 중인 체크가 없으면 가장 최근에 마감된 체크의 최종 결과를 보여 준다', async ({ page, context }) => {
+test('마감된 체크를 포함해 모든 이해도 체크를 최신순으로 보여 주고 마감 결과는 한 번만 받는다', async ({ page, context }) => {
   const state = await setup(page, context, {
-    closed: [{ ...understanding('CLOSED'), pollId: 400 }, { ...understanding('CLOSED'), closedAt: '2026-11-21T03:01:00Z' }],
+    open: understanding(503, 'OPEN'),
+    closed: [understanding(501, 'CLOSED'), understanding(502, 'CLOSED')],
+    results: { 501: results(501, 'CLOSED', [2, 2, 2], 6), 502: results(502, 'CLOSED', [4, 1, 0], 6),
+      503: results(503, 'OPEN', [1, 0, 0], 6) },
   })
-  state.results = results('CLOSED', [2, 2, 2], 6)
   await page.goto(`/host/rooms/${roomId}`)
 
-  await expect(summary(page).getByText('마감', { exact: true })).toBeVisible()
-  await expect(summary(page).getByRole('listitem').filter({ hasText: '헷갈림' })).toContainText('2명')
-  expect(state.resultReads).toBeGreaterThan(0)
+  await expect(summary(page).getByText('총 3회')).toBeVisible()
+  // 위에서부터 진행 중인 3회차, 2회차, 1회차 순서다.
+  await expect(summary(page).getByRole('listitem', { name: /^이해도 체크 \d$/ })).toHaveText([/3회차/, /2회차/, /1회차/])
+  await expect(card(page, 3).getByText('진행 중')).toBeVisible()
+  await expect(card(page, 2).getByText('마감', { exact: true })).toBeVisible()
+  await expect(option(page, 1, '헷갈림')).toContainText('2명')
+  await expect(option(page, 2, '이해됨')).toContainText('4명')
+
+  await expect.poll(() => state.subscribed.has(resultsTopic)).toBe(true)
+  state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
+    pollId: 503, totalParticipants: 6, respondedParticipants: 3, unrespondedParticipants: 3, counts: { 1: 2, 2: 1, 3: 0 } } })
+  await expect(option(page, 3, '이해됨')).toContainText('2명')
+  // 지난 체크는 그대로이고 마감 결과는 다시 받지 않는다.
+  await expect(option(page, 2, '이해됨')).toContainText('4명')
+  expect(state.resultReads.filter(id => id === 501)).toHaveLength(1)
+})
+
+test('체크가 많아도 목록 영역만 스크롤되어 오래된 체크까지 볼 수 있다', async ({ page, context }) => {
+  const ids = Array.from({ length: 12 }, (_, index) => 600 + index)
+  const state = await setup(page, context, {
+    closed: ids.map(id => understanding(id, 'CLOSED')),
+    results: Object.fromEntries(ids.map(id => [id, results(id, 'CLOSED', [id - 599, 0, 0], 20)])),
+  })
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto(`/host/rooms/${roomId}`)
+
+  const list = summary(page).getByRole('list', { name: '이해도 체크 목록' })
+  await expect(summary(page).getByText('총 12회')).toBeVisible()
+  const sizes = await list.evaluate(node => ({ scroll: node.scrollHeight, client: node.clientHeight }))
+  expect(sizes.scroll).toBeGreaterThan(sizes.client)
+  expect(sizes.client).toBeLessThanOrEqual(420)
+
+  // 브라우저 창이 아니라 스크롤되는 목록 영역 안에서 보이는지를 비교한다.
+  const shown = number => card(page, number).evaluate(node => {
+    const area = node.parentElement.getBoundingClientRect()
+    const box = node.getBoundingClientRect()
+    return box.bottom > area.top && box.top < area.bottom
+  })
+  await expect.poll(() => shown(12)).toBe(true)
+  await expect.poll(() => shown(1)).toBe(false)
+  await list.evaluate(node => { node.scrollTop = node.scrollHeight })
+  await expect.poll(() => shown(1)).toBe(true)
+  await expect.poll(() => shown(12)).toBe(false)
+  await expect(option(page, 1, '이해됨')).toContainText('1명')
+  expect([...state.resultReads].sort()).toEqual(ids)
 })
 
 test('이해도 체크가 한 번도 없으면 결과 패널을 보이지 않는다', async ({ page, context }) => {
@@ -130,4 +176,27 @@ test('이해도 체크가 한 번도 없으면 결과 패널을 보이지 않는
   await expect(page.getByRole('heading', { name: '이해도 테스트 강연' })).toBeVisible()
   await expect.poll(() => state.subscribed.has(resultsTopic)).toBe(true)
   await expect(summary(page)).toHaveCount(0)
+})
+
+test('마감된 이해도 체크에 늦게 도착한 응답 이벤트는 확정된 결과를 덮어쓰지 않는다', async ({ page, context }) => {
+  const state = await setup(page, context, {
+    open: understanding(501, 'OPEN'), results: { 501: results(501, 'OPEN', [1, 0, 0], 10) },
+  })
+  await page.goto(`/host/rooms/${roomId}`)
+  await expect(card(page, 1).getByText('진행 중')).toBeVisible()
+  await expect.poll(() => state.subscribed.has(pollsTopic) && state.subscribed.has(resultsTopic)).toBe(true)
+
+  state.open = null
+  state.closed = [understanding(501, 'CLOSED')]
+  state.results[501] = results(501, 'CLOSED', [5, 3, 1], 12)
+  state.push[pollsTopic]({ type: 'POLL_CLOSED', data: { pollId: 501, roomId, closeReason: 'HOST' } })
+  await expect(card(page, 1).getByText('마감', { exact: true })).toBeVisible()
+  await expect(option(page, 1, '이해됨')).toContainText('5명')
+
+  state.push[resultsTopic]({ type: 'POLL_RESULTS_UPDATED', data: {
+    pollId: 501, totalParticipants: 12, respondedParticipants: 1, unrespondedParticipants: 11, counts: { 1: 1 } } })
+  // 늦은 이벤트가 처리될 시간을 주고도 최종 결과가 그대로인지 확인한다.
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)))
+  await expect(option(page, 1, '이해됨')).toContainText('5명')
+  await expect(total(page, 1, '미응답')).toContainText('3명')
 })
