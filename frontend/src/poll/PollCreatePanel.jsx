@@ -18,6 +18,7 @@ export function PollCreatePanel({ roomId, ending = false }) {
     const [unknown, setUnknown] = useState(false)
     const [revision, setRevision] = useState(0)
     const [now, setNow] = useState(Date.now())
+    const [understandingSeconds, setUnderstandingSeconds] = useState('60')
 
     const offset = useRef(0)
     const operation = useRef(0)
@@ -148,21 +149,31 @@ export function PollCreatePanel({ roomId, ending = false }) {
             return
         }
 
+        await createPoll({ type: 'GENERAL', question, options, durationSeconds })
+    }
+
+    async function startUnderstanding() {
+        if (pending.current || checking || loadError || activePoll || unknown || ending) return
+
+        const durationSeconds = Number(understandingSeconds)
+
+        if (!Number.isInteger(durationSeconds) ||
+            durationSeconds < 10 || durationSeconds > 300) {
+            setError('제한 시간은 10~300초로 설정해 주세요.')
+            return
+        }
+
+        await createPoll({ type: 'UNDERSTANDING', durationSeconds })
+    }
+
+    async function createPoll(body) {
         pending.current = true
         operation.current++
         setBusy(true)
         setError('')
 
         try {
-            const poll = await request(base, {
-                method: 'POST',
-                body: {
-                    type: 'GENERAL',
-                    question,
-                    options,
-                    durationSeconds,
-                },
-            })
+            const poll = await request(base, { method: 'POST', body })
 
             if (!poll?.pollId) throw new Error('POLL_RESPONSE_MISSING')
 
@@ -196,7 +207,7 @@ export function PollCreatePanel({ roomId, ending = false }) {
 
     async function closePoll() {
         if (pending.current || checking || loadError || unknown || ending ||
-            !activePoll || activePoll.type !== 'GENERAL') return
+            !activePoll) return
 
         pending.current = true
         operation.current++
@@ -270,14 +281,15 @@ export function PollCreatePanel({ roomId, ending = false }) {
                         상태 다시 확인
                     </button>
 
-                    {activePoll.type === 'GENERAL' && <button
+                    <button
                         type="button"
                         disabled={blocked || remaining === 0}
                         onClick={closePoll}>
-                        {busy ? '마감 중…' : '투표 마감'}
-                    </button>}
+                        {busy ? '마감 중…' : activePoll.type === 'GENERAL' ? '투표 마감' : '이해도 체크 마감'}
+                    </button>
                 </div>
-            </> : <form onSubmit={submit}>
+            </> : <>
+            <form onSubmit={submit}>
                 <label htmlFor="poll-question">
                     투표 질문 <span className="room-required">필수</span>
                 </label>
@@ -371,7 +383,35 @@ export function PollCreatePanel({ roomId, ending = false }) {
                         {busy ? '투표 생성 중…' : '투표 생성'}
                     </button>
                 </div>
-            </form>}
+            </form>
+
+            <div className="room-poll-understanding">
+                <strong>이해도 체크</strong>
+
+                <p className="room-caption">
+                    이해됨·헷갈림·모르겠음 3개 선택지로 청중의 이해도를 확인합니다.
+                </p>
+
+                <label htmlFor="understanding-duration">체크 시간 (초)</label>
+
+                <input id="understanding-duration"
+                       className="room-poll-duration"
+                       type="number"
+                       min="10"
+                       max="300"
+                       step="1"
+                       disabled={blocked}
+                       value={understandingSeconds}
+                       onChange={e => {
+                           setUnderstandingSeconds(e.target.value)
+                           setError('')
+                       }} />
+
+                <button type="button" disabled={blocked} onClick={startUnderstanding}>
+                    {busy ? '시작 중…' : '이해도 체크 시작'}
+                </button>
+            </div>
+            </>}
         </>}
     </section>
 }

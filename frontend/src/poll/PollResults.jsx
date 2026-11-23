@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { recentClosedLimit } from './pollResults.js'
 import { watchPollResults } from './watchPollResults.js'
 import './pollResults.css'
 
@@ -11,7 +12,7 @@ export function PollResults({ roomId }) {
 
   useEffect(() => {
     const subscription = watchPollResults({
-      roomId, onPolls: setPolls, onConnection: setConnected, onDenied: () => setDenied(true),
+      roomId, type: 'GENERAL', closedLimit: recentClosedLimit, onPolls: setPolls, onConnection: setConnected, onDenied: () => setDenied(true),
     })
     return () => subscription.close()
   }, [roomId])

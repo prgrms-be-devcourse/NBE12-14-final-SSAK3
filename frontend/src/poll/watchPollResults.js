@@ -1,11 +1,11 @@
 import { request } from '../stt/api.js'
 import { openRoomSocket } from '../ws/roomSocket.js'
-import { selectGeneralPolls } from './pollResults.js'
+import { selectPolls } from './pollResults.js'
 import { applyCounts, isResultsEvent } from './understandingSummary.js'
 
-// onPolls(polls): 일반 투표의 결과 목록. 진행 중인 것이 먼저이고 없으면 빈 배열.
-// 각 항목은 results API 의 값에 question 을 더한 것이다.
-export function watchPollResults({ roomId, onPolls, onConnection, onDenied }) {
+// type 투표(GENERAL·UNDERSTANDING)의 결과 목록을 onPolls(polls)로 알린다. 진행 중인 것이 먼저이고 없으면 빈 배열.
+// closedLimit 은 보여 줄 마감 투표의 최대 개수다. 각 항목은 results API 의 값에 question·createdAt·closedAt 을 더한 것이다.
+export function watchPollResults({ roomId, type, closedLimit = Infinity, onPolls, onConnection, onDenied }) {
   const base = `/rooms/${encodeURIComponent(roomId)}/polls`
   const hostHeaders = { 'X-Chat-Role': 'HOST' }
   const finals = new Map()
@@ -23,14 +23,15 @@ export function watchPollResults({ roomId, onPolls, onConnection, onDenied }) {
   async function resultsOf(poll) {
     // 마감된 투표의 결과는 더 바뀌지 않으므로 한 번만 받는다.
     if (poll.status === 'CLOSED' && finals.has(poll.pollId)) return finals.get(poll.pollId)
-    const results = { ...await request(`${base}/${encodeURIComponent(poll.pollId)}/results`), question: poll.question }
+    const results = { ...await request(`${base}/${encodeURIComponent(poll.pollId)}/results`),
+      question: poll.question, createdAt: poll.createdAt, closedAt: poll.closedAt }
     if (results.status === 'CLOSED') finals.set(poll.pollId, results)
     return results
   }
 
   async function load() {
     const [open, closed] = await Promise.all([request(`${base}?status=OPEN`), request(`${base}?status=CLOSED`)])
-    return Promise.all(selectGeneralPolls(open.polls, closed.polls).map(resultsOf))
+    return Promise.all(selectPolls(open.polls, closed.polls, type, closedLimit).map(resultsOf))
   }
 
   // The simple broker has no event replay, so reconcile with REST after (re)connecting.
@@ -61,7 +62,7 @@ export function watchPollResults({ roomId, onPolls, onConnection, onDenied }) {
     if (data?.roomId !== Number(roomId)) return
     if (event.type === 'POLL_CLOSED') closed.add(data.pollId)
     // 새 투표가 열리거나 보던 투표가 마감되면 목록과 결과를 서버에서 다시 받는다.
-    if ((event.type === 'POLL_CREATED' && data.type === 'GENERAL')
+    if ((event.type === 'POLL_CREATED' && data.type === type)
       || (event.type === 'POLL_CLOSED' && current.some(poll => poll.pollId === data.pollId))) void sync()
   }
 
