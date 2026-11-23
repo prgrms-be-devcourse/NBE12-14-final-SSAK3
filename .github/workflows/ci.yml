@@ -199,10 +199,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [publish-images]
 
-    # main push에서 자동배포, 작업 브랜치는 수동 실행만 허용
+    # main push 자동배포, 작업 브랜치에서는 명시적인 배포 커밋만 허용한다.
+    # develop이 기본 브랜치이므로 workflow_dispatch는 기본 브랜치에 반영된 이후 사용 가능하다.
     if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'push' &&
-       github.ref == 'refs/heads/main') ||
+       github.ref == 'refs/heads/chore/SCRUM-88-ghcr-image-publish' &&
+       github.actor == 'jkidse14' &&
+       contains(github.event.head_commit.message, '[deploy-ec2]')) ||
       (github.event_name == 'workflow_dispatch' &&
        inputs.deploy == true &&
        (github.ref == 'refs/heads/main' ||
@@ -252,13 +256,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Git에 있는 배포 파일만 전달한다. 비밀값은 포함하지 않는다.
+          # 오래된 CI 실행이 새 버전을 덮어쓰지 못하도록 전송 직전에 검사한다.
+          LATEST_SHA="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
+          if [[ -z "$LATEST_SHA" || "$LATEST_SHA" != "$GITHUB_SHA" ]]; then
+            echo "배포 중단: 현재 실행 SHA가 원격 브랜치의 최신 SHA가 아닙니다." >&2
+            exit 1
+          fi
+
+          # Git에 있는 배포 파일만 전달한다. 운영 비밀값은 포함하지 않는다.
           COMPOSE_B64="$(base64 -w 0 infra/deploy/compose.prod.yaml)"
           SCRIPT_B64="$(base64 -w 0 infra/deploy/deploy.sh)"
           COMPOSE_SHA="$(sha256sum infra/deploy/compose.prod.yaml | cut -d ' ' -f 1)"
           SCRIPT_SHA="$(sha256sum infra/deploy/deploy.sh | cut -d ' ' -f 1)"
 
-          # SSM으로 파일 내용을 나누어 전달한 뒤 EC2에서 복원·검증한다.
+          # 새 파일은 스테이징에만 저장한다. 배포 성공 후 deploy.sh가 운영 파일로 확정한다.
           jq -n \
             --arg compose "$COMPOSE_B64" \
             --arg script "$SCRIPT_B64" \
@@ -266,28 +277,29 @@ jobs:
             --arg script_sha "$SCRIPT_SHA" \
             --arg image_tag "$GITHUB_SHA" '
               def chunks: [range(0; length; 1500) as $i | .[$i:$i+1500]];
+              def file($suffix): "/opt/react/.staging/" + $image_tag + $suffix;
               {
                 commands: (
                   [
                     "set -eu",
+                    "umask 077",
                     "install -d -m 700 -o root -g root /opt/react",
-                    ": > /opt/react/.compose.prod.yaml.b64",
-                    ": > /opt/react/.deploy.sh.b64"
+                    "install -d -m 700 -o root -g root /opt/react/.staging",
+                    (": > " + file(".compose.b64")),
+                    (": > " + file(".script.b64"))
                   ]
-                  + ($compose | chunks | map("printf %s " + (. | @sh) + " >> /opt/react/.compose.prod.yaml.b64"))
-                  + ($script | chunks | map("printf %s " + (. | @sh) + " >> /opt/react/.deploy.sh.b64"))
+                  + ($compose | chunks | map("printf %s " + (. | @sh) + " >> " + file(".compose.b64")))
+                  + ($script | chunks | map("printf %s " + (. | @sh) + " >> " + file(".script.b64")))
                   + [
-                    "base64 -d /opt/react/.compose.prod.yaml.b64 > /opt/react/.compose.prod.yaml.new",
-                    "base64 -d /opt/react/.deploy.sh.b64 > /opt/react/.deploy.sh.new",
-                    ("echo " + $compose_sha + "  /opt/react/.compose.prod.yaml.new | sha256sum -c -"),
-                    ("echo " + $script_sha + "  /opt/react/.deploy.sh.new | sha256sum -c -"),
-                    "chmod 600 /opt/react/.compose.prod.yaml.new",
-                    "chmod 700 /opt/react/.deploy.sh.new",
-                    "bash -n /opt/react/.deploy.sh.new",
-                    "mv -f /opt/react/.compose.prod.yaml.new /opt/react/compose.prod.yaml",
-                    "mv -f /opt/react/.deploy.sh.new /opt/react/deploy.sh",
-                    "rm -f /opt/react/.compose.prod.yaml.b64 /opt/react/.deploy.sh.b64",
-                    ("/opt/react/deploy.sh " + $image_tag)
+                    ("base64 -d " + file(".compose.b64") + " > " + file(".compose.prod.yaml")),
+                    ("base64 -d " + file(".script.b64") + " > " + file(".deploy.sh")),
+                    ("echo " + $compose_sha + "  " + file(".compose.prod.yaml") + " | sha256sum -c -"),
+                    ("echo " + $script_sha + "  " + file(".deploy.sh") + " | sha256sum -c -"),
+                    ("chmod 600 " + file(".compose.prod.yaml")),
+                    ("chmod 700 " + file(".deploy.sh")),
+                    ("bash -n " + file(".deploy.sh")),
+                    ("rm -f " + file(".compose.b64") + " " + file(".script.b64")),
+                    ("bash " + file(".deploy.sh") + " " + $image_tag)
                   ]
                 ),
                 executionTimeout: ["900"]
@@ -333,7 +345,7 @@ jobs:
                 aws ssm get-command-invocation \
                   --command-id "$COMMAND_ID" \
                   --instance-id "$EC2_INSTANCE_ID" \
-                  --query '{Status:Status,Details:StatusDetails}' \
+                  --query '{Status:Status,Details:StatusDetails,StdErr:StandardErrorContent}' \
                   --output json
                 exit 1
                 ;;
