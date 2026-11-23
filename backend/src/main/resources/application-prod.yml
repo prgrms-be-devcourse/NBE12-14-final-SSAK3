@@ -10,7 +10,10 @@ spring:
       port: ${REDIS_PORT:6379}
   jpa:
     show-sql: false
+    hibernate:
+      # 테이블은 Flyway 마이그레이션으로 만들고, 엔티티와 일치하는지만 검사한다
+      ddl-auto: validate
 
 logging:
   level:
-    com.csmatch: info
+    com.react: info

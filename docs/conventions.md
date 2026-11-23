@@ -19,7 +19,8 @@
 - 제목: `[feat]` `[fix]` `[refactor]` `[test]` `[chore]` (2개 이상이면 `[feat] a, [fix] b`)
 - 본문 템플릿(`.github/PULL_REQUEST_TEMPLATE.md`): 작업 내용 / 관련 이슈 / 테스트 방법 / 리뷰어에게
 - 머지 후 작업 브랜치를 삭제한다.
-- 승인 1명·CI 통과: 팀 규칙이지만 **현재는 적용하지 않는다**(보호 규칙 승인 0개, CI 없음). 담당자가 정해지면 다시 켠다.
+- 최소 **1명 승인** 후 머지한다(브랜치 보호 규칙으로 강제).
+- CI 통과: PR 과 push 때 `.github/workflows/ci.yml` 이 백엔드 빌드·테스트와 프론트 빌드를 실행한다. 통과한 뒤 머지한다.
 
 ## Jira
 
@@ -33,6 +34,6 @@
 ## 코드
 
 - 아직 합의된 코드 컨벤션이 없다. 새 코드는 주변 코드의 이름·구조·주석 스타일을 따른다.
-- 백엔드 패키지: `com.csmatch.<도메인>.{controller,service,repository,domain,dto}`, 공통은 `com.csmatch.global.*`
-- 테스트는 `backend/src/test/java/com/csmatch/<도메인>/` 에 같은 구조로 둔다.
+- 백엔드 패키지: `com.react.<도메인>.{controller,service,repository,entity,dto}`, 공통은 `com.react.global.*`
+- 테스트는 `backend/src/test/java/com/react/<도메인>/` 에 같은 구조로 둔다.
 - 시크릿·`.env` 는 커밋하지 않는다. 설정은 환경 변수로 주입한다.

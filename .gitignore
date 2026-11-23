@@ -13,6 +13,8 @@ backend/out/
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 
 # IDE / OS
 .idea/
@@ -23,3 +25,21 @@ frontend/dist/
 # AI 도구 개인 설정
 .claude/settings.local.json
 CLAUDE.local.md
+
+# 개인 공부용 문서
+/docs/study/
+
+# Local report experiments (source text and model responses)
+/.report-experiments/
+__pycache__/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+*.tfplan
+crash.log
+crash.*.log

@@ -1,0 +1,194 @@
+{
+  "model": "gpt-6-luna",
+  "reasoningEffort": "low",
+  "syntheticAudience": true,
+  "sourceSha256": "cba8a02d1f7d6eb08bdb9c4d7695811bdefd078938b45f03889db85f527ec5c9",
+  "promptSha256": "d4c04ee25d06ad11609f0d116311502f196cc7a017352dd0697f96e07a514d05",
+  "executed": true,
+  "results": [
+    {
+      "scenario": "normal",
+      "status": "COMPLETED",
+      "humanReview": "PENDING",
+      "checks": [
+        "상태 변화와 가스 관련 관심·질문을 실제 근거로 연결한다.",
+        "같은 시간대 질문과 이해도 반응을 원인과 결과로 단정하지 않는다.",
+        "이해도 체크를 연 60초 구간에 최종 결과를 한 번만 연결한다.",
+        "미응답 2명을 NOT_UNDERSTOOD에 합치지 않는다.",
+        "lackRatio가 50%여도 lackCount가 1이므로 lowUnderstanding은 false다."
+      ],
+      "elapsedSeconds": 17.3,
+      "usage": {
+        "input_tokens": 20598,
+        "input_tokens_details": {
+          "cache_write_tokens": 20595,
+          "cache_write_tokens_details": {
+            "ttl_12h_tokens": 0,
+            "ttl_30m_tokens": 20595
+          },
+          "cached_tokens": 0
+        },
+        "output_tokens": 1428,
+        "output_tokens_details": {
+          "reasoning_tokens": 177
+        },
+        "total_tokens": 22026
+      },
+      "estimatedCostUsd": 0.00328868,
+      "httpStatus": null,
+      "itemCounts": {
+        "mainInterests": 2,
+        "reviewPoints": 1,
+        "suggestions": 2
+      },
+      "automatedValidation": "PASSED",
+      "agentReviewNotes": [
+        "상태 변화·가스 관련 질문을 연결했고 미응답과 모르겠음을 구분했다.",
+        "이해도 투표를 특정 설명 주제에 연결한 문구는 시간적 연관에 대한 수동 검토가 필요하다."
+      ]
+    },
+    {
+      "scenario": "sparse",
+      "status": "COMPLETED",
+      "humanReview": "PENDING",
+      "checks": [
+        "한 참여자의 요청을 다수·반복 의견으로 확대하지 않는다.",
+        "각 요약 목록을 3개로 억지로 채우지 않는다.",
+        "반응하지 않은 사람의 이해 상태를 추정하지 않는다."
+      ],
+      "elapsedSeconds": 3.44,
+      "usage": {
+        "input_tokens": 19699,
+        "input_tokens_details": {
+          "cache_write_tokens": 17743,
+          "cache_write_tokens_details": {
+            "ttl_12h_tokens": 0,
+            "ttl_30m_tokens": 17743
+          },
+          "cached_tokens": 1953
+        },
+        "output_tokens": 217,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 19916
+      },
+      "estimatedCostUsd": 0.00234621,
+      "httpStatus": null,
+      "itemCounts": {
+        "mainInterests": 0,
+        "reviewPoints": 0,
+        "suggestions": 1
+      },
+      "automatedValidation": "PASSED",
+      "agentReviewNotes": [
+        "한 건의 요청으로 제안 1개만 생성했다. 다수 의견으로 확대하지 않았다.",
+        "가스 차감 및 부족 시 실행 중단 설명은 연결된 STT 9017·9021에서 확인했다."
+      ]
+    },
+    {
+      "scenario": "opposing",
+      "status": "COMPLETED",
+      "humanReview": "PENDING",
+      "checks": [
+        "설명과 실습 비중에 대한 상반된 요구를 한 항목 안에 구분한다.",
+        "양쪽 근거를 각각 연결하며 어느 쪽도 전체 청중의 의견으로 표현하지 않는다."
+      ],
+      "elapsedSeconds": 6.78,
+      "usage": {
+        "input_tokens": 19827,
+        "input_tokens_details": {
+          "cache_write_tokens": 17871,
+          "cache_write_tokens_details": {
+            "ttl_12h_tokens": 0,
+            "ttl_30m_tokens": 17871
+          },
+          "cached_tokens": 1953
+        },
+        "output_tokens": 525,
+        "output_tokens_details": {
+          "reasoning_tokens": 170
+        },
+        "total_tokens": 20352
+      },
+      "estimatedCostUsd": 0.00251621,
+      "httpStatus": null,
+      "itemCounts": {
+        "mainInterests": 1,
+        "reviewPoints": 0,
+        "suggestions": 1
+      },
+      "automatedValidation": "PASSED",
+      "agentReviewNotes": [
+        "두 입장을 별도로 보존했고 서버가 상위 근거와 시간대를 합쳤다.",
+        "제안은 양쪽 요청을 참고한 절충안이며 청중의 합의가 있었다고 표현하지 않았다."
+      ]
+    },
+    {
+      "scenario": "missing-data",
+      "status": "COMPLETED",
+      "humanReview": "PENDING",
+      "checks": [
+        "질문 원문은 활용한다.",
+        "누락된 강사의 설명·답변 여부를 추측하지 않는다.",
+        "STT 누락과 청중 분석 실패를 별개 한계로 알린다.",
+        "실패한 청중 분석을 성공한 것처럼 표현하지 않는다."
+      ],
+      "elapsedSeconds": 5.73,
+      "usage": {
+        "input_tokens": 17897,
+        "input_tokens_details": {
+          "cache_write_tokens": 15941,
+          "cache_write_tokens_details": {
+            "ttl_12h_tokens": 0,
+            "ttl_30m_tokens": 15941
+          },
+          "cached_tokens": 1953
+        },
+        "output_tokens": 434,
+        "output_tokens_details": {
+          "reasoning_tokens": 202
+        },
+        "total_tokens": 18331
+      },
+      "estimatedCostUsd": 0.00222945,
+      "httpStatus": null,
+      "itemCounts": {
+        "mainInterests": 0,
+        "reviewPoints": 1,
+        "suggestions": 1
+      },
+      "automatedValidation": "PASSED",
+      "agentReviewNotes": [
+        "누락된 강사의 설명·답변을 생성하지 않았고 남은 질문을 활용했다.",
+        "서버가 관련 항목에 STT 누락과 청중 분석 실패 안내를 각각 추가했다.",
+        "제안의 짚어보세요 표현은 검토용 제안임을 더 명확히 하는 문체 개선 여지가 있다."
+      ]
+    }
+  ],
+  "totalEstimatedCostUsd": 0.01038055,
+  "averageEstimatedCostUsd": 0.00259514,
+  "pricing": {
+    "verifiedAt": "2026-11-18",
+    "currency": "USD",
+    "perMillionTokens": {
+      "input": 0.1,
+      "cachedInput": 0.01,
+      "cacheWrite30m": 0.125,
+      "cacheWrite12h": 0.25,
+      "output": 0.5
+    },
+    "sources": [
+      "https://developers.openai.com/api/docs/models/gpt-6-luna",
+      "https://developers.openai.com/api/docs/guides/prompt-caching"
+    ],
+    "note": "실제 청구가 아닌 usage 기반 추정. 캐시 쓰기는 일반 입력 요금을 대체하며 출력에 추론 토큰을 중복 가산하지 않음."
+  },
+  "scopeLimitations": [
+    "48분 59초 사용자 전사와 소량의 가상 청중 기록 4개 시나리오로, 대규모 실제 청중 품질을 보장하지 않음.",
+    "자동 검증은 JSON 구조·입력 근거 참조·시간대 검사이며 문장 의미의 정확성을 보장하지 않음.",
+    "기존 청중 AI 분석의 성공 요약 재사용 및 운영 Spring 연동은 이번 실험에 포함되지 않음.",
+    "STT 종료 시각이 없는 실험 원문은 시작 구간에만 연결함.",
+    "자동 재시도 없이 시나리오별 1회 호출. 비용 재계산과 검증에는 추가 호출 없음."
+  ]
+}

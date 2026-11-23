@@ -1,0 +1,62 @@
+import React, { useEffect, useId, useState } from 'react'
+import { watchPollResults } from './watchPollResults.js'
+import './understandingSummary.css'
+
+const percent = value => `${value.toFixed(1)}%`
+const time = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+
+export function UnderstandingSummary({ roomId }) {
+  const [checks, setChecks] = useState([])
+  const [connected, setConnected] = useState(false)
+  const [denied, setDenied] = useState(false)
+  const headingId = useId()
+
+  useEffect(() => {
+    const subscription = watchPollResults({
+      roomId, type: 'UNDERSTANDING', onPolls: setChecks, onConnection: setConnected, onDenied: () => setDenied(true),
+    })
+    return () => subscription.close()
+  }, [roomId])
+
+  if (denied || checks.length === 0) return null
+  const live = checks.some(check => check.status === 'OPEN')
+  return <section className="understanding-summary" aria-labelledby={headingId}>
+    <div className="understanding-summary-heading">
+      <h2 id={headingId}>이해도 체크 결과</h2>
+      <span>총 {checks.length}회</span>
+      {live && !connected && <span>연결 확인 중</span>}
+    </div>
+    {/* 체크가 많아도 패널이 길어지지 않도록 목록만 스크롤한다. 최신 체크가 맨 위에 있다. */}
+    <ul className="understanding-summary-list" tabIndex={0} aria-label="이해도 체크 목록">
+      {checks.map((check, index) => <UnderstandingCheckCard key={check.pollId} check={check} number={checks.length - index} />)}
+    </ul>
+  </section>
+}
+
+function UnderstandingCheckCard({ check, number }) {
+  const open = check.status === 'OPEN'
+  return <li className="understanding-summary-card" aria-label={`이해도 체크 ${number}`}>
+    <div className="understanding-summary-title">
+      <strong>{number}회차</strong>
+      {check.createdAt && <time dateTime={check.createdAt}>{time.format(new Date(check.createdAt))} 시작</time>}
+      <span className={open ? 'understanding-summary-open' : undefined}>{open ? '진행 중' : '마감'}</span>
+    </div>
+    <ul className="understanding-summary-options">
+      {check.options.map(option => <li key={option.optionId}>
+        <div className="understanding-summary-row">
+          <strong>{option.content}</strong>
+          <span>{option.count}명</span>
+        </div>
+        <div className="understanding-summary-bar" aria-hidden="true">
+          <span style={{ width: `${option.percentageOfResponses}%` }} />
+        </div>
+        <p>응답자의 {percent(option.percentageOfResponses)} · 전체의 {percent(option.percentageOfAllParticipants)}</p>
+      </li>)}
+    </ul>
+    <dl className="understanding-summary-totals">
+      <div><dt>전체 참여</dt><dd>{check.totalParticipants}명</dd></div>
+      <div><dt>응답</dt><dd>{check.respondedParticipants}명 ({percent(check.responseRate)})</dd></div>
+      <div><dt>미응답</dt><dd>{check.unrespondedParticipants}명</dd></div>
+    </dl>
+  </li>
+}

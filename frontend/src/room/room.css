@@ -1,0 +1,174 @@
+.room-app { min-height:100vh; background:#f7f8fa; color:#202124; font-family:Pretendard,sans-serif; font-size:16px; line-height:1.6; }
+.room-app * { box-sizing:border-box; }
+.room-app a { color:#087f5b; text-decoration:none; }
+.room-top { height:84px; padding:0 max(24px,calc((100vw - 1120px)/2)); display:flex; align-items:center; justify-content:space-between; gap:24px; background:white; border-bottom:1px solid #e6e8eb; }
+.room-top > a { font-size:25px; font-weight:700; letter-spacing:-1px; white-space:nowrap; }
+.room-top a span { font-size:13px; font-weight:400; margin-left:20px; color:#666c75; letter-spacing:0; }
+.room-top > span { font-size:14px; color:#666c75; }
+.room-app main { max-width:1120px; margin:auto; padding:40px 24px 72px; }
+.room-create { max-width:680px; margin:auto; }
+.room-live-list { margin-bottom:20px; }
+.room-live-list > p { margin:0; color:#586169; font-size:14px; }
+.room-live-list .room-card h2 { margin:0 0 8px; }
+.room-live-list ul { list-style:none; margin:0; padding:0; }
+.room-live-list li { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; padding:14px 0; }
+.room-live-list li + li { border-top:1px solid #e6e8eb; }
+.room-live-list li:last-child { padding-bottom:0; }
+.room-live-list li > div { flex:1 1 220px; min-width:0; overflow-wrap:anywhere; }
+.room-live-list time, .room-live-list small { display:block; color:#586169; font-size:14px; }
+.room-live-list li a { padding:8px 12px; border:1px solid #aed5c8; border-radius:8px; font-weight:600; }
+.room-live-list li a:hover { background:#edf8f3; }
+.room-heading { margin:28px 0 32px; }
+.room-heading h1 { font-size:32px; letter-spacing:-1px; line-height:1.35; margin:12px 0; overflow-wrap:anywhere; }
+.room-heading p { color:#666c75; margin:0; }
+.room-kicker { color:#087f5b; font-size:12px; font-weight:700; letter-spacing:1px; }
+.room-card { background:white; border:1px solid #e3e6e9; border-radius:18px; padding:32px; min-width:0; }
+.room-card h2 { font-size:21px; margin:4px 0 24px; }
+.room-app label { display:block; font-size:15px; font-weight:600; margin:0 0 10px; }
+.room-required,.room-optional { font-size:12px; margin-left:6px; font-weight:400; color:#6a7078; }
+.room-required { color:#087f5b; }
+.room-app input,.room-app textarea { width:100%; border:1px solid #cbd0d5; border-radius:9px; background:white; font:inherit; color:inherit; padding:12px 14px; }
+.room-app textarea { resize:vertical; min-height:150px; }
+.room-app input::placeholder,.room-app textarea::placeholder { color:#767d86; }
+.room-count { display:block; text-align:right; font-size:12px; color:#666c75; margin-top:6px; }
+.room-app button { background:#087f5b; color:white; font:inherit; font-weight:600; border:1px solid transparent; padding:11px 18px; border-radius:9px; cursor:pointer; }
+.room-app button:disabled { cursor:not-allowed; opacity:.55; }
+.room-app .room-secondary { border-color:#d3d8dc; background:white; color:#41474e; }
+.room-app :is(button,a,input,textarea):focus-visible { outline:3px solid #65bb9e; outline-offset:3px; }
+.room-form-actions { display:flex; justify-content:space-between; gap:12px; margin-top:32px; }
+.room-caption { color:#666c75; font-size:12px; margin:14px 0 0; }
+.room-note { background:#edf8f3; padding:12px; border-radius:8px; }
+.room-warning { background:#fff8e9; border:1px solid #e7cf9c; color:#76511b; padding:18px; border-radius:10px; margin:20px 0; }
+.room-warning p { margin:6px 0 0; }
+.room-warning button { margin:8px; }
+.room-app #create-error { color:#b3261e; font-size:14px; min-height:20px; margin:4px 0 20px; }
+.room-grid { display:grid; grid-template-columns:1.1fr 1fr; gap:24px; align-items:start; }
+.room-ended { grid-template-columns:1fr; }
+.room-report-status { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 24px; }
+.room-report-status h2 { margin:0 0 4px; }
+.room-report-status p { margin:0; color:#515c61; }
+.room-report-status a { display:inline-block; padding:10px 16px; border-radius:9px; background:#087f5b; font-weight:600; }
+.room-app .room-report-status a { color:white; }
+.room-description { white-space:pre-wrap; overflow-wrap:anywhere; margin-bottom:36px; }
+.room-app dl { border-top:1px solid #e7e9ec; padding-top:24px; display:grid; grid-template-columns:90px 1fr; gap:12px; font-size:14px; }
+.room-app dt { color:#666c75; }
+.room-app dd { margin:0; }
+.room-badge { padding:5px 12px; border-radius:20px; background:#eef0f3; font-size:13px; font-weight:600; }
+.room-LIVE { background:#ddf5e9; color:#087348; }
+.room-READY { background:#edf2fb; color:#365d8e; }
+.room-ENDED { color:#666c75; }
+.room-invite { text-align:center; }
+.room-invite label { text-align:left; margin-top:24px; }
+.room-qr { display:block; width:210px; max-width:100%; margin:0 auto 12px; }
+.room-copy { display:flex; gap:8px; }
+.room-copy input { min-width:0; font-size:13px; }
+.room-copy button { flex-shrink:0; font-size:13px; }
+.room-code { padding-top:16px; border-top:1px solid #edf0f2; color:#666c75; font-size:13px; }
+.room-code strong { display:block; color:#202124; letter-spacing:2px; margin-top:4px; font-size:17px; }
+.room-dialog { width:min(560px,calc(100vw - 32px)); max-height:90vh; overflow:auto; border:0; border-radius:20px; padding:28px; color:#202124; }
+.room-dialog::backdrop { background:rgb(20 30 26 / 65%); }
+.room-dialog img { width:100%; display:block; }
+.room-dialog h2 { margin:0; font-size:22px; }
+.room-footer { text-align:center; padding:24px; font-size:12px; color:#717780; }
+@media(max-width:700px) {
+  .room-top { height:68px; padding:0 20px; }.room-top > span { display:none; }
+  .room-app main { padding:20px 16px 40px; }.room-heading h1 { font-size:26px; }
+  .room-card { padding:24px 20px; }.room-grid { grid-template-columns:1fr; }
+  .room-app dl { grid-template-columns:80px 1fr; }.room-dialog { padding:20px; }
+}
+.room-workspace { display:grid; gap:20px; align-items:start; margin:20px 0 28px; }
+.room-workspace > * { min-width:0; }
+.room-recording,.room-panel-tabs,.room-workspace > .room-records { grid-column:1/-1; }
+.room-lifecycle { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:12px 0 20px; }
+.room-app .room-end { color:#9a352f; border-color:#e5c6c3; }
+.room-end-dialog { max-width:min(420px,92vw); text-align:left; }
+.room-end-dialog div { display:flex; justify-content:flex-end; gap:10px; }
+.room-recording .stt-panel { margin:0; border:1px solid #e3e6e9; border-radius:18px; }
+.room-recording .stt-panel header { display:block; }
+.room-recording h2 { margin:0 0 16px; font-size:22px; }
+.room-recording .secondary { border-color:#d3d8dc; background:white; color:#41474e; }
+.room-recording .stt-status { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr)); }
+.room-recording .stt-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.room-recording summary { cursor:pointer; font-weight:600; }
+.room-records ol { list-style:none; margin:16px 0 0; padding:0; }
+.room-records li { padding:12px 0; border-top:1px solid #e6e8eb; overflow-wrap:anywhere; }
+.room-records time { font-variant-numeric:tabular-nums; }
+.room-records li p { margin:4px 0 0; white-space:pre-wrap; }
+.room-gap { color:#76511b; }
+
+/* SCRUM-169: 강연자 투표 생성 */
+.host-shell .room-workspace > .room-poll {
+  grid-column: 1 / -1;
+}
+
+.room-poll form {
+  max-width: 680px;
+}
+
+.room-poll .room-poll-options {
+  margin: 24px 0 8px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.room-poll-options legend {
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.room-poll-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.room-poll-option label {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.room-poll-option input {
+  min-width: 0;
+}
+
+.room-poll-option button {
+  white-space: nowrap;
+}
+
+.room-poll .room-poll-add {
+  margin-bottom: 24px;
+}
+
+.room-poll .room-poll-duration {
+  width: min(180px, 100%);
+}
+
+.room-poll .room-poll-understanding {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #dde3e8;
+}
+
+.room-poll .room-poll-understanding .room-caption {
+  margin: 0;
+}
+
+.room-poll .room-poll-error {
+  margin: 16px 0;
+  color: #b3261e;
+  font-size: 14px;
+}
+
+.room-poll ol {
+  padding-left: 24px;
+}
+
+.room-poll li {
+  margin: 8px 0;
+}

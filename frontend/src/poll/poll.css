@@ -1,0 +1,110 @@
+/* SCRUM-169: 기존 RE:ACT 청중 화면 스타일 유지 */
+
+.participation-live main > .participation-poll {
+    margin-top: 20px;
+    padding: 24px;
+    border: 1px solid #dde3e8;
+    border-radius: 16px;
+    background: white;
+}
+
+.participation-poll h2 {
+    font-size: 20px;
+    margin: 0 0 16px;
+}
+
+.participation-poll p {
+    margin: 8px 0 16px;
+    color: #526170;
+}
+
+.participation-poll .participation-poll-question {
+    color: #1e2834;
+    font-size: 17px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.participation-poll .participation-poll-time {
+    color: #00746d;
+    font-size: 14px;
+}
+
+.participation-poll fieldset {
+    border: 0;
+    padding: 0;
+    margin: 12px 0 16px;
+    min-width: 0;
+}
+
+.participation-poll legend {
+    font-size: 14px;
+    color: #526170;
+    margin-bottom: 10px;
+}
+
+.participation-poll .participation-poll-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    margin: 8px 0;
+    border: 1px solid #dde3e8;
+    border-radius: 9px;
+    cursor: pointer;
+}
+
+.participation-poll-option input {
+    margin-top: 5px;
+    flex-shrink: 0;
+    accent-color: #00746d;
+}
+
+.participation-poll-option span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.participation-poll .participation-poll-saved {
+    color: #00746d;
+    font-size: 14px;
+}
+
+.participation-poll button {
+    border: 1px solid transparent;
+    border-radius: 9px;
+    padding: 11px 16px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.participation-poll form > button {
+    width: 100%;
+    background: #00746d;
+    color: white;
+}
+
+.participation-poll .participation-poll-refresh {
+    margin-top: 12px;
+    background: white;
+    color: #445162;
+    border-color: #ced7df;
+}
+
+.participation-poll button:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+.participation-poll button:focus-visible,
+.participation-poll input:focus-visible {
+    outline: 3px solid #5199d3;
+    outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+    .participation-live main > .participation-poll {
+        padding: 18px;
+    }
+}

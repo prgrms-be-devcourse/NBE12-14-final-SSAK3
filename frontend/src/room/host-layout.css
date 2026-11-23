@@ -1,0 +1,439 @@
+.room-app.host-shell {
+  --host-ink: #1e2834;
+  --host-muted: #596676;
+  --host-line: #dde3e8;
+  --host-rail: #f6f8fa;
+  --host-teal: #007e78;
+  --host-blue: #1c5ea3;
+  --host-selected: #e5effd;
+  --host-bar-size: 64px;
+  --host-rail-size: 88px;
+  min-height: 100dvh;
+  color: var(--host-ink);
+  background: #fff;
+  font-family: Pretendard, sans-serif;
+}
+.host-shell .host-bar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: var(--host-bar-size);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 26px;
+  background: white;
+  border-bottom: 1px solid var(--host-line);
+}
+.host-shell .host-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  padding: 4px 0;
+  background: transparent;
+  color: #172532;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -.055em;
+}
+.host-shell .host-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 32px;
+  height: 32px;
+  border-radius: 11px 11px 11px 3px;
+  background: #008e89;
+}
+.host-brand-mark i { width: 3px; height: 8px; background: white; border-radius: 2px; }
+.host-brand-mark i:nth-child(2) { height: 18px; }
+.host-brand-mark i:nth-child(3) { height: 13px; }
+.host-shell .host-account {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-left: auto;
+  min-width: 0;
+  color: var(--host-muted);
+  font-size: 14px;
+}
+.host-shell .host-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+  color: #236c70;
+  background: #e0f1ee;
+  font-size: 13px;
+  font-weight: 600;
+}
+.host-shell .host-account-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-shell .host-logout {
+  margin-left: 9px;
+  padding: 6px 11px;
+  border: 1px solid var(--host-line);
+  color: #42505d;
+  background: white;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.host-shell .host-logout:hover { background: var(--host-rail); }
+.host-shell .host-rail {
+  position: fixed;
+  z-index: 3;
+  inset: var(--host-bar-size) auto 0 0;
+  width: var(--host-rail-size);
+  overflow-y: auto;
+  border-right: 1px solid var(--host-line);
+  background: var(--host-rail);
+}
+.host-shell .host-menu {
+  display: grid;
+  gap: 6px;
+  padding: 14px 6px;
+}
+.host-shell .host-menu-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 65px;
+  padding: 8px 2px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #445162;
+  font-size: 13px;
+  line-height: 1.25;
+}
+.host-shell .host-menu-item:hover { background: #eaf0f4; }
+.host-shell .host-menu-item[aria-current],
+.host-shell .host-menu-item[aria-expanded="true"] { background: var(--host-selected); color: var(--host-blue); }
+.host-shell .host-invite-action { margin-top: 13px; }
+.host-shell .host-invite-action::before {
+  content: "";
+  position: absolute;
+  inset: -10px 14px auto;
+  height: 1px;
+  background: var(--host-line);
+}
+.host-shell .host-glyph {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: inherit;
+}
+.host-glyph::before, .host-glyph::after { position: absolute; content: ""; box-sizing: border-box; }
+.host-glyph-home::before {
+  inset: 4px auto auto 4px;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid;
+  border-left: 2px solid;
+  border-radius: 3px 0 0;
+  transform: rotate(45deg);
+}
+.host-glyph-home::after {
+  inset: 11px 3px 1px;
+  border: 2px solid;
+  border-top: 0;
+  border-radius: 0 0 3px 3px;
+}
+.host-glyph-new { background: var(--host-teal); border-radius: 50%; }
+.host-glyph-new::before, .host-glyph-new::after {
+  top: 10px;
+  left: 5px;
+  width: 12px;
+  height: 2px;
+  background: white;
+  border-radius: 1px;
+}
+.host-glyph-new::after { transform: rotate(90deg); }
+.host-glyph-history::before { inset: 1px; border: 2px solid; border-radius: 50%; }
+.host-glyph-history::after { inset: 5px 6px 10px 10px; border-left: 2px solid; border-bottom: 2px solid; }
+.host-glyph-invite::before {
+  inset: 4px 0;
+  border: 2px solid;
+  border-radius: 4px;
+}
+.host-glyph-invite::after {
+  left: 6px;
+  top: 1px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid;
+  border-bottom: 2px solid;
+  border-radius: 0 0 2px;
+  transform: rotate(45deg);
+}
+.host-shell .host-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  color: var(--host-ink);
+  background: transparent;
+}
+.host-shell .host-icon-button:hover { background: var(--host-rail); }
+.host-shell #host-menu-trigger { display: none; }
+.host-glyph-menu::before {
+  inset: 4px 2px auto;
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+  box-shadow: 0 6px currentColor, 0 12px currentColor;
+}
+.host-glyph-close::before, .host-glyph-close::after {
+  top: 10px;
+  left: 2px;
+  width: 18px;
+  height: 2px;
+  transform: rotate(45deg);
+  background: currentColor;
+}
+.host-glyph-close::after { transform: rotate(-45deg); }
+.host-shell .host-body { margin-left: var(--host-rail-size); }
+.host-shell .host-body > main {
+  width: 100%;
+  max-width: 1200px;
+  margin: auto;
+  padding: clamp(28px, 4vw, 52px) clamp(22px, 4vw, 60px) 72px;
+}
+.host-shell .room-create { max-width: 840px; margin-inline: auto; }
+.host-shell .room-heading { margin: 0 0 26px; }
+.host-shell .room-heading h1 {
+  margin: 0;
+  color: var(--host-ink);
+  font-size: clamp(27px, 2.5vw, 37px);
+  line-height: 1.3;
+  letter-spacing: -.045em;
+}
+.host-shell .room-heading p { color: var(--host-muted); margin-top: 8px; }
+.host-shell .room-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 9px;
+  padding: 3px 9px;
+  font-size: 12px;
+}
+.host-shell .room-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.host-shell .room-LIVE { color: #00756a; background: #e0f5ee; }
+.host-shell .room-READY { color: var(--host-blue); background: var(--host-selected); }
+.host-shell .host-room-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--host-line);
+  margin-bottom: 24px;
+}
+.host-shell .host-room-heading-row .room-heading { min-width: 0; margin: 0; }
+.host-shell .host-room-heading-row .room-lifecycle { flex-shrink: 0; margin: 0; }
+.host-shell .room-card, .host-shell .ai-panel, .host-shell .stt-panel {
+  border: 1px solid var(--host-line);
+  border-radius: 14px;
+  box-shadow: none;
+}
+.host-shell .room-card h2, .host-shell .ai-panel h2, .host-shell .stt-panel h2 {
+  font-size: 20px;
+  line-height: 1.4;
+  letter-spacing: -.035em;
+}
+.host-shell .room-live-list { margin: 0 0 24px; }
+.host-shell .room-live-list > p { padding: 0 0 20px; border-bottom: 1px solid var(--host-line); }
+.host-shell .room-live-list .room-card {
+  padding: 20px 24px 8px;
+  background: #f5faf9;
+  border-color: #dbe9e6;
+}
+.host-shell .room-live-list li { gap: 8px 14px; padding: 14px 0; }
+.host-shell .room-live-list li + li { border-color: #dae6e4; }
+.host-shell .room-live-list strong { font-size: 16px; letter-spacing: -.025em; }
+.host-shell .room-live-list li a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0 7px 4px;
+  border: 0;
+  color: var(--host-teal);
+  font-size: 14px;
+}
+.host-shell .room-live-list li a::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid;
+  border-top: 1.5px solid;
+  transform: rotate(45deg);
+}
+.host-shell .room-live-list li a:hover { background: transparent; text-decoration: underline; }
+.host-shell .room-ready-list .room-card { background: white; border-color: var(--host-line); }
+.host-shell .room-row-actions { display: inline-flex; align-items: center; gap: 8px; }
+.host-shell .room-row-menu { position: relative; }
+.host-shell .room-more-trigger {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--host-ink);
+  font-size: 22px;
+  line-height: 1;
+}
+.host-shell .room-more-trigger:hover, .host-shell .room-more-trigger[aria-expanded="true"] {
+  background: var(--host-rail);
+}
+.host-shell .room-row-popup {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 2;
+  padding: 4px;
+  border: 1px solid var(--host-line);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 4px 16px rgb(20 36 48 / 12%);
+}
+.host-shell .room-row-popup button { white-space: nowrap; background: white; color: #a12b32; }
+.host-shell .room-row-popup button:hover { background: #fff0f1; }
+.host-shell .room-delete-confirm { background: #a12b32; }
+.host-shell .room-delete-details { overflow-wrap: anywhere; }
+.host-shell .room-delete-details time { display: block; color: var(--host-muted); font-size: 14px; }
+.host-shell .room-delete-notice { color: var(--host-ink); margin: 0 0 16px; }
+.host-shell .room-ready-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--host-line);
+}
+.host-shell .room-ready-more p { margin: 0; }
+.host-shell .room-create form.room-card { padding: clamp(20px, 3.5vw, 36px); }
+.host-shell .room-create form h2 { margin: 0 0 24px; }
+.host-shell .room-create label { margin-bottom: 7px; }
+.host-shell .room-create :is(input, textarea) {
+  border-color: #ced7df;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+.host-shell .room-required { color: var(--host-teal); }
+.host-shell .room-form-actions { padding-top: 18px; border-top: 1px solid #e9edf0; }
+.host-shell :is(.room-form-actions, .stt-actions, .room-lifecycle, .ai-panel) button:not(.room-secondary):not(.secondary) {
+  background: var(--host-teal);
+}
+.host-shell :is(.room-form-actions, .stt-actions, .room-lifecycle, .ai-panel) button:not(.room-secondary):not(.secondary):enabled:hover {
+  background: #006d67;
+}
+.host-shell .host-room-info .room-description { margin-bottom: 18px; }
+.host-shell .host-room-info dl { margin: 0; padding-top: 16px; }
+.host-shell .room-workspace { gap: 18px; grid-template-columns: minmax(0, 1.65fr) minmax(270px, 1fr); }
+.host-shell .room-recording .stt-status { gap: 7px; }
+.host-shell .room-recording .stt-status > div {
+  padding: 10px 14px;
+  background: var(--host-rail);
+  border: 0;
+  border-radius: 8px;
+}
+.host-shell .room-recording .stt-actions { margin: 16px 0; }
+.host-shell .room-recording .stt-transcript { padding-top: 12px; }
+.host-shell .ai-status { background: var(--host-rail); }
+.host-shell .ai-live-label { color: #006e69; background: #e4f5f1; }
+.host-shell .host-nav-dialog {
+  width: min(430px, calc(100% - 32px));
+  border: 1px solid var(--host-line);
+  border-radius: 16px;
+  padding: 24px;
+  color: var(--host-ink);
+  background: white;
+  text-align: left;
+}
+.host-shell .host-nav-dialog h2 { margin: 0; font-size: 21px; }
+.host-shell .host-nav-dialog > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.host-shell .host-nav-dialog::backdrop { background: rgb(24 36 49 / 35%); }
+.host-shell :is(button, a, input, textarea, summary):focus-visible {
+  outline: 3px solid #5199d3;
+  outline-offset: 2px;
+}
+.host-shell :is(.room-live-list, #room-title) { scroll-margin-top: calc(var(--host-bar-size) + 16px); }
+.host-shell .host-mobile-menu {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: min(284px, 84vw);
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--host-ink);
+  background: var(--host-rail);
+}
+.host-shell .host-mobile-menu::backdrop { background: rgb(24 36 49 / 35%); }
+.host-shell .host-drawer-content { min-height: 100%; }
+.host-shell .host-drawer-header {
+  min-height: 64px;
+  padding: 0 12px 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--host-line);
+}
+.host-shell .host-drawer-header h2 { font-size: 18px; margin: 0; }
+.host-shell .host-mobile-menu nav { padding: 14px; }
+.host-shell .host-mobile-menu .host-menu-item {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 14px;
+  min-height: 48px;
+  padding-inline: 14px;
+  font-size: 16px;
+}
+@media (max-width: 960px) {
+  .host-shell .room-workspace { grid-template-columns: minmax(0, 1fr); }
+  .room-panel-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: #e8efef; }
+  .host-shell .room-panel-tabs button { flex: 1; background: transparent; color: var(--host-muted); }
+  .host-shell .room-panel-tabs button[aria-selected="true"] {
+    background: white;
+    color: var(--host-teal);
+    box-shadow: 0 1px 4px rgb(20 39 46 / 12%);
+  }
+}
+@media (max-width: 760px) {
+  .room-app.host-shell { --host-bar-size: 56px; --host-rail-size: 0px; }
+  .host-shell .host-bar { padding: 0 12px 0 6px; gap: 5px; }
+  .host-shell #host-menu-trigger { display: inline-grid; }
+  .host-shell .host-brand { gap: 8px; font-size: 20px; }
+  .host-shell .host-brand-mark { width: 28px; height: 28px; }
+  .host-shell .host-account { gap: 6px; }
+  .host-shell .host-logout { margin-left: 0; }
+  .host-shell .host-rail { display: none; }
+  .host-shell .host-body > main { padding: 26px 16px 44px; }
+  .host-shell .room-heading { margin-bottom: 18px; }
+  .host-shell .host-room-heading-row { flex-wrap: wrap; gap: 14px; margin-bottom: 18px; padding-bottom: 18px; }
+  .host-shell .host-room-heading-row .room-lifecycle { flex-shrink: 1; }
+  .host-shell .room-card, .host-shell .ai-panel, .host-shell .stt-panel { padding: 18px; }
+  .host-shell .room-live-list .room-card { padding: 16px 16px 4px; }
+  .host-shell .room-live-list li > div { flex-basis: 160px; }
+  .host-shell .room-live-list li a { font-size: 13px; }
+}
+@media (max-width: 380px) {
+  .host-shell .host-avatar { display: none; }
+}
