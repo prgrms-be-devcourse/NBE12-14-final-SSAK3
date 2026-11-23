@@ -78,6 +78,8 @@ for (const [kind, options, transcript] of [
       await expect(page).toHaveURL(reportPath)
       const heading = page.getByRole('heading', { name: title, exact: true })
       await expect(heading).toBeVisible()
+      const followUp = page.getByRole('region', { name: '후속 답변 후보' })
+      await expect(followUp.getByText('청중 기록에서 후속 검토할 질문을 찾지 못했습니다.')).toBeVisible()
       if (transcript) {
         const windowSummary = page.locator('.report-window summary').filter({ hasText: '실제 기록 1건' })
         await expect(windowSummary).toBeVisible()

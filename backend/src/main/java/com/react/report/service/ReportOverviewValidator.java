@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.DateTimeException;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -21,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import static com.react.report.service.ReportDraftFields.*;
 import static com.react.report.service.ReportGenerationException.invalidEvidence;
 import static com.react.report.service.ReportGenerationException.invalidFormat;
 
@@ -37,7 +37,8 @@ public class ReportOverviewValidator {
     }
 
     JsonNode validate(JsonNode draft, ReportTimeline timeline, ReportEvidenceCatalog catalog) {
-        requireFields(draft, "overview");
+        if (draft != null && draft.has("followUp")) requireFields(draft, "overview", "followUp");
+        else requireFields(draft, "overview");
         JsonNode overview = draft.get("overview");
         requireFields(overview, "mainInterests", "reviewPoints", "suggestions");
         var limitations = new ReportOverviewLimitations(timeline);
@@ -157,28 +158,6 @@ public class ReportOverviewValidator {
 
     private static ObjectNode summary(JsonNode value) {
         return JSON.objectNode().put("text", string(value.get("text")));
-    }
-
-    private static void requireFields(JsonNode object, String... fields) {
-        if (object == null || !object.isObject() || object.size() != fields.length
-                || !Arrays.stream(fields).allMatch(object::has)) {
-            throw invalidFormat();
-        }
-    }
-
-    private static ArrayNode array(JsonNode object, String key) {
-        if (object.get(key) instanceof ArrayNode result) return result;
-        throw invalidFormat();
-    }
-
-    private static String string(JsonNode value) {
-        if (!value.isTextual() || value.textValue().isBlank()) throw invalidFormat();
-        return value.textValue();
-    }
-
-    private static long positiveId(JsonNode value) {
-        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 1) throw invalidFormat();
-        return value.longValue();
     }
 
     private record PollChoice(long pollId, long optionId) {}

@@ -14,6 +14,16 @@ def array(items, **constraints):
     return dict(type='array', items=items, **constraints)
 
 
+def follow_up_group(text, identifier, draft):
+    request = obj({'messageId': identifier, 'quote': text, 'reexplanation': {'type': 'boolean'}})
+    question_fields = {'requests': array(request, minItems=1)}
+    if draft:
+        question_fields['answerSegmentIds'] = array(identifier)
+    return obj({'title': text, 'questions': array(obj(question_fields), minItems=1),
+                'kind': {'type': 'string', 'enum': ['DRAFT', 'PREPARATION']},
+                'text': text, 'segmentIds': array(identifier)})
+
+
 def contracts():
     text = {'type': 'string', 'minLength': 1}
     window = obj({'startAt': {'type': 'string', 'format': 'date-time'},
@@ -31,7 +41,9 @@ def contracts():
                     'evidence': array(evidence_ref, maxItems=0), 'relatedWindows': array(window_ref, maxItems=0)})
     overview = obj({k: array({'$ref': '#/$defs/item'}, maxItems=3)
                     for k in ('mainInterests', 'reviewPoints', 'suggestions')})
-    draft = obj({'overview': overview})
+    draft_follow_up = obj({'reviewedChatIds': array(identifier),
+                           'groups': array(follow_up_group(text, identifier, draft=True))})
+    draft = obj({'overview': overview, 'followUp': draft_follow_up})
     draft['$defs'] = {'item': {'anyOf': [regular, opposing]}, 'evidence': evidence, 'window': window}
     final_leaf = {**leaf, 'limitations': array(text)}
     final_item = {'anyOf': [
@@ -41,7 +53,13 @@ def contracts():
     record_list = array({'type': 'object'})
     timeline = obj({**window['properties'], **{k: record_list for k in
         ('sttSegments', 'sttGaps', 'chatMessages', 'understandingChecks', 'audienceOpinions', 'polls')}})
-    final = obj({'overview': overview, 'timeline': array(timeline), 'dataLimitations': array(text), 'evidencePolicy': text})
+    final_groups = array(follow_up_group(text, identifier, draft=False), minItems=1)
+    final_follow_up = {'anyOf': [
+        obj({'status': {'type': 'string', 'const': 'CANDIDATES'}, 'groups': final_groups}),
+        obj({'status': {'type': 'string', 'enum': ['NO_QUESTIONS', 'ALL_ANSWERED', 'UNAVAILABLE']},
+             'groups': array({}, maxItems=0)})]}
+    final = obj({'overview': overview, 'followUp': final_follow_up, 'timeline': array(timeline),
+                 'dataLimitations': array(text), 'evidencePolicy': text})
     final['$defs'] = {'item': final_item, 'evidence': evidence, 'window': window}
     return draft, final
 

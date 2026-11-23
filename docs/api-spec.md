@@ -17,7 +17,7 @@
 | [stt](api/stt.md) | STT-01~05 발언 기록 | D |
 | [ai-chat](api/ai-chat.md) | AI-CHAT-01~08 청중 의견 분석 | C |
 | [dash](api/dash.md) | DASH-01~05 대시보드, STOMP 이벤트 | B(01~03)·C(04~05) |
-| [report](api/report.md) | REPORT-01~07 회고 보고서 | D |
+| [report](api/report.md) | REPORT-01~09 회고 보고서·후속 답변 후보 | D |
 
 ## 11. P0 기능 정의서 ↔ API 대응표
 
@@ -53,6 +53,7 @@
 | REPORT-01 | POST `/rooms/{roomId}/reports` |
 | REPORT-02~05, 07 | 내부 데이터 수집·시간대 연결·LLM 초안 |
 | REPORT-06 | 상태 조회 GET `/rooms/{roomId}/reports/status`, 본문 조회 GET `/rooms/{roomId}/reports` |
+| REPORT-08·09 | 기존 보고서 본문의 `followUp`에 답변 확인이 필요한 질문과 검토용 보충 설명 초안·준비 방향 제공 |
 
 ---
 

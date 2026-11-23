@@ -2,8 +2,8 @@
 
 Spring 전체 강연 요약 서비스와 스키마·프롬프트를 공유하는 Python 실험 도구다. 가상 청중 기록 4개 샘플로 초안 생성과 근거 검증을 확인하며 DB를 읽거나 변경하지 않는다.
 
-- `backend/src/main/resources/report/report-draft.schema.json`: LLM 출력. overview의 세 목록(각 0~3개), 원문/투표 근거, 시간대, 상반 의견.
-- `report-content.schema.json`: 검증·병합 후 보고서. 서버가 timeline, limitations, dataLimitations, evidencePolicy를 추가한다. timeline 내부 원문 레코드의 상세 계약은 각 도메인 명세가 담당한다.
+- `backend/src/main/resources/report/report-draft.schema.json`은 한 번의 LLM 응답 형식이다. 전체 요약 세 목록(각 0~3개)과 함께 `followUp`에 검토한 청중 채팅 ID, 질문 구절, 답변·초안의 발언 ID를 담는다.
+- `report-content.schema.json`은 검증·병합 후 보고서 형식이다. 서버가 후속 답변 후보의 상태와 묶음 순서, timeline, limitations, dataLimitations, evidencePolicy를 구성한다. timeline 내부 원문 레코드의 상세 계약은 각 도메인 명세가 담당한다.
 - `report-system-prompt.txt`: 한국어 시스템 프롬프트.
 - `build_schemas.py`: 두 스키마의 재현 가능한 생성기. 수정 후 재실행하고 JSON 파일을 함께 커밋한다.
 - `run.py`: 샘플 변환, 로컬 검증·조립, 선택적 Responses API 호출. 모델은 `--model`로 바꿀 수 있으나 비용 추정은 Luna만 지원한다.
@@ -47,6 +47,7 @@ python scripts/report_experiment/run.py --source 'C:/Users/문창원/Downloads/�
 - 마감된 투표는 참여자별 마지막 선택으로 집계하고 개인 선택을 LLM 및 완성 보고서에 포함하지 않는다. 일반 투표의 누적 참여자 수는 이 fixture에서 4로 가정한다.
 - 누락 사례는 지정 범위에서 시작한 전사 구간을 제거한 가상 장애다. 그 외 분석 준비 완료는 fixture 가정이며 운영 finalization 구현은 별도다. 저장된 AI 요약 재사용 경로는 이 실험에서 실행하지 않는다.
 - JSON 스키마, 같은 방의 입력 근거 ID, 마감 여부, 실제 근거 시간대의 합집합을 자동 검증한다. 상반 의견은 각 입장을 먼저 검증한 뒤 상위 근거·시간대를 서버 코드에서 합친다.
+- 후속 답변 검토에 포함된 채팅 ID와 원문 구절을 대조한다. 마지막 질문·재설명 요청보다 늦게 시작한 답변 근거가 확인되면 해당 질문을 제외한다. 검토 범위나 질문 원문을 검증할 수 없으면 `followUp.status`를 `UNAVAILABLE`로 표시하고 전체 요약과 시간대별 기록은 보존한다.
 - 보고서와 입장별 한계는 실제 fixture 누락·실패 범위로 결정한다. STT만 있거나 기록이 없으면 LLM 호출을 건너뛴다.
 - **문장이 근거 의미와 일치하는지는 사람이 원문과 대조해야 한다.** 자동 검증 통과는 의미 정확도 합격이나 모델 채택을 뜻하지 않는다. summary의 `humanReview=PENDING`은 수동 검토 전 상태다.
 

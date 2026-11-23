@@ -155,8 +155,100 @@ def limitations(data, windows=None):
     return unique(notes)
 
 
+def assemble_follow_up(draft, data):
+    chats = {r['id']: r for r in data['evidenceRecords']
+             if r['roomId'] == data['roomId'] and r['type'] == 'CHAT_MESSAGE'}
+    segments = {r['id']: r for r in data['evidenceRecords']
+                if r['roomId'] == data['roomId'] and r['type'] == 'STT_SEGMENT'}
+    if not chats:
+        return {'status': 'NO_QUESTIONS', 'groups': []}
+
+    def require(condition):
+        if not condition:
+            raise ReportFailure('INVALID_REPORT_EVIDENCE')
+
+    def instant(timestamp):
+        return datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+
+    def fields(node, *names):
+        require(isinstance(node, dict) and node.keys() == set(names))
+
+    def request_order(request):
+        message_id = request['messageId']
+        return instant(chats[message_id]['createdAt']), message_id, request['quote']
+
+    def order(group):
+        requests = [r for q in group['questions'] for r in q['requests']]
+        return not any(r['reexplanation'] for r in requests), min(map(request_order, requests))
+
+    try:
+        follow_up = draft.get('followUp')
+        fields(follow_up, 'reviewedChatIds', 'groups')
+        reviewed = follow_up['reviewedChatIds']
+        require(isinstance(reviewed, list) and all(type(i) is int for i in reviewed))
+        require(Counter(reviewed) == Counter(chats.keys()))
+        require(isinstance(follow_up['groups'], list))
+        pending = []
+        initial_quotes, chains = set(), set()
+        for group in follow_up['groups']:
+            fields(group, 'title', 'questions', 'kind', 'text', 'segmentIds')
+            require(isinstance(group['questions'], list) and group['questions'])
+            survivors = []
+            needs_fallback = False
+            for question in group['questions']:
+                fields(question, 'requests', 'answerSegmentIds')
+                requests = question['requests']
+                require(isinstance(requests, list) and requests)
+                seen = set()
+                for request in requests:
+                    fields(request, 'messageId', 'quote', 'reexplanation')
+                    message_id, quote = request['messageId'], request['quote']
+                    require(type(message_id) is int and isinstance(quote, str) and type(request['reexplanation']) is bool)
+                    key = (message_id, quote)
+                    require(message_id in chats and quote.strip() and quote in chats[message_id]['text'])
+                    require(key not in seen)
+                    if not request['reexplanation']:
+                        require(key not in initial_quotes)
+                        initial_quotes.add(key)
+                    seen.add(key)
+                chain = frozenset(seen)
+                require(chain not in chains)
+                chains.add(chain)
+                requests = sorted(requests, key=request_order)
+                last = instant(chats[requests[-1]['messageId']]['createdAt'])
+                answers = question['answerSegmentIds']
+                require(isinstance(answers, list))
+                if answers and all(type(i) is int and i in segments and instant(segments[i]['startAt']) > last
+                                   for i in answers):
+                    continue
+                needs_fallback |= bool(answers)
+                survivors.append({'requests': requests})
+            if not survivors:
+                continue
+            if needs_fallback or len(survivors) != len(group['questions']):
+                for q in survivors:
+                    pending.append({'title': q['requests'][0]['quote'], 'questions': [q],
+                                    'kind': 'PREPARATION', 'segmentIds': [],
+                                    'text': '질문 원문을 확인하고 답변에 필요한 설명이나 예시를 준비해 주세요.'})
+            else:
+                require(all(isinstance(group[k], str) and group[k].strip() for k in ('title', 'text')))
+                require(group['kind'] in ('DRAFT', 'PREPARATION'))
+                ids = group['segmentIds']
+                require(isinstance(ids, list) and all(type(i) is int and i in segments for i in ids))
+                require(len(ids) == len(set(ids)) and bool(ids) == (group['kind'] == 'DRAFT'))
+                pending.append({**group, 'questions': survivors})
+        if pending:
+            return {'status': 'CANDIDATES', 'groups': sorted(pending, key=order)}
+        return {'status': 'ALL_ANSWERED' if chains else 'NO_QUESTIONS', 'groups': []}
+    except ReportFailure:
+        return {'status': 'UNAVAILABLE', 'groups': []}
+
+
 def assemble(draft, data):
-    schema_validate(draft, 'report-draft.schema.json')
+    if not isinstance(draft, dict):
+        raise ReportFailure('INVALID_REPORT_FORMAT')
+    # Keep the original overview validation strict even when the other section is unusable.
+    schema_validate({**draft, 'followUp': {'reviewedChatIds': [], 'groups': []}}, 'report-draft.schema.json')
     records = {(r['type'], r['id']): r for r in data['evidenceRecords']}
     allowed_windows = {window_key(w) for w in data['windows']}
 
@@ -234,7 +326,8 @@ def assemble(draft, data):
         row['sttGaps'] = [g for g in data['sttGaps'] if overlap(g, w)]
         row['audienceOpinions'] = [{'status': 'FAILED', **a} for a in data['failedAnalysisWindows'] if overlap(a, w)]
         timeline.append(row)
-    result = {'overview': overview, 'timeline': timeline, 'dataLimitations': limitations(data),
+    result = {'overview': overview, 'followUp': assemble_follow_up(draft, data),
+              'timeline': timeline, 'dataLimitations': limitations(data),
               'evidencePolicy': '동일 시간대의 관찰은 인과관계를 의미하지 않습니다. AI 요약은 원문 및 서버 집계와 구분합니다.'}
     schema_validate(result, 'report-content.schema.json')
     return result

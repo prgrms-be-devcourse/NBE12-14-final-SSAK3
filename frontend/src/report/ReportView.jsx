@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { ChatOriginal, ClockTime, SpeechOriginal } from './ReportOriginal.jsx'
+import { ReportFollowUp } from './ReportFollowUp.jsx'
 
 const groups = [['mainInterests', '01', '주요 관심사', '청중의 관심이 머문 주제'],
   ['reviewPoints', '02', '보충 설명 검토 지점', '다시 살펴볼 질문과 반응'],
   ['suggestions', '03', '다음 강연을 위한 제안', '다음 설명을 준비하는 아이디어']]
 const labels = { CHAT_MESSAGE: '청중 질문·의견', STT_SEGMENT: '강사 발언', POLL_RESULT: '투표·이해도 체크' }
 const choices = { UNDERSTOOD: '이해됨', CONFUSED: '헷갈림', NOT_UNDERSTOOD: '모르겠음' }
-const koreanClock = new Intl.DateTimeFormat('ko-KR', {
-  timeZone: 'Asia/Seoul', hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit',
-})
 export function elapsed(value, start) {
   const seconds = Math.floor((Date.parse(value) - Date.parse(start)) / 1000)
   if (!Number.isFinite(seconds) || seconds < 0) return '시각 확인 필요'
@@ -26,12 +25,6 @@ function Limits({ values = [] }) {
   return values.length > 0 && <aside className="report-limits" aria-label="관련 데이터 한계">
     <strong>데이터 한계</strong><ul>{values.map((s, i) => <li key={i}>{s}</li>)}</ul>
   </aside>
-}
-function ClockTime({ value }) {
-  const date = new Date(value)
-  if (!value || !Number.isFinite(date.getTime())) return '시각 확인 필요'
-  const fraction = date.getMilliseconds() ? `.${String(date.getMilliseconds()).padStart(3, '0')}` : ''
-  return <time dateTime={value}>{koreanClock.format(date)}{fraction}</time>
 }
 function GapNotice({ gap }) {
   const start = gap.startedAt ?? gap.startAt
@@ -61,14 +54,8 @@ function UnderstandingResults({ item, recordIndex }) {
 }
 function RecordBody({ record, start, optionIds = [] }) {
   const r = record.data
-  if (record.type === 'STT_SEGMENT') return <>
-    <p className="report-muted">발언 시각 <ClockTime value={r.startAt} /> ~ <ClockTime value={r.endAt} /> (한국 시간)</p>
-    <p className="report-original">{r.transcript}</p>
-  </>
-  if (record.type === 'CHAT_MESSAGE') return <>
-    <p className="report-muted">작성 시각 <ClockTime value={r.createdAt} /> (한국 시간)</p>
-    <p className="report-original">{r.text}</p>
-  </>
+  if (record.type === 'STT_SEGMENT') return <SpeechOriginal segment={r} />
+  if (record.type === 'CHAT_MESSAGE') return <ChatOriginal message={r} />
   return <div className="report-poll">
     <p><strong>{r.question}</strong></p>
     <p className="report-muted">시작 {elapsed(r.openedAt, start)} · 마감 {elapsed(r.closedAt, start)} · 마감된 최종 결과</p>
@@ -149,6 +136,8 @@ export function ReportView({ content, room }) {
         </article>)}
       </section>)}</div>
     </section>
+    {content.followUp && <ReportFollowUp followUp={content.followUp}
+      findRecord={(type, id) => recordIndex.get(keyOf(type, id))?.[0]?.record.data} />}
     <section className="report-timeline" aria-labelledby="report-timeline-title">
       <div className="report-section-heading"><div><span className="report-eyebrow">RECORDS & EVIDENCE</span><h2 id="report-timeline-title">시간대별 상세 기록</h2></div><span className="report-muted">강연 시작 기준 · 1분 단위</span></div>
       {!hasRecords ? <p className="report-empty">표시할 시간대별 기록이 없습니다.</p> : timeline.map((row, index) => {
