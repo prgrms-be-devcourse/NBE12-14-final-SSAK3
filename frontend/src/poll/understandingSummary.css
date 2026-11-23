@@ -7,8 +7,22 @@
 .understanding-summary-heading { display: flex; align-items: baseline; gap: 10px; }
 .understanding-summary h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
 .understanding-summary-heading span { color: #526170; font-size: 13px; }
-.understanding-summary-heading span.understanding-summary-open { color: #00746d; font-weight: 700; }
-.understanding-summary-options { margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.understanding-summary-list {
+  margin: 16px 0 0;
+  padding: 0 4px 0 0;
+  list-style: none;
+  display: grid;
+  gap: 20px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.understanding-summary-list:focus-visible { outline: 3px solid #4285af; outline-offset: 3px; }
+.understanding-summary-card + .understanding-summary-card { padding-top: 20px; border-top: 1px solid #dde3e8; }
+.understanding-summary-title { display: flex; align-items: baseline; gap: 10px; }
+.understanding-summary-title time, .understanding-summary-title span { color: #526170; font-size: 13px; }
+.understanding-summary-title span { margin-left: auto; }
+.understanding-summary-title span.understanding-summary-open { color: #00746d; font-weight: 700; }
+.understanding-summary-options { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
 .understanding-summary-row { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
 .understanding-summary-bar { height: 8px; margin-top: 6px; border-radius: 4px; background: #eef1f4; overflow: hidden; }
 .understanding-summary-bar span { display: block; height: 100%; background: #00746d; }
