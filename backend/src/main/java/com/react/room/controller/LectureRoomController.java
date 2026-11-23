@@ -8,6 +8,8 @@ import com.react.room.dto.HostRoomHomeResponse;
 import com.react.room.dto.LiveRoomResponse;
 import com.react.room.dto.ReadyRoomPage;
 import com.react.room.dto.RoomDetailResponse;
+import com.react.room.dto.RoomHistoryPage;
+import com.react.room.dto.RoomHistoryStatuses;
 import com.react.room.dto.RoomInvitationResponse;
 import com.react.room.dto.StartRoomResponse;
 import com.react.room.service.LectureRoomService;
@@ -55,6 +57,23 @@ public class LectureRoomController {
     public ApiResponse<ReadyRoomPage> readyRooms(Authentication authentication,
                                                  @RequestParam(required = false) String cursor) {
         return ApiResponse.of(lectureRoomService.readyRooms(authentication, cursor));
+    }
+
+    @GetMapping("/history")
+    public ApiResponse<RoomHistoryPage> history(Authentication authentication,
+                                                @RequestParam(required = false) String cursor) {
+        return ApiResponse.of(lectureRoomService.history(authentication, cursor));
+    }
+
+    @GetMapping("/history/latest")
+    public ApiResponse<RoomHistoryPage.Count> historyLatest(Authentication authentication) {
+        return ApiResponse.of(lectureRoomService.historyCount(authentication));
+    }
+
+    @GetMapping("/history/statuses")
+    public ApiResponse<RoomHistoryStatuses> historyStatuses(Authentication authentication,
+                                                           @RequestParam List<Long> roomIds) {
+        return ApiResponse.of(lectureRoomService.historyStatuses(authentication, roomIds));
     }
 
     @GetMapping("/{roomId}/invitation")

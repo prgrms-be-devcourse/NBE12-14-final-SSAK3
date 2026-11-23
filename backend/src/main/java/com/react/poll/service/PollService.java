@@ -5,6 +5,7 @@ import com.react.global.exception.ErrorCode;
 import com.react.poll.dto.CreatePollRequest;
 import com.react.poll.dto.MyPollResponseView;
 import com.react.poll.dto.PollCloseView;
+import com.react.poll.dto.PollLifecycleEvent;
 import com.react.poll.dto.PollListView;
 import com.react.poll.dto.PollOptionResultView;
 import com.react.poll.dto.PollOptionView;
@@ -71,12 +72,16 @@ public class PollService {
                 throw new BusinessException(ErrorCode.POLL_ALREADY_OPEN);
             }
             open.expire(rooms.countParticipantsAtTimeout(roomId, open.getId(), open.getClosesAt()));
+            publishClosed(open);
         }
 
         Poll poll = type == PollType.UNDERSTANDING
                 ? Poll.understanding(roomId, understandingQuestion(request.question()), now, duration)
                 : Poll.general(roomId, generalQuestion(request.question()), generalOptions(request.options()), now, duration);
-        return toView(polls.save(poll), now);
+        PollView view = toView(polls.save(poll), now);
+        // 방송은 이 트랜잭션이 커밋된 뒤에 PollLifecycleBroadcaster 가 한다.
+        events.publishEvent(new PollLifecycleChangedEvent(roomId, PollLifecycleEvent.created(view)));
+        return view;
     }
 
     @Transactional
@@ -94,6 +99,7 @@ public class PollService {
             throw new BusinessException(ErrorCode.POLL_ALREADY_CLOSED);
         }
         poll.closeByHost(now, rooms.countParticipants(roomId));
+        publishClosed(poll);
         return new PollCloseView(poll.getId(), poll.getStatus(), poll.getClosedAt(), poll.getCloseReason());
     }
 
@@ -153,8 +159,36 @@ public class PollService {
             } else {
                 poll.closeByRoomEnded(now, rooms.countParticipants(roomId));
             }
+            publishClosed(poll);
         }
         return open.size();
+    }
+
+    /**
+     * 제한 시간이 지난 투표 하나를 TIMEOUT 으로 마감한다. 그 사이에 강연자가 닫았거나 강연이 끝나 이미 마감됐다면 아무것도 하지 않는다.
+     * 잠금 순서는 강연방(공유) → 투표(쓰기)라 수동 마감·응답 저장·강연 종료와 같은 순서로 직렬화된다.
+     *
+     * @return 이번에 마감했으면 true
+     */
+    @Transactional
+    public boolean closeIfExpired(long roomId, long pollId) {
+        if (rooms.lockRoomForShare(roomId).isEmpty()) {
+            return false;
+        }
+        Poll poll = polls.findForUpdate(roomId, pollId).orElse(null);
+        if (poll == null || poll.getStatus() != PollStatus.OPEN || !poll.isExpired(now())) {
+            return false;
+        }
+        poll.expire(rooms.countParticipantsAtTimeout(roomId, poll.getId(), poll.getClosesAt()));
+        publishClosed(poll);
+        return true;
+    }
+
+    /** 마감 시각이 지난 OPEN 투표의 (강연방, 투표) 번호. 스케줄러가 하나씩 closeIfExpired 로 넘긴다. */
+    public List<long[]> findExpiredPolls() {
+        return polls.findTop100ByStatusAndClosesAtLessThanEqualOrderByClosesAtAsc(PollStatus.OPEN, now()).stream()
+                .map(poll -> new long[] {poll.getLectureRoomId(), poll.getId()})
+                .toList();
     }
 
     public PollListView list(long roomId, String hostEmail, PollStatus status) {
@@ -199,6 +233,12 @@ public class PollService {
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public PollResultView currentResults(long roomId, long pollId) {
         return aggregate(roomPoll(roomId, pollId), roomId);
+    }
+
+    private void publishClosed(Poll poll) {
+        long roomId = poll.getLectureRoomId();
+        events.publishEvent(new PollLifecycleChangedEvent(roomId,
+                PollLifecycleEvent.closed(roomId, poll.getId(), poll.getClosedAt(), poll.getCloseReason())));
     }
 
     // 다른 강연방의 투표 번호로는 결과를 볼 수 없다.

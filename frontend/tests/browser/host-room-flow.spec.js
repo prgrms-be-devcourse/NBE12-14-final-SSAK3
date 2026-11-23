@@ -358,26 +358,38 @@ test('서버 저장을 기다리다가 머무르면 늦은 성공 이후에도 �
   expect(room.events).not.toContain('POST /end')
 })
 
-test('서버와 브라우저 모두 저장에 실패하면 이동을 보류하고 저장 재시도로 원래 선택한 새 강연방에 진입', async ({ page, context }) => {
-  const { room, recording } = await setup(context)
-  await page.goto(roomUrl)
-  await record(page)
-  await rejectPendingWrites(page)
-  recording.offline = true
-  const last = '두 저장소 모두 실패한 발언'
-  await emitFinalWhileStopping(page, last)
-  await selectHostMenu(page, '새 강연방')
-  await button(page, '이동하기').click()
-  await expect.poll(() => recording.sends.map(s => s.transcript)).toContain(last)
-  const waiting = page.getByRole('dialog', { name: '마지막 발언 저장 확인 중' })
-  await expect(waiting).toBeVisible()
-  await expect(page).toHaveURL(/\/host\/rooms\/10$/)
-  const retry = button(waiting, '저장 재시도')
-  await retry.evaluate(el => el.addEventListener('click', () => { window.rejectSttWrites = false }, { capture: true, once: true }))
-  await retry.click()
-  await expect(page).toHaveURL(/\/host\/rooms\/new$/)
-  await expect(page.getByLabel(/강연 제목/)).toBeFocused()
-  expect(await pendingTranscripts(page)).toContain(last)
-  expect(recording.stopped).toBe(false)
-  expect(room.events).not.toContain('POST /end')
-})
+for (const destination of ['새 강연방', '내 강연 기록']) {
+  test('두 저장소가 모두 실패하면 재시도 후 선택한 메뉴로 이동한다 · ' + destination, async ({ page, context }) => {
+    const { room, recording } = await setup(context)
+    if (destination === '내 강연 기록') {
+      await page.route('**/api/v1/rooms/history', route => route.fulfill({ json: {
+        data: { rooms: [], nextCursor: null, totalCount: 0, serverTime: new Date().toISOString() },
+      } }))
+    }
+    await page.goto(roomUrl)
+    await record(page)
+    await rejectPendingWrites(page)
+    recording.offline = true
+    const last = '두 저장소 모두 실패한 발언'
+    await emitFinalWhileStopping(page, last)
+    await selectHostMenu(page, destination)
+    await button(page, '이동하기').click()
+    await expect.poll(() => recording.sends.map(s => s.transcript)).toContain(last)
+    const waiting = page.getByRole('dialog', { name: '마지막 발언 저장 확인 중' })
+    await expect(waiting).toBeVisible()
+    await expect(page).toHaveURL(/\/host\/rooms\/10$/)
+    const retry = button(waiting, '저장 재시도')
+    await retry.evaluate(el => el.addEventListener('click', () => { window.rejectSttWrites = false }, { capture: true, once: true }))
+    await retry.click()
+    if (destination === '내 강연 기록') {
+      await expect(page).toHaveURL('/host/rooms/history')
+      await expect(page.getByRole('heading', { name: destination })).toBeVisible()
+    } else {
+      await expect(page).toHaveURL(/\/host\/rooms\/new$/)
+      await expect(page.getByLabel(/강연 제목/)).toBeFocused()
+    }
+    expect(await pendingTranscripts(page)).toContain(last)
+    expect(recording.stopped).toBe(false)
+    expect(room.events).not.toContain('POST /end')
+  })
+}

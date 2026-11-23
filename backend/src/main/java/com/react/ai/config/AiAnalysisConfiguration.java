@@ -7,6 +7,7 @@ import com.react.ai.repository.AudienceMessageRepository;
 import com.react.ai.service.AiAnalysisJsonParser;
 import com.react.ai.service.AiAnalysisCompletionService;
 import com.react.ai.service.AudienceAnalysisLlmClient;
+import com.react.ai.service.AudienceMessagePreprocessor;
 import com.react.ai.service.AudienceAnalysisService;
 import com.react.ai.service.GeminiAudienceAnalysisLlmClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -46,8 +47,9 @@ public class AiAnalysisConfiguration {
                                                     AudienceAnalysisRetryProperties retryProperties,
                                                     AiLlmCallUsageRepository usages,
                                                     AudienceAnalysisCostProperties costProperties,
-                                                    AiAnalysisCompletionService completions) {
+                                                    AiAnalysisCompletionService completions,
+                                                    AudienceMessagePreprocessor preprocessor) {
         return new AudienceAnalysisService(analyses, messages, llmClient, jsonParser, retryProperties,
-                usages, costProperties, completions);
+                usages, costProperties, completions, preprocessor);
     }
 }

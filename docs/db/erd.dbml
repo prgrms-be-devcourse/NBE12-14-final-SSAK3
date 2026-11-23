@@ -21,7 +21,10 @@ Table lecture_rooms {
   created_at datetime [not null]
   started_at datetime
   ended_at datetime
-  indexes { host_user_id }
+  indexes {
+    host_user_id
+    (host_user_id, status, ended_at, id) [name: 'idx_lecture_rooms_host_status_ended_id']
+  }
 }
 
 Table lecture_participants {

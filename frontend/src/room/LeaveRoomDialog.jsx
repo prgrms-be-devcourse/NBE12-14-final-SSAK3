@@ -5,7 +5,7 @@ export function LeaveRoomDialog({ recorder, intent, onStay, onReady }) {
   const dialog = useRef(null)
   const finished = useRef(false)
   const safe = useSyncExternalStore(recorder.subscribe, () => recorder.getSnapshot().navigationSafe)
-  const destination = intent.target === 'home' ? '홈' : '새 강연방'
+  const destination = { home: '홈', new: '새 강연방', history: '내 강연 기록' }[intent.target]
 
   useEffect(() => {
     const element = dialog.current

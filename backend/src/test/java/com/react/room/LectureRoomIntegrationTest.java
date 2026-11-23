@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -273,6 +274,123 @@ class LectureRoomIntegrationTest {
         long roomId = createdData(createRoom(email)).path("roomId").asLong();
         jdbc.sql("UPDATE lecture_rooms SET created_at = ? WHERE id = ?")
                 .params(createdAt, roomId).update();
+        return roomId;
+    }
+
+    @Test
+    @Transactional
+    void 종료_기록은_강사별_종료시각과_ID_내림차순으로_열개씩_이어진다() throws Exception {
+        long oldest = endedRoomAt(ownerEmail, "2026-11-21 08:00:00");
+        long laterEnds = createdData(createRoom(ownerEmail)).required("roomId").asLong();
+        var tied = new ArrayList<Long>();
+        for (int i = 0; i < 11; i++) {
+            tied.add(endedRoomAt(ownerEmail, "2026-11-21 09:00:00"));
+        }
+        endedRoomAt(otherEmail, "2026-11-21 13:00:00");
+        createRoom(ownerEmail);
+        liveRoomAt(ownerEmail, "2026-11-21 13:00:00");
+
+        long completed = tied.getLast();
+        jdbc.sql("""
+                INSERT INTO lecture_reports (lecture_room_id, status, created_at)
+                VALUES (?, 'COMPLETED', NOW())
+                """).param(completed).update();
+        var page = mvc.perform(get("/api/v1/rooms/history").with(user(ownerEmail).roles("HOST")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.serverTime").isString())
+                .andExpect(jsonPath("$.data.totalCount").value(12))
+                .andExpect(jsonPath("$.data.rooms.length()").value(10))
+                .andExpect(jsonPath("$.data.rooms[0].roomId").value(completed))
+                .andExpect(jsonPath("$.data.rooms[0].endedAt").value("2026-11-21T00:00:00Z"))
+                .andExpect(jsonPath("$.data.rooms[0].reportStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.rooms[1].reportStatus").value(nullValue()))
+                .andExpect(jsonPath("$.data.rooms[9].roomId").value(tied.get(1).intValue()))
+                .andReturn();
+        String cursor = createdData(page).required("nextCursor").asText();
+        // A previously created room ends in the same second as the newest one.
+        jdbc.sql("UPDATE lecture_rooms SET status = 'ENDED', ended_at = '2026-11-21 09:00:00' WHERE id = ?")
+                .param(laterEnds).update();
+        mvc.perform(get("/api/v1/rooms/history").param("cursor", cursor).with(user(ownerEmail).roles("HOST")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rooms.length()").value(3))
+                .andExpect(jsonPath("$.data.rooms[0].roomId").value(tied.getFirst().intValue()))
+                .andExpect(jsonPath("$.data.rooms[1].roomId").value(laterEnds))
+                .andExpect(jsonPath("$.data.rooms[2].roomId").value(oldest))
+                .andExpect(jsonPath("$.data.nextCursor").value(nullValue()));
+        mvc.perform(get("/api/v1/rooms/history/latest").with(user(ownerEmail).roles("HOST")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(13));
+    }
+
+    @Test
+    @Transactional
+    void 이력의_상태_갱신은_지정한_내_종료방만_반환하며_미접수도_포함한다() throws Exception {
+        var missing = endedRoomAt(ownerEmail, "2026-11-21 09:00:00");
+        var pending = endedRoomAt(ownerEmail, "2026-11-21 09:00:00");
+        var other = endedRoomAt(otherEmail, "2026-11-21 09:00:00");
+        var live = liveRoomAt(ownerEmail, "2026-11-21 09:00:00");
+        endedRoomAt(ownerEmail, "2026-11-21 09:00:00");
+        jdbc.sql("INSERT INTO lecture_reports (lecture_room_id, status, created_at) VALUES (?, 'PENDING', NOW())")
+                .param(pending).update();
+        var response = mvc.perform(get("/api/v1/rooms/history/statuses").with(user(ownerEmail).roles("HOST"))
+                        .param("roomIds", missing + "," + other + "," + pending + "," + live + "," + Long.MAX_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.serverTime").isString())
+                .andReturn();
+        var rows = createdData(response).required("rooms");
+        assertThat(rows).hasSize(2);
+        assertThat(rows).anyMatch(row -> row.required("roomId").asLong() == missing && row.required("reportStatus").isNull())
+                .anyMatch(row -> row.required("roomId").asLong() == pending && row.required("reportStatus").asText().equals("PENDING"));
+        jdbc.sql("UPDATE lecture_reports SET status = 'COMPLETED' WHERE lecture_room_id = ?").param(pending).update();
+        mvc.perform(get("/api/v1/rooms/history/statuses").with(user(ownerEmail).roles("HOST"))
+                        .param("roomIds", Long.toString(pending)))
+                .andExpect(jsonPath("$.data.rooms[0].reportStatus").value("COMPLETED"));
+    }
+
+    @Test
+    @Transactional
+    void 이력_조회는_빈_목록과_권한_및_잘못된_요청을_구별한다() throws Exception {
+        for (String path : List.of("/api/v1/rooms/history", "/api/v1/rooms/history/latest", "/api/v1/rooms/history/statuses")) {
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+            mvc.perform(get(path).with(user(ownerEmail).roles("USER"))).andExpect(status().isForbidden());
+        }
+        mvc.perform(get("/api/v1/rooms/history").with(user(ownerEmail).roles("HOST")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(0))
+                .andExpect(jsonPath("$.data.rooms").isEmpty())
+                .andExpect(jsonPath("$.data.nextCursor").value(nullValue()));
+        mvc.perform(get("/api/v1/rooms/history").with(user(ownerEmail).roles("HOST")).param("cursor", "broken"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        for (String ids : List.of("", "0", "wrong", "1,".repeat(50) + "1")) {
+            mvc.perform(get("/api/v1/rooms/history/statuses").with(user(ownerEmail).roles("HOST")).param("roomIds", ids))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+        }
+    }
+
+    @Test
+    @Transactional
+    void 종료_시각이_없는_기록도_맨_뒤에_남으며_페이지_경계를_넘을_수_있다() throws Exception {
+        long oldestUndated = endedRoomAt(ownerEmail, null);
+        for (int i = 0; i < 9; i++) {
+            endedRoomAt(ownerEmail, null);
+        }
+        long dated = endedRoomAt(ownerEmail, "2026-11-21 09:00:00");
+        var first = mvc.perform(get("/api/v1/rooms/history").with(user(ownerEmail).roles("HOST")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rooms[0].roomId").value(dated))
+                .andExpect(jsonPath("$.data.rooms[9].endedAt").value(nullValue()))
+                .andReturn();
+        mvc.perform(get("/api/v1/rooms/history").with(user(ownerEmail).roles("HOST"))
+                        .param("cursor", createdData(first).required("nextCursor").asText()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rooms.length()").value(1))
+                .andExpect(jsonPath("$.data.rooms[0].roomId").value(oldestUndated));
+    }
+
+    private long endedRoomAt(String email, String endedAt) throws Exception {
+        long roomId = createdData(createRoom(email)).required("roomId").asLong();
+        jdbc.sql("UPDATE lecture_rooms SET status = 'ENDED', ended_at = ? WHERE id = ?")
+                .param(endedAt).param(roomId).update();
         return roomId;
     }
 

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.ai.config.GeminiAudienceAnalysisProperties;
 import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
-import com.react.ai.dto.AudienceMessage;
+import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.dto.AiTopicResult;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.RepetitionInfo;
@@ -17,7 +17,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.io.InputStream;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -78,9 +77,8 @@ class GeminiAudienceAnalysisManualQualityTest {
         if (repeatLabel != null) {
             System.out.println(repeatLabel);
         }
-        List<AudienceMessage> messages = scenario.messages().stream()
-                .map(message -> new AudienceMessage(
-                        message.id(), 1L, message.content(), LocalDateTime.of(2026, 11, 19, 10, 0)))
+        List<AudienceAnalysisInputMessage> messages = scenario.messages().stream()
+                .map(message -> new AudienceAnalysisInputMessage(message.id(), message.content(), 1))
                 .toList();
 
         AudienceAnalysisLlmResponse response = llmClient.analyze(messages);
