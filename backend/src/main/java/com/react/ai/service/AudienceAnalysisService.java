@@ -8,7 +8,9 @@ import com.react.ai.dto.AiAnalysisProcessResult;
 import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AiTopicResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
+import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.dto.AudienceMessage;
+import com.react.ai.dto.PreprocessedAudienceMessages;
 import com.react.ai.dto.AiLlmCallUsage;
 import com.react.ai.exception.InvalidAiAnalysisResultException;
 import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
@@ -40,19 +42,22 @@ public class AudienceAnalysisService {
     private final AudienceAnalysisCostProperties costProperties;
     private final AiLlmCostCalculator costCalculator;
     private final AiAnalysisCompletionService completions;
+    private final AudienceMessagePreprocessor preprocessor;
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                    AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser) {
         this(analyses, messages, llmClient, jsonParser,
                 new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), null,
-                new AudienceAnalysisCostProperties(null, null), noOpCompletions(analyses));
+                new AudienceAnalysisCostProperties(null, null), noOpCompletions(analyses),
+                new AudienceMessagePreprocessor());
     }
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                    AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser,
                                    AudienceAnalysisRetryProperties retryProperties) {
         this(analyses, messages, llmClient, jsonParser, retryProperties, null,
-                new AudienceAnalysisCostProperties(null, null), noOpCompletions(analyses));
+                new AudienceAnalysisCostProperties(null, null), noOpCompletions(analyses),
+                new AudienceMessagePreprocessor());
     }
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
@@ -61,7 +66,7 @@ public class AudienceAnalysisService {
                                    AiLlmCallUsageRepository usages,
                                    AudienceAnalysisCostProperties costProperties) {
         this(analyses, messages, llmClient, jsonParser, retryProperties, usages, costProperties,
-                noOpCompletions(analyses));
+                noOpCompletions(analyses), new AudienceMessagePreprocessor());
     }
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
@@ -70,6 +75,17 @@ public class AudienceAnalysisService {
                                    AiLlmCallUsageRepository usages,
                                    AudienceAnalysisCostProperties costProperties,
                                    AiAnalysisCompletionService completions) {
+        this(analyses, messages, llmClient, jsonParser, retryProperties, usages, costProperties, completions,
+                new AudienceMessagePreprocessor());
+    }
+
+    public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
+                                   AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser,
+                                   AudienceAnalysisRetryProperties retryProperties,
+                                   AiLlmCallUsageRepository usages,
+                                   AudienceAnalysisCostProperties costProperties,
+                                   AiAnalysisCompletionService completions,
+                                   AudienceMessagePreprocessor preprocessor) {
         this.analyses = analyses;
         this.messages = messages;
         this.llmClient = llmClient;
@@ -79,6 +95,7 @@ public class AudienceAnalysisService {
         this.costProperties = costProperties;
         this.costCalculator = new AiLlmCostCalculator();
         this.completions = completions;
+        this.preprocessor = preprocessor;
     }
 
     public AiAnalysisProcessResult process(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {
@@ -93,23 +110,26 @@ public class AudienceAnalysisService {
 
         try {
             List<AudienceMessage> candidates = messages.findAudienceMessages(roomId, windowStartAt, windowEndAt);
-            if (candidates.isEmpty()) {
+            PreprocessedAudienceMessages preprocessed = preprocessor.preprocess(candidates);
+            if (preprocessed.inputMessages().isEmpty()) {
                 if (!completions.completeEmpty(roomId, acquired.analysis().id())) {
                     throw new IllegalStateException("빈 분석 구간을 완료 상태로 변경할 수 없습니다.");
                 }
                 return new AiAnalysisProcessResult(acquired.analysis().id(), AiAnalysisStatus.COMPLETED, true, 0);
             }
 
-            AudienceAnalysisLlmResponse response = analyzeWithRetry(acquired.analysis().id(), candidates);
+            AudienceAnalysisLlmResponse response = analyzeWithRetry(acquired.analysis().id(), preprocessed.inputMessages());
             if (response == null || response.content() == null || response.modelName() == null
                     || response.modelName().isBlank() || response.modelName().length() > 100) {
                 throw new InvalidAiAnalysisResultException("LLM 응답에 모델 정보 또는 결과가 없습니다.");
             }
             AiAnalysisResult result = jsonParser.parse(response.content());
-            validateSourceMessages(candidates, result);
-            completions.completeWithTopics(roomId, acquired.analysis().id(), result, response.modelName());
+            validateSourceMessageIds(preprocessed.originalMessageIdsByRepresentative().keySet(), result);
+            AiAnalysisResult expandedResult = preprocessed.expandSourceMessageIds(result);
+            validateSourceMessages(candidates, expandedResult);
+            completions.completeWithTopics(roomId, acquired.analysis().id(), expandedResult, response.modelName());
             return new AiAnalysisProcessResult(acquired.analysis().id(), AiAnalysisStatus.COMPLETED, true,
-                    result.topics().size());
+                    expandedResult.topics().size());
         } catch (Exception e) {
             if (!analyses.markFailed(acquired.analysis().id(), safeErrorMessage(e))) {
                 throw new IllegalStateException("분석 실패 상태로 변경할 수 없습니다.", e);
@@ -124,7 +144,7 @@ public class AudienceAnalysisService {
         }
     }
 
-    private AudienceAnalysisLlmResponse analyzeWithRetry(long analysisId, List<AudienceMessage> candidates) {
+    private AudienceAnalysisLlmResponse analyzeWithRetry(long analysisId, List<AudienceAnalysisInputMessage> candidates) {
         int retryCount = 0;
         while (true) {
             int attemptNumber = retryCount + 1;
@@ -239,6 +259,10 @@ public class AudienceAnalysisService {
         for (AudienceMessage message : candidates) {
             candidateIds.add(message.messageId());
         }
+        validateSourceMessageIds(candidateIds, result);
+    }
+
+    private void validateSourceMessageIds(Set<Long> candidateIds, AiAnalysisResult result) {
         Set<Long> assignedIds = new HashSet<>();
         for (AiTopicResult topic : result.topics()) {
             for (long sourceMessageId : topic.sourceMessageIds()) {
