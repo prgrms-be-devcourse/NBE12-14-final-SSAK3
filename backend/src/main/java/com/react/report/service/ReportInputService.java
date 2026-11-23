@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReportInputService {
     private final ReportInputRepository inputs;
+    private final ReportRoomAccess rooms;
     private final SttSessionService stt;
     private final AiAnalysisRepository analyses;
     private final AiAnalysisQueryRepository topics;
@@ -48,13 +49,7 @@ public class ReportInputService {
     /** hostEmail은 인증된 강연자 이메일이다. 모든 조회가 같은 DB 스냅샷을 읽는다. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ReportInput collect(long roomId, String hostEmail) {
-        var room = inputs.findRoom(roomId).orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
-        if (!room.email().equalsIgnoreCase(hostEmail)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
-        }
-        if (!"ENDED".equals(room.status())) {
-            throw new BusinessException(ErrorCode.ROOM_NOT_ENDED);
-        }
+        var room = rooms.requireOwnedEndedRoom(roomId, hostEmail);
         if (room.startedAt() == null || room.endedAt() == null || room.endedAt().isBefore(room.startedAt())) {
             throw notReady();
         }

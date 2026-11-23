@@ -52,7 +52,7 @@
 | DASH-01~04 | 기존 조회 API + WebSocket 이벤트 |
 | REPORT-01 | POST `/rooms/{roomId}/reports` |
 | REPORT-02~05, 07 | 내부 데이터 수집·시간대 연결·LLM 초안 |
-| REPORT-06 | GET `/rooms/{roomId}/reports` |
+| REPORT-06 | 상태 조회 GET `/rooms/{roomId}/reports/status`, 본문 조회 GET `/rooms/{roomId}/reports` |
 
 ---
 

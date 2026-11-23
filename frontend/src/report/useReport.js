@@ -2,16 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 
 const pending = status => status === 'PENDING' || status === 'PROCESSING'
 
-// Mount a new instance for each room/source. Future adapters must verify ownership on the server.
+// Each source belongs to one room and signed-in account.
 export function useReport(source) {
   const [state, setState] = useState({ status: 'LOADING', content: null, busy: false, error: null })
   const control = useRef(null)
   useEffect(() => {
     let alive = true, running = false, timer = null, status = 'LOADING', halted = false
+    let pollDelay = null
     const cancel = () => { clearTimeout(timer); timer = null }
     const schedule = () => {
       cancel()
-      if (alive && !halted && !document.hidden && pending(status)) timer = setTimeout(() => execute(false), 5000)
+      if (alive && !halted && !document.hidden && pollDelay !== null) {
+        timer = setTimeout(() => execute(false), pollDelay)
+      }
     }
     async function execute(create) {
       if (!alive || running) return
@@ -22,23 +25,27 @@ export function useReport(source) {
         const value = await (create ? source.create() : source.load())
         if (!alive) return
         status = value.status
+        pollDelay = value.checkAfterMs ?? (pending(status) ? 5000 : null)
         halted = false
         setState({ ...value, error: null, busy: false })
       } catch (error) {
         if (!alive) return
         halted = true
         const denied = error.status === 401 || error.status === 403
+        if (denied || (error.status === 404 && error.code === 'ROOM_NOT_FOUND')) {
+          source.onAccessError?.(error)
+        }
         if (denied) status = 'ACCESS_DENIED'
         setState(s => ({ ...s, status: denied ? 'ACCESS_DENIED' : s.status,
           content: denied ? null : s.content, busy: false,
           error: denied ? '로그인 상태와 강연방 접근 권한을 확인해 주세요.'
-            : create ? '요청 결과를 확인하지 못했습니다. 상태 확인으로 생성 여부를 확인해 주세요.'
-              : '보고서 상태를 조회하지 못했습니다. 연결을 확인한 뒤 상태 확인을 눌러 주세요.' }))
+            : create ? '요청 결과를 확인하지 못했습니다. 보고서 상태를 다시 확인해 주세요.'
+              : '보고서 상태를 조회하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.' }))
       } finally { running = false; schedule() }
     }
     const visible = () => {
       cancel()
-      if (!document.hidden && !halted && pending(status)) execute(false)
+      if (!document.hidden && !halted && (status === 'LOADING' || pollDelay !== null)) execute(false)
     }
     control.current = {
       check: () => execute(false),
@@ -46,7 +53,7 @@ export function useReport(source) {
     }
     document.addEventListener('visibilitychange', visible)
     // React StrictMode cleans up its first effect before this task: avoid a duplicate initial read.
-    queueMicrotask(() => execute(false))
+    queueMicrotask(visible)
     return () => { alive = false; cancel(); document.removeEventListener('visibilitychange', visible); control.current = null }
   }, [source])
   return { ...state, check: () => control.current?.check(), create: () => control.current?.create() }

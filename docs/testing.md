@@ -55,6 +55,8 @@ IntelliJ 테스트와 Gradle 테스트를 동시에 실행하지 않는다. 병�
 
 채팅 시나리오에서는 강연자가 보낸 첫 안내보다 늦게 청중이 입장한다. 두 창의 양방향 메시지와 강연자 표시, 청중의 입장 전 내역 제외, 재연결·새로고침 후 복구, 종료 후 강연자의 읽기 전용 기록을 확인한다.
 
+보고서 시나리오는 PC에서 기록이 없는 방을, 모바일 Chromium에서는 STT API로 강사 발언 한 건을 저장한 방을 종료한다. 종료 화면이 상태만 조회하는지, 완료 후 보고서를 직접 열어 기록을 읽고 새로고침하거나 강연방으로 돌아갈 수 있는지 확인한다. 두 방 모두 외부 LLM 키 없이 실행할 수 있다. 자동 생성을 검증하려면 종료 분석 스케줄러가 실행되는 Spring 프로필을 사용한다(`test` 프로필에서는 비활성화된다).
+
 1. 별도 MySQL 스키마와 Redis를 사용하는 Spring 서버를 `127.0.0.1:18080`에 실행한다. 서버에는 테스트 전용 DB 연결 정보와 `PARTICIPANT_JOIN_SECRET`을 설정한다. `ROOM_JOIN_BASE_URL`과 `CORS_ALLOWED_ORIGINS`는 모두 `http://127.0.0.1:15173`으로, 로컬 HTTP용 `SESSION_COOKIE_SECURE`는 `false`로 지정한다.
 2. `frontend`에서 `npm ci`와 `npx playwright install chromium`으로 의존성을 준비한다.
 3. `npx playwright test -c tests/integration/playwright.config.js`를 실행한다. 테스트가 15173 포트에 프론트 서버를 띄운다. 강연자·청중 채팅, 삭제 확인창, 청중 대기·퇴장 화면 캡처는 `frontend/playwright-report/room-integration/`에 저장된다.
