@@ -7,906 +7,21 @@
         "mainInterests": {
           "type": "array",
           "items": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "evidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "CHAT_MESSAGE",
-                            "STT_SEGMENT",
-                            "POLL_RESULT"
-                          ],
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "integer",
-                          "minimum": 1
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "id"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "relatedWindows": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "startAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "endAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        }
-                      },
-                      "required": [
-                        "startAt",
-                        "endAt"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "limitations": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "perspectives": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "text": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "evidence": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "enum": [
-                                  "CHAT_MESSAGE",
-                                  "STT_SEGMENT",
-                                  "POLL_RESULT"
-                                ],
-                                "type": "string"
-                              },
-                              "id": {
-                                "type": "integer",
-                                "minimum": 1
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "id"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "relatedWindows": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "startAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "endAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            },
-                            "required": [
-                              "startAt",
-                              "endAt"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "limitations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        }
-                      },
-                      "required": [
-                        "text",
-                        "evidence",
-                        "relatedWindows",
-                        "limitations"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "maxItems": 0
-                  }
-                },
-                "required": [
-                  "text",
-                  "evidence",
-                  "relatedWindows",
-                  "limitations",
-                  "perspectives"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "evidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "CHAT_MESSAGE",
-                            "STT_SEGMENT",
-                            "POLL_RESULT"
-                          ],
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "integer",
-                          "minimum": 1
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "id"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "relatedWindows": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "startAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "endAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        }
-                      },
-                      "required": [
-                        "startAt",
-                        "endAt"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "limitations": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "perspectives": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "text": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "evidence": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "enum": [
-                                  "CHAT_MESSAGE",
-                                  "STT_SEGMENT",
-                                  "POLL_RESULT"
-                                ],
-                                "type": "string"
-                              },
-                              "id": {
-                                "type": "integer",
-                                "minimum": 1
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "id"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "relatedWindows": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "startAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "endAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            },
-                            "required": [
-                              "startAt",
-                              "endAt"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "limitations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        }
-                      },
-                      "required": [
-                        "text",
-                        "evidence",
-                        "relatedWindows",
-                        "limitations"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 2
-                  }
-                },
-                "required": [
-                  "text",
-                  "evidence",
-                  "relatedWindows",
-                  "limitations",
-                  "perspectives"
-                ],
-                "additionalProperties": false
-              }
-            ]
+            "$ref": "#/$defs/item"
           },
           "maxItems": 3
         },
         "reviewPoints": {
           "type": "array",
           "items": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "evidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "CHAT_MESSAGE",
-                            "STT_SEGMENT",
-                            "POLL_RESULT"
-                          ],
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "integer",
-                          "minimum": 1
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "id"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "relatedWindows": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "startAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "endAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        }
-                      },
-                      "required": [
-                        "startAt",
-                        "endAt"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "limitations": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "perspectives": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "text": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "evidence": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "enum": [
-                                  "CHAT_MESSAGE",
-                                  "STT_SEGMENT",
-                                  "POLL_RESULT"
-                                ],
-                                "type": "string"
-                              },
-                              "id": {
-                                "type": "integer",
-                                "minimum": 1
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "id"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "relatedWindows": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "startAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "endAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            },
-                            "required": [
-                              "startAt",
-                              "endAt"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "limitations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        }
-                      },
-                      "required": [
-                        "text",
-                        "evidence",
-                        "relatedWindows",
-                        "limitations"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "maxItems": 0
-                  }
-                },
-                "required": [
-                  "text",
-                  "evidence",
-                  "relatedWindows",
-                  "limitations",
-                  "perspectives"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "evidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "CHAT_MESSAGE",
-                            "STT_SEGMENT",
-                            "POLL_RESULT"
-                          ],
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "integer",
-                          "minimum": 1
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "id"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "relatedWindows": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "startAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "endAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        }
-                      },
-                      "required": [
-                        "startAt",
-                        "endAt"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "limitations": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "perspectives": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "text": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "evidence": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "enum": [
-                                  "CHAT_MESSAGE",
-                                  "STT_SEGMENT",
-                                  "POLL_RESULT"
-                                ],
-                                "type": "string"
-                              },
-                              "id": {
-                                "type": "integer",
-                                "minimum": 1
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "id"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "relatedWindows": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "startAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "endAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            },
-                            "required": [
-                              "startAt",
-                              "endAt"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "limitations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        }
-                      },
-                      "required": [
-                        "text",
-                        "evidence",
-                        "relatedWindows",
-                        "limitations"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 2
-                  }
-                },
-                "required": [
-                  "text",
-                  "evidence",
-                  "relatedWindows",
-                  "limitations",
-                  "perspectives"
-                ],
-                "additionalProperties": false
-              }
-            ]
+            "$ref": "#/$defs/item"
           },
           "maxItems": 3
         },
         "suggestions": {
           "type": "array",
           "items": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "evidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "CHAT_MESSAGE",
-                            "STT_SEGMENT",
-                            "POLL_RESULT"
-                          ],
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "integer",
-                          "minimum": 1
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "id"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "relatedWindows": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "startAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "endAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        }
-                      },
-                      "required": [
-                        "startAt",
-                        "endAt"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "limitations": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "perspectives": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "text": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "evidence": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "enum": [
-                                  "CHAT_MESSAGE",
-                                  "STT_SEGMENT",
-                                  "POLL_RESULT"
-                                ],
-                                "type": "string"
-                              },
-                              "id": {
-                                "type": "integer",
-                                "minimum": 1
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "id"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "relatedWindows": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "startAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "endAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            },
-                            "required": [
-                              "startAt",
-                              "endAt"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "limitations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        }
-                      },
-                      "required": [
-                        "text",
-                        "evidence",
-                        "relatedWindows",
-                        "limitations"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "maxItems": 0
-                  }
-                },
-                "required": [
-                  "text",
-                  "evidence",
-                  "relatedWindows",
-                  "limitations",
-                  "perspectives"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "evidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "enum": [
-                            "CHAT_MESSAGE",
-                            "STT_SEGMENT",
-                            "POLL_RESULT"
-                          ],
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "integer",
-                          "minimum": 1
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "id"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "relatedWindows": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "startAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "endAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        }
-                      },
-                      "required": [
-                        "startAt",
-                        "endAt"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 1
-                  },
-                  "limitations": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "perspectives": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "text": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "evidence": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "enum": [
-                                  "CHAT_MESSAGE",
-                                  "STT_SEGMENT",
-                                  "POLL_RESULT"
-                                ],
-                                "type": "string"
-                              },
-                              "id": {
-                                "type": "integer",
-                                "minimum": 1
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "id"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "relatedWindows": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "startAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "endAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            },
-                            "required": [
-                              "startAt",
-                              "endAt"
-                            ],
-                            "additionalProperties": false
-                          },
-                          "minItems": 1
-                        },
-                        "limitations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        }
-                      },
-                      "required": [
-                        "text",
-                        "evidence",
-                        "relatedWindows",
-                        "limitations"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "minItems": 2
-                  }
-                },
-                "required": [
-                  "text",
-                  "evidence",
-                  "relatedWindows",
-                  "limitations",
-                  "perspectives"
-                ],
-                "additionalProperties": false
-              }
-            ]
+            "$ref": "#/$defs/item"
           },
           "maxItems": 3
         }
@@ -999,5 +114,242 @@
     "dataLimitations",
     "evidencePolicy"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "item": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/evidence"
+              },
+              "minItems": 1
+            },
+            "relatedWindows": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/window"
+              },
+              "minItems": 1
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "perspectives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/evidence"
+                    },
+                    "minItems": 1
+                  },
+                  "relatedWindows": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/window"
+                    },
+                    "minItems": 1
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "required": [
+                  "text",
+                  "evidence",
+                  "relatedWindows",
+                  "limitations"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 0
+            }
+          },
+          "required": [
+            "text",
+            "evidence",
+            "relatedWindows",
+            "limitations",
+            "perspectives"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/evidence"
+              },
+              "minItems": 1
+            },
+            "relatedWindows": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/window"
+              },
+              "minItems": 1
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "perspectives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/evidence"
+                    },
+                    "minItems": 1
+                  },
+                  "relatedWindows": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/window"
+                    },
+                    "minItems": 1
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "required": [
+                  "text",
+                  "evidence",
+                  "relatedWindows",
+                  "limitations"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 2
+            }
+          },
+          "required": [
+            "text",
+            "evidence",
+            "relatedWindows",
+            "limitations",
+            "perspectives"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "evidence": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "CHAT_MESSAGE",
+                "STT_SEGMENT",
+                "POLL_RESULT"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "optionIds": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "minItems": 1
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "POLL_RESULT"
+              ]
+            },
+            "id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "optionIds",
+            "type",
+            "id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "window": {
+      "type": "object",
+      "properties": {
+        "startAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "endAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "startAt",
+        "endAt"
+      ],
+      "additionalProperties": false
+    }
+  }
 }

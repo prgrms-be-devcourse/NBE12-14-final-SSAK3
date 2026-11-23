@@ -1,6 +1,6 @@
 # SCRUM-156 보고서 스키마·프롬프트 실험
 
-운영 Spring 보고서 생성 API 구현 전, 동일한 계약으로 4개 샘플을 실험하는 Python 도구다. DB를 읽거나 변경하지 않는다. 모델이 만드는 초안과 서버가 만드는 완성 보고서를 분리한다.
+Spring 전체 강연 요약 서비스와 스키마·프롬프트를 공유하는 Python 실험 도구다. 가상 청중 기록 4개 샘플로 초안 생성과 근거 검증을 확인하며 DB를 읽거나 변경하지 않는다.
 
 - `backend/src/main/resources/report/report-draft.schema.json`: LLM 출력. overview의 세 목록(각 0~3개), 원문/투표 근거, 시간대, 상반 의견.
 - `report-content.schema.json`: 검증·병합 후 보고서. 서버가 timeline, limitations, dataLimitations, evidencePolicy를 추가한다. timeline 내부 원문 레코드의 상세 계약은 각 도메인 명세가 담당한다.

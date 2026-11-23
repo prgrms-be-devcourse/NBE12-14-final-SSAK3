@@ -39,6 +39,63 @@ test('opposing perspectives have separate evidence; sparse summaries stay empty'
   await expect(page.getByText('이 항목에 표시할 요약이 없습니다.', { exact: true })).toHaveCount(2)
 })
 
+test('each perspective highlights its own options and counts in the same final poll', async ({ page }) => {
+  const startAt = '2026-11-18T00:00:00Z', endAt = '2026-11-18T00:01:00Z'
+  const poll = {
+    pollId: 15, type: 'GENERAL', question: '다음 강연 속도는?', openedAt: startAt, closedAt: endAt,
+    totalParticipants: 10, respondedParticipants: 9, unrespondedParticipants: 1,
+    options: [
+      { optionId: 21, content: '조금 더 빠르게', count: 4 },
+      { optionId: 22, content: '훨씬 더 빠르게', count: 2 },
+      { optionId: 23, content: '더 천천히', count: 3 },
+      { optionId: 24, content: '유지', count: 0 },
+    ],
+  }
+  const item = {
+    text: '속도에 대한 의견이 갈렸습니다.', evidence: [{ type: 'POLL_RESULT', id: 15 }], relatedWindows: [{ startAt, endAt }],
+    perspectives: [['빠르게', [21, 22]], ['천천히', [23]]].map(([text, optionIds]) => ({
+      text, evidence: [{ type: 'POLL_RESULT', id: 15, optionIds }], relatedWindows: [{ startAt, endAt }],
+    })),
+  }
+  const content = { overview: { mainInterests: [item], reviewPoints: [], suggestions: [] },
+    timeline: [{ startAt, endAt, polls: [poll] }] }
+  await page.route('**/src/report/preview.js*', route => route.fulfill({
+    contentType: 'application/javascript',
+    body: `export const previewOptions = {normal:'투표 결과'};
+      export const sampleRoom = ${JSON.stringify({ title: '투표 근거 테스트', startedAt: startAt, endedAt: endAt })};
+      export const createPreviewSource = () => ({load: async () => (${JSON.stringify({ status: 'COMPLETED', content })})});`,
+  }))
+  await open(page)
+  const [fast, slow] = await page.locator('.report-perspective').all()
+  for (const side of [fast, slow]) {
+    await side.locator('summary').click()
+    await expect(side.getByRole('listitem')).toHaveCount(4)
+    await expect(side.getByRole('listitem').filter({ hasText: '유지' })).toContainText('0명')
+  }
+  await expect(fast.locator('.report-option-selected')).toHaveText([/조금 더 빠르게.*4명/, /훨씬 더 빠르게.*2명/])
+  await expect(slow.locator('.report-option-selected')).toHaveText([/더 천천히.*3명/])
+  const record = page.locator('#report-record-0-POLL_RESULT-15')
+  for (const [side, selected] of [[fast, 2], [slow, 1]]) {
+    await side.getByRole('button', { name: /해당 시간대 기록 보기/ }).click()
+    await expect(record).toBeFocused()
+    await expect(record.locator('.report-option-selected')).toHaveCount(selected)
+  }
+})
+
+test('a review point shows the mixed check and keeps a later chat at its original time', async ({ page }) => {
+  await open(page)
+  const item = page.getByRole('region', { name: '보충 설명 검토 지점', exact: true }).locator('.report-card').first()
+  const result = item.getByRole('region', { name: '이해도 체크 최종 결과' })
+  await expect(result).toContainText('시작 09:19:00 · 마감 09:20:00')
+  await expect(result).toContainText('이해됨 1명 · 헷갈림 1명 · 모르겠음 0명 · 미응답 2명')
+  await item.locator('summary').click()
+  const chat = item.locator('.report-evidence-record').filter({ hasText: '가스 한도를 다 쓰면' })
+  await expect(chat).toContainText('작성 시각 09:21:50')
+  await chat.getByRole('button', { name: /해당 시간대 기록 보기 · 21:00/ }).click()
+  await expect(page.locator('#report-record-21-CHAT_MESSAGE-1004')).toBeFocused()
+  await expect(page.locator('.report-timeline').getByText('가스 한도를 다 쓰면 어떤 결과가 되는지 사례가 있으면 좋겠어요.', { exact: true })).toHaveCount(1)
+})
+
 test('limitations and empty/STT-only results are visible without inventing audience responses', async ({ page }) => {
   await open(page)
   await scenario(page, 'missing-data')
