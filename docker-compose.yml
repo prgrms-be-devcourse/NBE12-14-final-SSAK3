@@ -1,7 +1,10 @@
-
-# 배포(EC2)용 기본 구성. DB·Redis 포트는 외부에 열지 않는다.
-#   배포:  docker compose -f docker-compose.yml up -d --build
-# 로컬에서 `docker compose up` 을 쓰면 docker-compose.override.yml 이 자동으로 함께 적용된다.
+# 로컬 개발 및 CI 통합 테스트용 Docker Compose 구성.
+# 로컬 전체 실행: docker compose up -d --build
+# 로컬에서는 docker-compose.override.yml이 자동으로 함께 적용될 수 있다.
+#
+# 운영 EC2에서는 이 파일을 사용하지 않는다.
+# 운영 배포: infra/deploy/compose.prod.yaml
+# 배포 방식: GitHub Actions -> GHCR -> AWS SSM -> EC2
 services:
   mysql:
     image: mysql:8.4
