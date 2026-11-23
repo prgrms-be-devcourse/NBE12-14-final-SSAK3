@@ -43,10 +43,17 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 강연방을 종료하면 생성 상태가 표시됩니다. 완료 후 **회고 보고서 보기**를 누르면 해당 강연의 요약과 기록을 볼 수 있습니다. 가상 데이터로 화면을 살펴보려면 `/preview/reports`를 여세요. [보고서 화면 구성·실행 방법](docs/experiments/report-ui.md)
 
 이전에 종료한 방은 강연자 메뉴의 **내 강연 기록**에서 다시 열 수 있습니다. 최근 강연을 10개씩 볼 수 있고, 완료된 회고 보고서도 같은 목록에서 열 수 있습니다.
-배포(EC2): `docker compose -f docker-compose.yml up -d --build` (override 제외, DB·Redis 포트 비공개)
+
+배포(EC2): `main` 브랜치에 Push하면 GitHub Actions가 GHCR에 Docker 이미지를 게시하고 AWS SSM을 통해 EC2에 자동 배포합니다. 운영 환경에서는 소스 코드를 직접 빌드하지 않습니다.
+
+자세한 배포 절차와 운영 명령어는 [AWS 운영 배포 가이드](docs/aws/deployment.md)를 참고하세요.
 
 설정 파일: `application.yml`(공통), `application-local.yml`(로컬, 기본 프로파일), `application-prod.yml`(배포, 환경 변수로만 주입)
 
 요구 사항: JDK 25, Node 22, Docker. Gradle 은 Wrapper(`backend/gradlew`)를 사용하므로 따로 설치하지 않습니다.
 
-> 스키마는 서버 기동 시 Flyway(`backend/src/main/resources/db/migration`)가 자동 적용합니다. 이전 버전(CS매치)의 DB 볼륨이 남아 있으면 `docker compose down -v` 후 시작하세요.
+> 스키마는 서버 기동 시 Flyway(`backend/src/main/resources/db/migration`)가 자동 적용합니다.
+>
+> 이전 프로젝트의 DB 볼륨 때문에 로컬 개발 환경에서 초기화가 필요한 경우에만 `docker compose down -v`를 사용할 수 있습니다.
+>
+> **주의:** `docker compose down -v`는 Docker Compose가 관리하는 볼륨 데이터를 삭제합니다. 운영 EC2에서는 실행하지 마세요. 운영 MySQL 데이터가 삭제될 수 있습니다.
