@@ -16,15 +16,23 @@ public class AiAnalysisFinalizationScheduler {
 
     private final AiAnalysisFinalizationService finalizations;
     private final AiAnalysisSchedulerProperties properties;
+    private final AiAnalysisSchedulerMetrics metrics;
 
     @Scheduled(fixedDelayString = "${app.ai.audience.scheduler.fixed-delay:5000}",
             scheduler = "aiFinalizationTaskScheduler")
     public void processPendingFinalizations() {
+        long startedAtNanos = System.nanoTime();
         try {
-            finalizations.processPendingRooms(properties.maxFinalizationRoomsPerRun(),
-                    properties.maxWindowsPerRun(), properties.finalizationLeaseDuration());
+            AiAnalysisFinalizationService.FinalizationRun run = finalizations.processPendingRooms(
+                    properties.maxFinalizationRoomsPerRun(), properties.maxWindowsPerRun(),
+                    properties.finalizationLeaseDuration());
+            metrics.recordFinalizationRun(new AiAnalysisSchedulerMetrics.FinalizationRun(run.targetRooms(),
+                    run.completedRooms(), run.failedRooms(), run.deferredRooms(), run.failedAnalysisWindows(),
+                    run.errors(), java.time.Duration.ofNanos(System.nanoTime() - startedAtNanos)));
         } catch (RuntimeException e) {
             log.warn("AI 종료 finalization 스케줄러 실행에 실패했습니다.", e);
+            metrics.recordFinalizationRun(new AiAnalysisSchedulerMetrics.FinalizationRun(0, 0, 0, 0,
+                    0, 1, java.time.Duration.ofNanos(System.nanoTime() - startedAtNanos)));
         }
     }
 }

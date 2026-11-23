@@ -55,6 +55,16 @@ public class AiAnalysisRepository {
                 """).param(analysisId).update() == 1;
     }
 
+    /** 빈 청중 채팅 구간은 COMPLETED이면서 모델명이 없는 상태로 보존한다. */
+    public boolean isCompletedEmpty(long analysisId) {
+        return jdbc.sql("""
+                SELECT EXISTS(
+                    SELECT 1 FROM ai_analyses
+                    WHERE id = ? AND status = 'COMPLETED' AND model_name IS NULL
+                )
+                """).param(analysisId).query(Boolean.class).single();
+    }
+
     @Transactional
     public void saveCompleted(long analysisId, AiAnalysisResult result, String modelName) {
         for (AiTopicResult topic : result.topics()) {

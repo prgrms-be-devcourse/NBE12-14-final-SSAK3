@@ -2,18 +2,21 @@ package com.react.ai.service;
 
 import com.react.ai.config.AiAnalysisSchedulerProperties;
 import com.react.ai.repository.AiAnalysisRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class AiAnalysisStaleRecoverySchedulerTest {
     private final AiAnalysisRepository analyses = mock(AiAnalysisRepository.class);
     private final AiAnalysisSchedulerProperties properties =
             new AiAnalysisSchedulerProperties(3, 5, Duration.ofSeconds(90), Duration.ofMinutes(2));
-    private final AiAnalysisStaleRecoveryScheduler scheduler =
-            new AiAnalysisStaleRecoveryScheduler(analyses, properties);
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    private final AiAnalysisStaleRecoveryScheduler scheduler = new AiAnalysisStaleRecoveryScheduler(analyses, properties,
+            new AiAnalysisSchedulerMetrics(registry));
 
     @Test
     void stale_분석_복구에_기존_기준_시간을_사용한다() {
@@ -22,6 +25,10 @@ class AiAnalysisStaleRecoverySchedulerTest {
         scheduler.recoverStaleAnalyses();
 
         verify(analyses).abortStaleInFlight(Duration.ofMinutes(2));
+        assertThat(registry.get("react.ai.scheduler.stale-recovery.executions").counter().count()).isEqualTo(1);
+        assertThat(registry.get("react.ai.scheduler.stale-recovery.recovered.analyses").summary().totalAmount())
+                .isEqualTo(2);
+        assertThat(registry.get("react.ai.scheduler.stale-recovery.duration").timer().count()).isEqualTo(1);
     }
 
     @Test
@@ -43,5 +50,7 @@ class AiAnalysisStaleRecoverySchedulerTest {
         scheduler.recoverStaleAnalyses();
 
         verify(analyses, times(2)).abortStaleInFlight(Duration.ofMinutes(2));
+        assertThat(registry.get("react.ai.scheduler.stale-recovery.executions").counter().count()).isEqualTo(2);
+        assertThat(registry.get("react.ai.scheduler.stale-recovery.errors").counter().count()).isEqualTo(1);
     }
 }

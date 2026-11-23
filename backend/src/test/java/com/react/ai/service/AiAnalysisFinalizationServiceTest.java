@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -29,6 +30,7 @@ class AiAnalysisFinalizationServiceTest {
         service = new AiAnalysisFinalizationService(finalizations, analyses, audience, calculator);
         when(finalizations.claim(eq(room), any(), eq(Duration.ofSeconds(90)))).thenReturn(true);
         when(finalizations.renewLease(eq(10L), any(), eq(Duration.ofSeconds(90)))).thenReturn(true);
+        when(finalizations.complete(eq(10L), any(), anyInt())).thenReturn(true);
     }
 
     @Test
@@ -77,6 +79,41 @@ class AiAnalysisFinalizationServiceTest {
 
         verify(finalizations).complete(eq(10L), any(), eq(1));
         verifyNoInteractions(audience);
+    }
+
+    @Test
+    void 종료_후_처리_실행_결과는_완료와_실패한_분석_구간_수를_반환한다() {
+        when(finalizations.findCandidates(5)).thenReturn(List.of(room));
+        when(analyses.findWithin(10L, startedAt, endedAt)).thenReturn(List.of(
+                analysis(startedAt, startedAt.plusSeconds(30), AiAnalysisStatus.COMPLETED),
+                analysis(startedAt.plusSeconds(30), startedAt.plusSeconds(60), AiAnalysisStatus.FAILED),
+                analysis(startedAt.plusSeconds(60), endedAt, AiAnalysisStatus.COMPLETED)
+        ));
+
+        var run = service.processPendingRooms(5, 3, Duration.ofSeconds(90));
+
+        assertThat(run.targetRooms()).isEqualTo(1);
+        assertThat(run.completedRooms()).isEqualTo(1);
+        assertThat(run.failedRooms()).isZero();
+        assertThat(run.deferredRooms()).isZero();
+        assertThat(run.failedAnalysisWindows()).isEqualTo(1);
+        assertThat(run.errors()).isZero();
+    }
+
+    @Test
+    void 미완료_분석이_남은_finalization은_지연으로_반환한다() {
+        when(finalizations.findCandidates(5)).thenReturn(List.of(room));
+        when(analyses.findWithin(10L, startedAt, endedAt)).thenReturn(List.of(
+                analysis(startedAt, startedAt.plusSeconds(30), AiAnalysisStatus.COMPLETED),
+                analysis(startedAt.plusSeconds(30), startedAt.plusSeconds(60), AiAnalysisStatus.PENDING)
+        ));
+
+        var run = service.processPendingRooms(5, 3, Duration.ofSeconds(90));
+
+        assertThat(run.targetRooms()).isEqualTo(1);
+        assertThat(run.deferredRooms()).isEqualTo(1);
+        assertThat(run.completedRooms()).isZero();
+        assertThat(run.failedRooms()).isZero();
     }
 
     @Test
