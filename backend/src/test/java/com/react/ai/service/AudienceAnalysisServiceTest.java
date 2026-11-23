@@ -29,6 +29,7 @@ class AudienceAnalysisServiceTest {
     private final AudienceMessageRepository messages = mock(AudienceMessageRepository.class);
     private final AudienceAnalysisLlmClient llm = mock(AudienceAnalysisLlmClient.class);
     private final AiLlmCallUsageRepository usages = mock(AiLlmCallUsageRepository.class);
+    private final AiAnalysisCompletionService completions = mock(AiAnalysisCompletionService.class);
     private final AudienceAnalysisService service = new AudienceAnalysisService(
             analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()));
     private final LocalDateTime start = LocalDateTime.of(2026, 11, 17, 10, 0);
@@ -45,6 +46,56 @@ class AudienceAnalysisServiceTest {
         assertThat(result.topicGroupCount()).isZero();
         verify(analyses).completeEmpty(1L);
         verifyNoInteractions(llm);
+    }
+
+    @Test
+    void 새_완료_분석은_완료_저장_서비스를_통해_이벤트_발행_대상으로_전달한다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.analyze(any())).thenReturn(response("""
+                {"topics":[{"topic":"주제","summary":"요약","category":"QUESTION","sourceMessageIds":[100]}]}
+                """));
+
+        var result = serviceWithCompletion().process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        verify(completions).completeWithTopics(eq(10L), eq(1L), any(), eq("fake-model"));
+    }
+
+    @Test
+    void 빈_구간도_완료_저장_서비스를_통해_이벤트_발행_대상으로_전달한다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of());
+        when(completions.completeEmpty(10L, 1L)).thenReturn(true);
+
+        var result = serviceWithCompletion().process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.COMPLETED);
+        verify(completions).completeEmpty(10L, 1L);
+        verifyNoInteractions(llm);
+    }
+
+    @Test
+    void 기존_분석_구간은_완료_저장_서비스를_다시_호출하지_않는다() {
+        var analysis = new AiAnalysisRepository.Analysis(1L, 10L, start, end, AiAnalysisStatus.COMPLETED);
+        when(analyses.acquire(10L, start, end)).thenReturn(new AiAnalysisRepository.AcquiredAnalysis(analysis, false));
+
+        serviceWithCompletion().process(10L, start, end);
+
+        verifyNoInteractions(completions);
+    }
+
+    @Test
+    void FAILED_분석은_완료_저장_서비스를_호출하지_않는다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end))
+                .thenReturn(List.of(new AudienceMessage(100L, 10L, "질문", start)));
+        when(llm.analyze(any())).thenReturn(response("{topics:[]}"));
+
+        var result = serviceWithCompletion().process(10L, start, end);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        verifyNoInteractions(completions);
     }
 
     @Test
@@ -254,5 +305,11 @@ class AudienceAnalysisServiceTest {
         return new AudienceAnalysisService(analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()),
                 new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), usages,
                 new AudienceAnalysisCostProperties("0.25", "1.50"));
+    }
+
+    private AudienceAnalysisService serviceWithCompletion() {
+        return new AudienceAnalysisService(analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()),
+                new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), usages,
+                new AudienceAnalysisCostProperties("0.25", "1.50"), completions);
     }
 }

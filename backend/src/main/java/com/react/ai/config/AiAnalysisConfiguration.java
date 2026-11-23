@@ -5,6 +5,7 @@ import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AiLlmCallUsageRepository;
 import com.react.ai.repository.AudienceMessageRepository;
 import com.react.ai.service.AiAnalysisJsonParser;
+import com.react.ai.service.AiAnalysisCompletionService;
 import com.react.ai.service.AudienceAnalysisLlmClient;
 import com.react.ai.service.AudienceAnalysisService;
 import com.react.ai.service.GeminiAudienceAnalysisLlmClient;
@@ -44,8 +45,9 @@ public class AiAnalysisConfiguration {
                                                     AiAnalysisJsonParser jsonParser,
                                                     AudienceAnalysisRetryProperties retryProperties,
                                                     AiLlmCallUsageRepository usages,
-                                                    AudienceAnalysisCostProperties costProperties) {
+                                                    AudienceAnalysisCostProperties costProperties,
+                                                    AiAnalysisCompletionService completions) {
         return new AudienceAnalysisService(analyses, messages, llmClient, jsonParser, retryProperties,
-                usages, costProperties);
+                usages, costProperties, completions);
     }
 }
