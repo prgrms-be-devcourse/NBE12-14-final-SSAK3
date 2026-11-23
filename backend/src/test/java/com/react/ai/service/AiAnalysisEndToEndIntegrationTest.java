@@ -15,6 +15,7 @@ import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AiAnalysisTargetRoomRepository;
 import com.react.ai.repository.AiLlmCallUsageRepository;
 import com.react.ai.repository.AudienceMessageRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -158,7 +159,7 @@ class AiAnalysisEndToEndIntegrationTest {
     private AudienceAnalysisScheduler scheduler(AudienceAnalysisService audience, LocalDateTime now) {
         Clock clock = Clock.fixed(now.atZone(SEOUL).toInstant(), SEOUL);
         return new AudienceAnalysisScheduler(targetRooms, analyses, audience, new AiAnalysisWindowCalculator(), clock,
-                new AiAnalysisSchedulerProperties(3));
+                new AiAnalysisSchedulerProperties(3), new AiAnalysisSchedulerMetrics(new SimpleMeterRegistry()));
     }
 
     private AudienceAnalysisService audienceService(FakeAudienceAnalysisLlm fake) {

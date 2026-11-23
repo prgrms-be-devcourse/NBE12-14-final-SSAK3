@@ -26,22 +26,39 @@ public class AiAnalysisFinalizationService {
     private final AudienceAnalysisService audienceAnalysisService;
     private final AiAnalysisWindowCalculator calculator;
 
-    public void processPendingRooms(int maxRooms, int maxWindowsPerRoom, Duration leaseDuration) {
-        for (AiAnalysisFinalizationRepository.EndedRoom room : finalizations.findCandidates(maxRooms)) {
+    public FinalizationRun processPendingRooms(int maxRooms, int maxWindowsPerRoom, Duration leaseDuration) {
+        List<AiAnalysisFinalizationRepository.EndedRoom> candidates = finalizations.findCandidates(maxRooms);
+        int completedRooms = 0;
+        int failedRooms = 0;
+        int deferredRooms = 0;
+        int failedAnalysisWindows = 0;
+        int errors = 0;
+        for (AiAnalysisFinalizationRepository.EndedRoom room : candidates) {
             try {
-                processRoom(room, maxWindowsPerRoom, leaseDuration);
+                FinalizationRoomResult result = processRoom(room, maxWindowsPerRoom, leaseDuration);
+                if (result.outcome() == FinalizationOutcome.COMPLETED) {
+                    completedRooms++;
+                    failedAnalysisWindows += result.failedAnalysisWindows();
+                } else if (result.outcome() == FinalizationOutcome.FAILED) {
+                    failedRooms++;
+                } else if (result.outcome() == FinalizationOutcome.DEFERRED) {
+                    deferredRooms++;
+                }
             } catch (RuntimeException e) {
+                errors++;
                 log.warn("AI 종료 finalization 처리에 실패했습니다. roomId={}", room.roomId(), e);
             }
         }
+        return new FinalizationRun(candidates.size(), completedRooms, failedRooms, deferredRooms,
+                failedAnalysisWindows, errors);
     }
 
-    void processRoom(AiAnalysisFinalizationRepository.EndedRoom room, int maxWindowsPerRoom,
-                     Duration leaseDuration) {
+    FinalizationRoomResult processRoom(AiAnalysisFinalizationRepository.EndedRoom room, int maxWindowsPerRoom,
+                                       Duration leaseDuration) {
         finalizations.ensurePending(room);
         UUID claimToken = UUID.randomUUID();
         if (!finalizations.claim(room, claimToken, leaseDuration)) {
-            return;
+            return FinalizationRoomResult.skipped();
         }
 
         try {
@@ -57,23 +74,30 @@ public class AiAnalysisFinalizationService {
                     break;
                 }
                 if (!finalizations.renewLease(room.roomId(), claimToken, leaseDuration)) {
-                    return;
+                    return FinalizationRoomResult.skipped();
                 }
                 audienceAnalysisService.process(room.roomId(), window.startAt(), window.endAt());
                 processed++;
                 if (!finalizations.renewLease(room.roomId(), claimToken, leaseDuration)) {
-                    return;
+                    return FinalizationRoomResult.skipped();
                 }
             }
 
             Map<WindowKey, AiAnalysisStatus> latest = statuses(room, expected);
             if (allTerminal(expected, latest)) {
-                finalizations.complete(room.roomId(), claimToken, failedCount(expected, latest));
+                int failedAnalysisCount = failedCount(expected, latest);
+                if (finalizations.complete(room.roomId(), claimToken, failedAnalysisCount)) {
+                    return FinalizationRoomResult.completed(failedAnalysisCount);
+                }
+                return FinalizationRoomResult.skipped();
             } else {
                 finalizations.release(room.roomId(), claimToken);
+                return FinalizationRoomResult.deferred();
             }
         } catch (IllegalArgumentException e) {
-            finalizations.markFailed(room.roomId(), claimToken, "INVALID_LECTURE_TIME");
+            return finalizations.markFailed(room.roomId(), claimToken, "INVALID_LECTURE_TIME")
+                    ? FinalizationRoomResult.failed()
+                    : FinalizationRoomResult.skipped();
         } catch (RuntimeException e) {
             finalizations.release(room.roomId(), claimToken);
             throw e;
@@ -113,5 +137,34 @@ public class AiAnalysisFinalizationService {
         static WindowKey of(AiAnalysisWindowCalculator.AnalysisWindow window) {
             return new WindowKey(window.startAt(), window.endAt());
         }
+    }
+
+    public record FinalizationRun(int targetRooms, int completedRooms, int failedRooms, int deferredRooms,
+                                  int failedAnalysisWindows, int errors) {
+    }
+
+    private record FinalizationRoomResult(FinalizationOutcome outcome, int failedAnalysisWindows) {
+        static FinalizationRoomResult completed(int failedAnalysisWindows) {
+            return new FinalizationRoomResult(FinalizationOutcome.COMPLETED, failedAnalysisWindows);
+        }
+
+        static FinalizationRoomResult failed() {
+            return new FinalizationRoomResult(FinalizationOutcome.FAILED, 0);
+        }
+
+        static FinalizationRoomResult deferred() {
+            return new FinalizationRoomResult(FinalizationOutcome.DEFERRED, 0);
+        }
+
+        static FinalizationRoomResult skipped() {
+            return new FinalizationRoomResult(FinalizationOutcome.SKIPPED, 0);
+        }
+    }
+
+    private enum FinalizationOutcome {
+        COMPLETED,
+        FAILED,
+        DEFERRED,
+        SKIPPED
     }
 }
