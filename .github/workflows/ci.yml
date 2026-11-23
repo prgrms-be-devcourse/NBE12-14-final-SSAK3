@@ -1,3 +1,4 @@
+
 name: CI
 
 on:
@@ -219,8 +220,8 @@ jobs:
     timeout-minutes: 20
 
     env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+      AWS_REGION: ap-northeast-2
+      EC2_INSTANCE_ID: i-0ee8e414fbadab01a
 
     steps:
       - name: Configure AWS credentials
