@@ -17,7 +17,7 @@ async function setup(page, context, { open = null } = {}) {
       if (frame.toString().startsWith('CONNECT\n')) socket.send('CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0')
     })
   })
-  const state = { open, creates: [], closes: [], createStatus: 0 }
+  const state = { open, creates: [], closes: [], createStatus: 0, createCode: 'ROOM_NOT_LIVE' }
   await page.route('**/api/v1/**', route => {
     const request = route.request()
     const url = new URL(request.url())
@@ -38,7 +38,7 @@ async function setup(page, context, { open = null } = {}) {
       expect(request.headers()['x-csrf-token']).toBe(recording.csrfToken)
       const body = request.postDataJSON()
       state.creates.push(body)
-      if (state.createStatus) return route.fulfill({ status: state.createStatus, json: { code: 'ROOM_NOT_LIVE' } })
+      if (state.createStatus) return route.fulfill({ status: state.createStatus, json: { code: state.createCode } })
       const now = new Date()
       state.open = { pollId: 700, roomId, type: body.type, question: '지금 설명을 이해하셨나요?', status: 'OPEN',
         options, createdAt: now.toISOString(), closesAt: new Date(now.getTime() + body.durationSeconds * 1000).toISOString() }
@@ -111,4 +111,30 @@ test('진행 중인 이해도 체크가 있으면 새로고침해도 마감 버�
 
   await expect(panel(page).getByText('이해도 체크가 진행 중입니다.')).toBeVisible()
   await expect(panel(page).getByRole('button', { name: '이해도 체크 마감' })).toBeEnabled()
+})
+
+test('이해도 체크를 시작해도 작성 중이던 일반 투표 입력은 지워지지 않는다', async ({ page, context }) => {
+  const state = await setup(page, context)
+  await page.goto(`/host/rooms/${roomId}`)
+
+  await panel(page).getByLabel('투표 질문').fill('Redis를 쓰는 이유는?')
+  await panel(page).getByLabel('선택지 1').fill('캐시')
+  await panel(page).getByRole('button', { name: '이해도 체크 시작' }).click()
+  await expect(panel(page).getByText('이해도 체크가 진행 중입니다.')).toBeVisible()
+
+  await panel(page).getByRole('button', { name: '이해도 체크 마감' }).click()
+  await expect.poll(() => state.closes).toEqual([700])
+  await expect(panel(page).getByLabel('투표 질문')).toHaveValue('Redis를 쓰는 이유는?')
+  await expect(panel(page).getByLabel('선택지 1')).toHaveValue('캐시')
+})
+
+test('서버가 이해도 체크 입력을 거부하면 체크 시간 기준으로 안내한다', async ({ page, context }) => {
+  const state = await setup(page, context)
+  state.createStatus = 400
+  state.createCode = 'INVALID_INPUT'
+  await page.goto(`/host/rooms/${roomId}`)
+
+  await panel(page).getByRole('button', { name: '이해도 체크 시작' }).click()
+  await expect(panel(page).getByText('체크 시간을 10~300초로 확인해 주세요.')).toBeVisible()
+  await expect(panel(page).getByText('질문과 선택지')).toHaveCount(0)
 })
