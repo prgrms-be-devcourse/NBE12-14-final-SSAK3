@@ -32,10 +32,113 @@
         "suggestions"
       ],
       "additionalProperties": false
+    },
+    "followUp": {
+      "type": "object",
+      "properties": {
+        "reviewedChatIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "requests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "messageId": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "quote": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "reexplanation": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "messageId",
+                          "quote",
+                          "reexplanation"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "minItems": 1
+                    },
+                    "answerSegmentIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "requests",
+                    "answerSegmentIds"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DRAFT",
+                  "PREPARATION"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "segmentIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "required": [
+              "title",
+              "questions",
+              "kind",
+              "text",
+              "segmentIds"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "reviewedChatIds",
+        "groups"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
-    "overview"
+    "overview",
+    "followUp"
   ],
   "additionalProperties": false,
   "$defs": {

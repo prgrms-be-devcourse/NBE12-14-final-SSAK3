@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.react.report.dto.ReportContent;
+import com.react.report.dto.ReportFollowUp;
 import com.react.report.dto.ReportInput;
 import com.react.report.dto.ReportTimeline;
 import lombok.RequiredArgsConstructor;
@@ -25,17 +26,20 @@ public class ReportOverviewService {
         ReportTimeline timeline = ReportTimelineAssembler.assemble(input);
         var catalog = ReportEvidenceCatalog.from(timeline);
         JsonNode overview;
+        ReportFollowUp followUp;
         if (catalog.hasAudience()) {
             JsonNode draft = client.generate(modelInput(input, timeline, catalog));
             overview = validator.validate(draft, timeline, catalog);
+            followUp = ReportFollowUpValidator.validate(draft.get("followUp"), catalog);
         } else {
             var empty = mapper.createObjectNode();
             empty.putArray("mainInterests");
             empty.putArray("reviewPoints");
             empty.putArray("suggestions");
             overview = empty;
+            followUp = ReportFollowUp.empty(ReportFollowUp.Status.NO_QUESTIONS);
         }
-        return new ReportContent(overview, timeline.timeline(), timeline.dataLimitations(),
+        return new ReportContent(overview, followUp, timeline.timeline(), timeline.dataLimitations(),
                 "동일 시간대의 관찰은 인과관계를 의미하지 않습니다. AI 요약은 원문 및 서버 집계와 구분합니다.");
     }
 

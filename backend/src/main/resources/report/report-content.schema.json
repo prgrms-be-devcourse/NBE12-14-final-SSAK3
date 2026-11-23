@@ -33,6 +33,125 @@
       ],
       "additionalProperties": false
     },
+    "followUp": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "CANDIDATES"
+            },
+            "groups": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "questions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "requests": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "messageId": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "quote": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "reexplanation": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "messageId",
+                              "quote",
+                              "reexplanation"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1
+                        }
+                      },
+                      "required": [
+                        "requests"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "DRAFT",
+                      "PREPARATION"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "segmentIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                },
+                "required": [
+                  "title",
+                  "questions",
+                  "kind",
+                  "text",
+                  "segmentIds"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "status",
+            "groups"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "NO_QUESTIONS",
+                "ALL_ANSWERED",
+                "UNAVAILABLE"
+              ]
+            },
+            "groups": {
+              "type": "array",
+              "items": {},
+              "maxItems": 0
+            }
+          },
+          "required": [
+            "status",
+            "groups"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
     "timeline": {
       "type": "array",
       "items": {
@@ -110,6 +229,7 @@
   },
   "required": [
     "overview",
+    "followUp",
     "timeline",
     "dataLimitations",
     "evidencePolicy"

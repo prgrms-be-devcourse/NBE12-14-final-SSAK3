@@ -61,7 +61,8 @@ function contentFor(kind) {
   }
   if (kind === 'empty') dataLimitations.push('수집된 기록이 없어 요약할 수 없습니다.')
   if (kind === 'stt') dataLimitations.push('청중 반응 기록이 부족해 관심사와 보충 설명 지점을 판단하기 어렵습니다.')
-  return { overview, timeline, dataLimitations,
+  const followUp = noAudience ? { status: 'NO_QUESTIONS', groups: [] } : source.followUp
+  return { overview, followUp, timeline, dataLimitations,
     evidencePolicy: 'AI 요약과 제안은 검토용입니다. 동일 시간대의 관찰은 인과관계를 의미하지 않습니다.' }
 }
 

@@ -32,6 +32,21 @@ class ReportExperimentTest(unittest.TestCase):
         for name, schema in zip(('report-draft.schema.json', 'report-content.schema.json'), contracts()):
             self.assertEqual(schema, run.read_json(run.RESOURCES / name))
 
+    def test_follow_up_contract_accepts_multiple_questions_and_unlimited_groups(self):
+        groups = []
+        for chat_id, title in enumerate(['수수료', '합의', '지갑', '계약'], start=1):
+            quotes = ['비용은요?', '실패해도 내나요?'] if chat_id == 1 else [f'{title} 예시를 보나요?']
+            questions = [{'requests': [{'messageId': chat_id, 'quote': quote, 'reexplanation': False}],
+                          'answerSegmentIds': []} for quote in quotes]
+            groups.append({'title': title, 'questions': questions, 'kind': 'PREPARATION',
+                           'text': f'{title} 예시를 준비해 주세요.', 'segmentIds': []})
+        draft = {'overview': {k: [] for k in run.GROUPS},
+                 'followUp': {'reviewedChatIds': [1, 2, 3, 4], 'groups': groups}}
+        run.schema_validate(draft, 'report-draft.schema.json')
+        groups[0]['questions'][0]['requests'][0]['madeUpTime'] = '10:00'
+        with self.assertRaises(run.ReportFailure):
+            run.schema_validate(draft, 'report-draft.schema.json')
+
     def test_valid_reference_and_server_only_fields(self):
         draft = self.draft()
         final = run.assemble(draft, self.data)
@@ -101,9 +116,53 @@ class ReportExperimentTest(unittest.TestCase):
         data = run.prepare('참석자 1 01:39\n전사', {'chats': []}, 2939)
         self.assertFalse(run.has_audience(data))
         final = run.assemble({'overview': {g: [] for g in run.GROUPS}}, data)
+        self.assertEqual({'status': 'NO_QUESTIONS', 'groups': []}, final['followUp'])
         self.assertIn('청중 반응 기록이 부족', final['dataLimitations'][-1])
         data['evidenceRecords'] = []
         self.assertIn('수집된 기록이 없어', run.limitations(data)[-1])
+
+    def test_follow_up_preserves_unanswered_part_and_rejects_incomplete_coverage_locally(self):
+        data = run.prepare('참석자 1 00:20\n실패한 거래도 수수료를 내요.',
+                           {'chats': [{'id': 7, 'participantId': 'p1', 'offsetSeconds': 10,
+                                       'text': '가스비는 어떻게 정해요? 실패해도 내나요?'}]}, 60)
+        def question(quote, answer_ids):
+            return {'requests': [{'messageId': 7, 'quote': quote, 'reexplanation': False}],
+                    'answerSegmentIds': answer_ids}
+        group = {'kind': 'PREPARATION', 'title': '가스비', 'text': '수수료 예시를 준비해 주세요.',
+                 'segmentIds': [], 'questions': [question('가스비는 어떻게 정해요?', []),
+                                                  question('실패해도 내나요?', [9001])]}
+        draft = self.draft(data, 7)
+        draft['followUp'] = {'reviewedChatIds': [7], 'groups': [group]}
+        follow_up = run.assemble(draft, data)['followUp']
+        self.assertEqual('CANDIDATES', follow_up['status'])
+        self.assertEqual([[{'requests': group['questions'][0]['requests']}]],
+                         [g['questions'] for g in follow_up['groups']])
+        group['questions'] = [question('실패해도 내나요?', [9001])]
+        self.assertEqual('ALL_ANSWERED', run.assemble(draft, data)['followUp']['status'])
+        data['evidenceRecords'][0]['startAt'] = run.iso(10)
+        self.assertEqual('CANDIDATES', run.assemble(draft, data)['followUp']['status'])
+        draft['followUp']['reviewedChatIds'].clear()
+        result = run.assemble(draft, data)
+        self.assertEqual({'status': 'UNAVAILABLE', 'groups': []}, result['followUp'])
+        self.assertTrue(result['overview']['mainInterests'])
+
+    def test_malformed_answer_ref_falls_back_to_sorted_question_but_duplicate_draft_refs_invalidate_section(self):
+        chats = [{'id': 2, 'participantId': 'p1', 'text': '다시요?', 'offsetSeconds': 12},
+                 {'id': 1, 'participantId': 'p1', 'text': '비용은요?', 'offsetSeconds': 10}]
+        data = run.prepare('참석자 1 00:20\n비용은 연산량으로 정해요.', {'chats': chats}, 60)
+        draft = self.draft(data, 1)
+        requests = [{'messageId': c['id'], 'quote': c['text'], 'reexplanation': c['id'] == 2} for c in chats]
+        question = {'requests': requests, 'answerSegmentIds': [9001, 'wrong-type']}
+        group = {'title': '비용', 'questions': [question], 'kind': 'DRAFT', 'text': '연산량을 확인하세요.',
+                 'segmentIds': [9001, 9001]}
+        draft['followUp'] = {'reviewedChatIds': [1, 2], 'groups': [group]}
+        result = run.assemble(draft, data)['followUp']
+        self.assertEqual('CANDIDATES', result['status'])
+        self.assertEqual('비용은요?', result['groups'][0]['title'])
+        self.assertEqual(list(reversed(requests)), result['groups'][0]['questions'][0]['requests'])
+        self.assertEqual([], result['groups'][0]['segmentIds'])
+        question['answerSegmentIds'] = []
+        self.assertEqual('UNAVAILABLE', run.assemble(draft, data)['followUp']['status'])
 
     def test_closed_round_counts_and_no_carry(self):
         final = run.assemble(self.draft(), self.data)

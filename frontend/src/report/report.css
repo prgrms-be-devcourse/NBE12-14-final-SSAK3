@@ -53,6 +53,16 @@
 .report-global-limit { margin-bottom: 26px; font-size: 13px; }
 .report-global-limit summary span { margin-left: 12px; font-size: 12px; }
 .report-empty { color: #748075; border: 1px dashed #cfd9cc; background: #f0f3ed; padding: 25px 20px; border-radius: 10px; font-size: 14px; }
+.report-follow-up { border-top: 1px solid #dbe3d7; padding: 8px 0 36px; word-break: keep-all; overflow-wrap: anywhere; }
+.report-follow-up-card { border: 1px solid #dfe5dd; border-radius: 12px; background: white; padding: 18px 20px; margin: 12px 0; }
+.report-follow-up-card header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.report-follow-up-card h3 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.report-follow-up-card h4 { margin: 14px 0 2px; color: #38674f; font-size: 13px; }
+.report-follow-up-text { margin: 0 0 16px; font-size: 14px; white-space: pre-wrap; }
+.report-follow-up-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 8px 22px; align-items: start; }
+.report-follow-up-request + .report-follow-up-request { border-top: 1px solid #dfe5dd; padding-top: 8px; margin-top: 12px; }
+.report-follow-up-request mark { background: #f9e4a9; color: #483c27; }
+.report-follow-up .report-secondary { margin: 8px 0 0; }
 .report-timeline { border-top: 1px solid #dbe3d7; padding-top: 15px; }
 .report-timeline .report-section-heading { margin-bottom: 24px; }
 .report-window { border: 1px solid #dce4d8; background: white; border-radius: 9px; margin-bottom: 9px; }
