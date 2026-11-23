@@ -1,5 +1,6 @@
 package com.react.stt.controller;
 
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
 import com.react.global.response.ApiResponse;
@@ -17,8 +18,9 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/rooms/{roomId}/stt")
@@ -26,13 +28,15 @@ import java.time.Instant;
 public class SttSessionController {
     private final SttSessionService sessions;
     public record StartRequest(@NotNull UUID startKey) {}
+    public record StartResponse(@JsonUnwrapped SttSessionView session, Instant serverTime) {}
     public record StopRequest(@NotNull SttSessionService.StopReason reason) {}
 
     @PostMapping("/sessions")
-    public ResponseEntity<ApiResponse<SttSessionView>> start(@PathVariable long roomId,
+    public ResponseEntity<ApiResponse<StartResponse>> start(@PathVariable long roomId,
             @Valid @RequestBody StartRequest request, Authentication authentication) {
         var result = sessions.start(roomId, email(authentication), request.startKey());
-        return ResponseEntity.status(result.created() ? 201 : 200).body(ApiResponse.of(result.session()));
+        var response = new StartResponse(result.session(), Instant.now().truncatedTo(ChronoUnit.MILLIS));
+        return ResponseEntity.status(result.created() ? 201 : 200).body(ApiResponse.of(response));
     }
 
     @PostMapping("/sessions/{sessionId}/stop")
