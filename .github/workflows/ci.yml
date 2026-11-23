@@ -5,14 +5,21 @@ on:
     branches: [develop, main]
   push:
     branches: [develop, main, chore/SCRUM-88-ghcr-image-publish]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "EC2 배포 실행"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-# 같은 PR 또는 브랜치의 이전 CI 실행 취소
+# 같은 PR의 이전 CI 실행 취소 (배포 실행은 취소하지 않음)
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend:
@@ -145,9 +152,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend, frontend, compose-smoke]
     if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' ||
-       github.ref == 'refs/heads/chore/SCRUM-88-ghcr-image-publish')
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/chore/SCRUM-88-ghcr-image-publish')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.deploy == true &&
+       (github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/chore/SCRUM-88-ghcr-image-publish'))
 
     permissions:
       contents: read
@@ -181,3 +192,120 @@ jobs:
           context: ${{ matrix.context }}
           push: true
           tags: ghcr.io/prgrms-be-devcourse/nbe12-14-final-ssak3-${{ matrix.component }}:${{ github.sha }}
+
+  # AWS SSM을 이용한 EC2 자동배포 (SCRUM-88)
+  deploy-ec2:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: [publish-images]
+
+    # main push에서 자동배포, 작업 브랜치는 수동 실행만 허용
+    if: >-
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.deploy == true &&
+       (github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/chore/SCRUM-88-ghcr-image-publish'))
+
+    # 여러 배포 작업의 동시 실행 방지
+    concurrency:
+      group: react-app-production-deploy
+      cancel-in-progress: false
+
+    permissions:
+      contents: read
+      id-token: write
+
+    timeout-minutes: 20
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$AWS_REGION"
+          test -n "$EC2_INSTANCE_ID"
+
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          aws sts get-caller-identity \
+            --query Account \
+            --output text
+
+      - name: Send deployment command via SSM
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 비밀값은 전달하지 않고 배포할 이미지의 SHA만 전달
+          jq -n \
+            --arg command "/opt/react/deploy.sh ${GITHUB_SHA}" \
+            '{
+              commands: [$command],
+              executionTimeout: ["900"]
+            }' > ssm-params.json
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "REACT deploy ${GITHUB_SHA}" \
+            --parameters file://ssm-params.json \
+            --timeout-seconds 120 \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "SSM command submitted: $COMMAND_ID"
+
+      - name: Wait for deployment result
+        shell: bash
+        env:
+          COMMAND_ID: ${{ steps.deploy.outputs.command_id }}
+        run: |
+          set -euo pipefail
+
+          # 최대 15분 동안 배포 결과 확인
+          for attempt in $(seq 1 90); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query 'Status' \
+              --output text 2>/dev/null || true)
+
+            echo "Deployment status: ${STATUS:-Pending}"
+
+            case "$STATUS" in
+              Success)
+                echo "EC2 deployment succeeded."
+                exit 0
+                ;;
+
+              Failed|Cancelled|TimedOut|Cancelling)
+                echo "EC2 deployment failed."
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$EC2_INSTANCE_ID" \
+                  --query '{Status:Status,Details:StatusDetails}' \
+                  --output json
+                exit 1
+                ;;
+            esac
+
+            sleep 10
+          done
+
+          echo "EC2 deployment status check timed out."
+          exit 1
