@@ -117,8 +117,10 @@ test('이전 질문을 읽는 중에는 위치를 유지하고 중복 없는 새
   const history = panel.getByLabel('채팅 메시지', { exact: true })
   await expect(panel.getByText('준비한 질문 42', { exact: true })).toBeVisible()
   await expect.poll(() => history.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThan(10)
-  await history.evaluate(el => { el.scrollTop = 0 })
-  await expect.poll(() => history.evaluate(el => el.scrollTop)).toBe(0)
+  await history.evaluate(el => new Promise(resolve => {
+    el.addEventListener('scroll', () => resolve(), { once: true })
+    el.scrollTop = 0
+  }))
   const next = message(43, '중간 질문')
   state.chat.broadcast(next)
   state.chat.broadcast(next)
