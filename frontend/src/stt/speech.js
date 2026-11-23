@@ -29,7 +29,7 @@ export class TranscriptTracker {
   }
 }
 
-export function createSpeech({ onResult, onEnd, now = () => new Date().toISOString(), Recognition = speechConstructor() }) {
+export function createSpeech({ onResult, onEnd, now, Recognition = speechConstructor() }) {
   let current = null
   return {
     start() {

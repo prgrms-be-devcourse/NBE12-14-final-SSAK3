@@ -1,16 +1,4 @@
-export async function setup(context) {
-  const state = {
-    sends: [],
-    keys: [],
-    stopped: false,
-    offline: false,
-    account: 1,
-    gaps: [],
-    csrfToken: 'test-csrf-token',
-    csrfRequests: 0,
-    csrfWrites: [],
-  }
-
+export async function installTestSpeech(context) {
   await context.addInitScript(() => {
     class SpeechRecognition {
       constructor() { window.testSpeech = this; this.results = [] }
@@ -26,6 +14,22 @@ export async function setup(context) {
     }
     window.SpeechRecognition = SpeechRecognition
   })
+}
+
+export async function setup(context) {
+  const state = {
+    sends: [],
+    keys: [],
+    stopped: false,
+    offline: false,
+    serverTime: () => new Date().toISOString(),
+    account: 1,
+    gaps: [],
+    csrfToken: 'test-csrf-token',
+    csrfRequests: 0,
+    csrfWrites: [],
+  }
+  await installTestSpeech(context)
 
   await context.route('**/api/v1/**', async route => {
     const request = route.request()
@@ -60,7 +64,8 @@ export async function setup(context) {
     if (path.endsWith('/stt/segments')) return ok({ roomId: 10, segments: [], gaps: state.gaps })
     if (path.endsWith('/sessions')) {
       state.keys.push(body.startKey)
-      return ok({ sttSessionId: 7, status: state.stopped ? 'STOPPED' : 'RECORDING', canRecord: !state.stopped })
+      return ok({ sttSessionId: 7, status: state.stopped ? 'STOPPED' : 'RECORDING',
+        canRecord: !state.stopped, serverTime: state.serverTime() })
     }
     if (path.endsWith('/segments')) {
       state.sends.push(body)

@@ -15,6 +15,7 @@ function gate() {
 
 function fixture(saved) {
   let snapshot = saved
+  const clock = { elapsed: 0, serverTime: instant }
   let sequence = 0
   let callbacks
   let active = false
@@ -23,7 +24,10 @@ function fixture(saved) {
   const timers = new Map()
   const api = {
     me: async () => ({ userId: 1 }), records: async () => ({ gaps: [], segments: [] }),
-    start: async key => { calls.push(['start', key]); return { sttSessionId: 7, status: 'RECORDING', canRecord: true } },
+    start: async key => {
+      calls.push(['start', key])
+      return { sttSessionId: 7, status: 'RECORDING', canRecord: true, startedAt: instant, serverTime: clock.serverTime }
+    },
     send: async (id, item) => { calls.push(['send', structuredClone(item)]); return { gapId: 9 } },
     stop: async (id, reason) => { calls.push(['stop', reason]); return { sttSessionId: id, status: reason === 'ERROR' ? 'ERROR' : 'STOPPED', canRecord: false } },
   }
@@ -32,7 +36,7 @@ function fixture(saved) {
     snapshot = structuredClone(value)
   } }
   const recorder = new Recorder({ userId: 1, roomId: 10, api, store,
-    acquire: async () => () => calls.push(['release']), uuid: () => `id-${++sequence}`, now: () => instant,
+    acquire: async () => () => calls.push(['release']), uuid: () => `id-${++sequence}`, monotonicNow: () => clock.elapsed,
     schedule: (fn, delay) => { const id = ++sequence; timers.set(id, { fn, delay }); return id },
     cancel: id => timers.delete(id),
     speechFactory: options => {
@@ -41,7 +45,7 @@ function fixture(saved) {
         stop: async () => { active = false }, abort: () => { active = false } }
     },
   })
-  return { recorder, api, store, calls, timers, emit: value => callbacks.onResult(value), end: error => callbacks.onEnd(error),
+  return { recorder, api, clock, store, calls, timers, emit: value => callbacks.onResult(value), end: error => callbacks.onEnd(error),
     active: () => active, snapshot: () => snapshot, failStorage: () => { storageFailure = true } }
 }
 
@@ -64,11 +68,35 @@ test('server confirmation precedes microphone and key is saved before start requ
   f.api.start = async key => {
     assert.equal(f.snapshot().startKey, key)
     assert.equal(f.active(), false)
-    return { sttSessionId: 7, status: 'RECORDING', canRecord: true }
+    return { sttSessionId: 7, status: 'RECORDING', canRecord: true, serverTime: instant }
   }
   await f.recorder.start()
   assert.equal(f.active(), true)
   await f.recorder.dispose()
+})
+
+test('an unusable server clock keeps the microphone off until the same session supplies a valid sample', async () => {
+  const f = fixture()
+  await f.recorder.init()
+  for (const unusable of [undefined, 'invalid']) {
+    f.clock.serverTime = unusable
+    await f.recorder.start()
+    assert.equal(f.active(), false)
+    assert.equal(f.recorder.getSnapshot().phase, 'paused')
+  }
+  assert.equal(f.calls.some(([kind]) => kind === 'stop'), false)
+  const startKey = f.snapshot().startKey
+  assert.deepEqual(f.calls.filter(([kind]) => kind === 'start'), [['start', startKey], ['start', startKey]])
+  await f.recorder.dispose()
+  const restored = fixture(f.snapshot())
+  await restored.recorder.init()
+  await restored.recorder.draining
+  assert.equal(restored.active(), false)
+  assert.equal(restored.calls.some(([kind]) => kind === 'send'), false)
+  await restored.recorder.start()
+  assert.equal(restored.active(), true)
+  assert.deepEqual(restored.calls.filter(([kind]) => kind === 'start'), [['start', startKey], ['start', startKey]])
+  await restored.recorder.dispose()
 })
 
 test('lost start response retries the same startKey without opening the microphone', async () => {
@@ -120,17 +148,25 @@ test('lost segment response retries unchanged payload and does not confuse netwo
   await f.recorder.dispose()
 })
 
-test('gap open, close, next open are replayed in order, with server gapId', async () => {
+test('queued gaps keep their server-based times across manual resume and delayed replay', async () => {
   const f = fixture()
+  f.clock.elapsed = 100
   await f.recorder.init(); await f.recorder.start()
   f.recorder.data.retryPaused = true
+  f.clock.elapsed += 2000
   await f.end('not-allowed')
+  f.clock.serverTime = '2026-11-18T01:05:00.000Z'
   await f.recorder.start()
+  f.clock.elapsed += 1300
   await f.end('not-allowed')
+  f.clock.elapsed += 60000
   await f.recorder.retry()
   const items = f.calls.filter(x => x[0] === 'send').map(x => x[1])
   assert.deepEqual(items.map(x => x.kind), ['gapOpen', 'gapClose', 'gapOpen'])
   assert.equal(items[1].gapId, 9)
+  assert.equal(items[0].body.startedAt, '2026-11-18T01:00:12.123Z')
+  assert.equal(items[1].body.endedAt, '2026-11-18T01:05:00.000Z')
+  assert.equal(items[2].body.startedAt, '2026-11-18T01:05:01.300Z')
   await f.recorder.dispose()
 })
 
@@ -420,7 +456,7 @@ test('disposing speech during a pending pause settles the stop without schedulin
 test('a different active session is never adopted or stopped after a rejected start and refresh', async () => {
   const f = fixture()
   await f.recorder.init()
-  f.api.start = async () => ({ sttSessionId: 99, status: 'RECORDING', canRecord: false })
+  f.api.start = async () => ({ sttSessionId: 99, status: 'RECORDING', canRecord: false, serverTime: instant })
   await f.recorder.start()
   assert.equal(f.recorder.data.session, null)
   assert.equal(f.active(), false)
@@ -439,7 +475,11 @@ test('unexpected end retries once; immediately ending again requires a manual re
   await f.end('network')
   const restart = f.timers.get(f.recorder.restartTimer)
   assert.equal(restart.delay, 500)
+  f.clock.serverTime = '2026-11-18T01:00:22.000Z'
   await restart.fn()
+  await f.recorder.draining
+  const recovered = f.calls.find(([kind, item]) => kind === 'send' && item.kind === 'gapClose')
+  assert.equal(recovered[1].body.endedAt, f.clock.serverTime)
   await f.end('network')
   assert.match(f.recorder.getSnapshot().message, /녹음 재개/)
   assert.equal(f.recorder.phase, 'paused')
@@ -449,7 +489,7 @@ test('unexpected end retries once; immediately ending again requires a manual re
 test('known server-side end stops microphone even when the speaker is silent', async () => {
   const f = fixture()
   await f.recorder.init(); await f.recorder.start()
-  f.api.start = async () => ({ sttSessionId: 7, status: 'RECORDING', canRecord: false })
+  f.api.start = async () => ({ sttSessionId: 7, status: 'RECORDING', canRecord: false, serverTime: instant })
   await f.timers.get(f.recorder.pollTimer).fn()
   await f.recorder.draining
   assert.equal(f.active(), false)
