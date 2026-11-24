@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { request } from '../stt/api.js'
+import { openRoomSocket } from '../ws/roomSocket.js'
 import './poll.css'
 
 export function PollVotePanel({ roomId, onAccessError }) {
@@ -17,6 +18,7 @@ export function PollVotePanel({ roomId, onAccessError }) {
 
     const offset = useRef(0)
     const pending = useRef(false)
+    const reload = useRef(null)
     const onAccess = useRef(onAccessError)
     onAccess.current = onAccessError
 
@@ -25,9 +27,16 @@ export function PollVotePanel({ roomId, onAccessError }) {
     useEffect(() => {
         let active = true
         let running = false
+        let again = false
 
         async function refresh() {
-            if (!active || running || pending.current || document.hidden || !navigator.onLine) return
+            if (!active || pending.current || document.hidden || !navigator.onLine) return
+
+            // 조회 중에 마감·생성 이벤트가 오면 그 조회 결과는 낡았을 수 있으므로 끝난 뒤 한 번 더 조회한다.
+            if (running) {
+                again = true
+                return
+            }
 
             running = true
 
@@ -57,9 +66,15 @@ export function PollVotePanel({ roomId, onAccessError }) {
             } finally {
                 running = false
                 if (active) setChecked(true)
+
+                if (again && active) {
+                    again = false
+                    void refresh()
+                }
             }
         }
 
+        reload.current = refresh
         void refresh()
 
         const timer = window.setInterval(refresh, 5000)
@@ -77,6 +92,29 @@ export function PollVotePanel({ roomId, onAccessError }) {
             window.removeEventListener('online', visible)
         }
     }, [base, revision])
+
+    // 투표가 열리거나 마감되면 서버가 알려 주므로, 5초 조회를 기다리지 않고 바로 목록을 다시 받는다.
+    // 단순 브로커는 놓친 이벤트를 다시 보내지 않아서 5초 조회와 재연결 때의 조회는 그대로 둔다.
+    useEffect(() => {
+        const socket = openRoomSocket({
+            role: 'PARTICIPANT',
+            subscriptions: [{
+                destination: `/topic/rooms/${roomId}/polls`,
+                handler(frame) {
+                    let event
+                    try { event = JSON.parse(frame.body) } catch { return }
+
+                    if (event?.data?.roomId !== Number(roomId)) return
+                    if (event.type === 'POLL_CREATED' || event.type === 'POLL_CLOSED') void reload.current?.()
+                },
+            }],
+            onConnect: () => void reload.current?.(),
+            onAuthError: error => onAccess.current?.(error),
+            refresh: () => reload.current?.(),
+        })
+
+        return () => socket.close()
+    }, [roomId])
 
     useEffect(() => {
         if (poll?.type !== 'GENERAL') return
