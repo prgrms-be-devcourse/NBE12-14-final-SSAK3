@@ -44,9 +44,15 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 
 이전에 종료한 방은 강연자 메뉴의 **내 강연 기록**에서 다시 열 수 있습니다. 최근 강연을 10개씩 볼 수 있고, 완료된 회고 보고서도 같은 목록에서 열 수 있습니다.
 
+
+운영 서비스: https://www.re-act.site
+
 배포(EC2): `main` 브랜치에 Push하면 GitHub Actions가 GHCR에 Docker 이미지를 게시하고 AWS SSM을 통해 EC2에 자동 배포합니다. 운영 환경에서는 소스 코드를 직접 빌드하지 않습니다.
 
-자세한 배포 절차와 운영 명령어는 [AWS 운영 배포 가이드](docs/aws/deployment.md)를 참고하세요.
+운영 인프라는 Terraform으로 관리하며, Nginx Proxy Manager와 Let's Encrypt를 통해 HTTPS를 제공합니다. Frontend, REST API, WebSocket은 동일한 도메인을 사용합니다.
+
+자세한 배포 절차, 도메인 및 HTTPS 설정, 운영 명령어는 [AWS 운영 배포 가이드](docs/aws/deployment.md)를 참고하세요.
+
 
 설정 파일: `application.yml`(공통), `application-local.yml`(로컬, 기본 프로파일), `application-prod.yml`(배포, 환경 변수로만 주입)
 
@@ -56,4 +62,4 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 >
 > 이전 프로젝트의 DB 볼륨 때문에 로컬 개발 환경에서 초기화가 필요한 경우에만 `docker compose down -v`를 사용할 수 있습니다.
 >
-> **주의:** `docker compose down -v`는 Docker Compose가 관리하는 볼륨 데이터를 삭제합니다. 운영 EC2에서는 실행하지 마세요. 운영 MySQL 데이터가 삭제될 수 있습니다.
+> **주의:** `docker compose down -v`는 Docker Compose가 관리하는 볼륨 데이터를 삭제합니다. 운영 EC2에서는 실행하지 마세요. 운영 MySQL·Redis 데이터와 Nginx Proxy Manager 설정 및 SSL 인증서가 삭제될 수 있습니다.
