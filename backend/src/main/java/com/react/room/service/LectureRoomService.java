@@ -24,6 +24,7 @@ import com.react.room.event.RoomStatusChangedEvent;
 import com.react.room.repository.LectureParticipantRepository;
 import com.react.room.repository.LectureRoomRepository;
 import com.react.room.repository.RoomHistoryRepository;
+import com.react.stt.service.SttSessionService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
@@ -58,6 +59,7 @@ public class LectureRoomService {
     private final LectureParticipantRepository participantRepository;
     private final UserRepository userRepository;
     private final PollService pollService;
+    private final SttSessionService sttSessionService;
     private final ApplicationEventPublisher eventPublisher;
     private final String joinBaseUrl;
 
@@ -67,6 +69,7 @@ public class LectureRoomService {
             LectureParticipantRepository participantRepository,
             UserRepository userRepository,
             PollService pollService,
+            SttSessionService sttSessionService,
             ApplicationEventPublisher eventPublisher,
             @Value("${ROOM_JOIN_BASE_URL:http://localhost:5173}")
             String joinBaseUrl
@@ -76,6 +79,7 @@ public class LectureRoomService {
         this.participantRepository = participantRepository;
         this.userRepository = userRepository;
         this.pollService = pollService;
+        this.sttSessionService = sttSessionService;
         this.eventPublisher = eventPublisher;
         this.joinBaseUrl = joinBaseUrl;
     }
@@ -307,9 +311,8 @@ public class LectureRoomService {
 
         lectureRoomRepository.flush();
 
-        // 기존 투표 서비스의 종료 처리 메서드 재사용
-        // 강연 종료와 동일한 트랜잭션에서 진행
         pollService.closeOpenPollsOnRoomEnded(room.getId());
+        sttSessionService.closeOnRoomEnded(room.getId(), room.getEndedAt());
 
         Instant endedAt = toInstant(room.getEndedAt());
 
