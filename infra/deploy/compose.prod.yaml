@@ -61,6 +61,9 @@ services:
       # Spring 운영 프로파일
       SPRING_PROFILES_ACTIVE: prod
 
+      # 리버스 프록시 전달 헤더 처리
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+
       # MySQL
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
       MYSQL_USER: ${MYSQL_USER}
@@ -108,11 +111,36 @@ services:
     depends_on:
       - backend
 
-    # HTTP 공개
-    # HTTPS 구성은 SCRUM-87에서 진행
+    # EC2 내부에서만 Health Check 접근 허용
+    # 외부 요청은 Nginx Proxy Manager를 통해 전달한다.
+    ports:
+      - "127.0.0.1:18081:80"
+
+  npm:
+    # SCRUM-87: HTTPS 및 도메인 설정
+    image: jc21/nginx-proxy-manager:2.17.1
+
+    restart: unless-stopped
+
+    depends_on:
+      - web
+
+    environment:
+      TZ: Asia/Seoul
+
+    # 관리자 포트(81)는 AWS 보안 그룹에서 접근을 제한한다.
     ports:
       - "80:80"
+      - "443:443"
+      - "81:81"
+
+    # 프록시 설정 및 SSL 인증서 영속화
+    volumes:
+      - npm-data:/data
+      - npm-letsencrypt:/etc/letsencrypt
 
 volumes:
   mysql-data:
   redis-data:
+  npm-data:
+  npm-letsencrypt:
