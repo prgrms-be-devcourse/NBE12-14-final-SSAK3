@@ -91,6 +91,15 @@ public class SecurityConfig {
                                 "/actuator/info"
                         ).permitAll()
 
+                        // API 문서: 로컬 프로파일에서만 켜지며(springdoc.*.enabled), 꺼져 있으면 404 가 된다.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**"
+                        ).permitAll()
+
                         // 청중 입장 API: SCRUM-128
                         // HOST 로그인 없이 입장 가능하지만 CSRF 토큰은 필요
                         .requestMatchers(
