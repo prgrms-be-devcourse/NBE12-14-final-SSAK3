@@ -57,12 +57,14 @@
 
 ### 기본 동작
 
-| 이벤트 | CI | GHCR 이미지 게시 | EC2 배포 |
-|---|---|---|---|
-| `develop` 또는 `main` 대상 PR | 실행 | 실행하지 않음 | 실행하지 않음 |
-| `develop` Push | 실행 | 실행하지 않음 | 실행하지 않음 |
-| `main` Push | 실행 | 실행 | 실행 |
-| `main`에서 배포 옵션을 선택한 수동 실행 | 실행 | 실행 | 실행 |
+| 이벤트 | CI | CD |
+|---|---|---|
+| develop 대상 PR | 실행 | 실행하지 않음 |
+| main 대상 PR | 실행 | 실행하지 않음 |
+| develop Push | 실행하지 않음 | 실행하지 않음 |
+| main Push | CD에서 CI 재검증 | GHCR 게시 및 EC2 자동배포 |
+| 수동 실행 (`deploy=false`) | CD에서 CI 실행 | 배포하지 않음 |
+| main 수동 실행 (`deploy=true`) | CD에서 CI 재검증 | GHCR 게시 및 EC2 배포 |
 
 - **SCRUM-88:** 
 - GitHub Actions CI/CD, GHCR 이미지 게시, AWS SSM 자동배포 구현 및 최초 배포 검증 완료. 작업 브랜치 임시 배포 조건 제거. 최종 통합 배포는 `develop` → `main` Merge 시 검증 예정
