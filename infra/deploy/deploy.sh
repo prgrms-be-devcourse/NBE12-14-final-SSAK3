@@ -3,6 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 # SCRUM-88: GitHub Actions -> SSM -> EC2 운영 배포
+# SCRUM-87: Nginx Proxy Manager 지원
 # 실행: bash /opt/react/.staging/<SHA>.deploy.sh <SHA>
 # 운영 .env와 root의 GHCR 로그인은 EC2에 미리 준비한다.
 
@@ -85,6 +86,8 @@ ACTIVE_CHANGED=0
 NEXT_COMPOSE=""
 NEXT_SCRIPT=""
 NEXT_STATE=""
+PREVIOUS_HAS_NPM=0
+NEW_HAS_NPM=0
 
 cleanup() {
   rm -f "${NEXT_COMPOSE:-}" "${NEXT_SCRIPT:-}" "${NEXT_STATE:-}" || true
@@ -99,12 +102,28 @@ compose_previous() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
+# NPM 도입 전후의 Compose 구성을 구분한다.
+if [[ -n "$PREVIOUS_TAG" ]]; then
+  PREVIOUS_SERVICES="$(IMAGE_TAG="$PREVIOUS_TAG" compose_previous config --services)"
+  if grep -qx 'npm' <<< "$PREVIOUS_SERVICES"; then
+    PREVIOUS_HAS_NPM=1
+  fi
+fi
+
 check_health() {
+  local has_npm="$1"
+  local web_url="http://127.0.0.1/"
+  if [[ "$has_npm" == 1 ]]; then
+    web_url="http://127.0.0.1:18081/"
+  fi
+
   for attempt in $(seq 1 30); do
     if curl -fsS --max-time 3 http://127.0.0.1:18080/actuator/health 2>/dev/null \
         | grep -q '"status":"UP"' \
-        && curl -fsS --max-time 3 -o /dev/null http://127.0.0.1/ 2>/dev/null; then
-      return 0
+        && curl -fsS --max-time 3 -o /dev/null "$web_url" 2>/dev/null; then
+      if [[ "$has_npm" == 0 ]] || curl -fsS --max-time 3 -o /dev/null http://127.0.0.1:81/ 2>/dev/null; then
+        return 0
+      fi
     fi
     sleep 3
   done
@@ -133,8 +152,17 @@ on_error() {
 
   if [[ "$SWITCHED" == 1 && -n "$PREVIOUS_TAG" ]]; then
     echo "이전 Compose 및 이미지로 복구를 시도합니다: $PREVIOUS_TAG" >&2
+
+    # 이전 구성으로 복구하기 전에 80번 포트를 반환한다.
+    if [[ "$NEW_HAS_NPM" == 1 && "$PREVIOUS_HAS_NPM" == 0 ]]; then
+      IMAGE_TAG="$NEW_TAG" compose_new stop npm
+      IMAGE_TAG="$NEW_TAG" compose_new rm -f npm
+    elif [[ "$NEW_HAS_NPM" == 0 && "$PREVIOUS_HAS_NPM" == 1 ]]; then
+      IMAGE_TAG="$NEW_TAG" compose_new stop web
+    fi
+
     export IMAGE_TAG="$PREVIOUS_TAG"
-    if compose_previous up -d --no-build --wait --wait-timeout 180 && check_health; then
+    if compose_previous up -d --no-build --wait --wait-timeout 180 && check_health "$PREVIOUS_HAS_NPM"; then
       echo "이전 버전으로 복구했습니다." >&2
     else
       echo "자동 복구 실패: EC2에서 수동 확인이 필요합니다." >&2
@@ -150,11 +178,27 @@ trap 'on_error $?' ERR
 # SSM 명령에 비밀값을 전달하지 않는다.
 export IMAGE_TAG="$NEW_TAG"
 compose_new config --quiet
+NEW_SERVICES="$(compose_new config --services)"
+if grep -qx 'npm' <<< "$NEW_SERVICES"; then
+  NEW_HAS_NPM=1
+fi
 compose_new pull backend web
+if [[ "$NEW_HAS_NPM" == 1 ]]; then
+  compose_new pull npm
+fi
 
 SWITCHED=1
+# NPM 도입 또는 제거 시 기존 서비스가 사용 중인 80번 포트를 반환한다.
+if [[ -n "$PREVIOUS_TAG" ]]; then
+  if [[ "$NEW_HAS_NPM" == 1 && "$PREVIOUS_HAS_NPM" == 0 ]]; then
+    IMAGE_TAG="$PREVIOUS_TAG" compose_previous stop web
+  elif [[ "$NEW_HAS_NPM" == 0 && "$PREVIOUS_HAS_NPM" == 1 ]]; then
+    IMAGE_TAG="$PREVIOUS_TAG" compose_previous stop npm
+    IMAGE_TAG="$PREVIOUS_TAG" compose_previous rm -f npm
+  fi
+fi
 compose_new up -d --no-build --wait --wait-timeout 180
-check_health
+check_health "$NEW_HAS_NPM"
 
 # 새 이미지가 정상 동작한 뒤에만 운영 파일과 태그를 확정한다.
 NEXT_COMPOSE="$(mktemp "$DEPLOY_DIR/.compose.next.XXXXXX")"
