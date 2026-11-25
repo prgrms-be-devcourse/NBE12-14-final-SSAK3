@@ -73,6 +73,27 @@ async function submitNickname(page) {
   await page.getByRole('button', { name: '입장', exact: true }).click()
 }
 
+test('참여 코드를 다시 입력해 로그인 없이 닉네임 화면으로 이동한다', async ({ page }) => {
+  const state = await setup(page)
+  state.status = 'deleted'
+  await page.goto('/join')
+  const code = page.getByLabel('참여 코드', { exact: true })
+  const join = page.getByRole('button', { name: '강연방 입장' })
+  await join.click()
+  await expect(code).toBeFocused()
+  await expect(code).toHaveAttribute('aria-invalid', 'true')
+  await code.fill('workshop')
+  await join.click()
+  await expect(page).toHaveURL(/\/participation-ended\/unavailable$/)
+  await page.getByRole('link', { name: '참여 코드 다시 입력' }).click()
+  state.status = 'READY'
+  await code.fill(' workshop ')
+  await code.press('Enter')
+  await expect(page).toHaveURL(/\/join\/WORKSHOP$/)
+  await expect(page.getByLabel('닉네임')).toBeVisible()
+  expect(state.posts).toHaveLength(0)
+})
+
 async function waitForConnection(page, state) {
   await expect.poll(() => state.subscriptions.length).toBeGreaterThan(0)
   await expect(page.getByText('연결 확인 중', { exact: true })).toHaveCount(0)

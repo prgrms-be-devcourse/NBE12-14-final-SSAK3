@@ -8,6 +8,7 @@ import { HomeRoomLists } from './HomeRoomLists.jsx'
 import { RoomShell } from './RoomShell.jsx'
 import { RoomInvitation } from './RoomInvitation.jsx'
 import { LeaveRoomDialog } from './LeaveRoomDialog.jsx'
+import { Icon } from '../ui/Icon.jsx'
 import { request } from '../stt/api.js'
 import { draftKey, emptyDraft, readDraft, writeDraft, clearDraft, loginFor, terminal, errorText } from './state.js'
 import '@fontsource/pretendard/400.css'
@@ -70,11 +71,11 @@ export function RoomApp({ historyPage = false }) {
     {loggingOut ? <p role="status">로그아웃하고 있습니다.</p> : error ? <section className="room-card"><p role="alert">{errorText(error)}</p><button onClick={() => { setError(null); setRevision(v => v + 1) }}>다시 확인</button></section>
       : !user ? <p role="status">로그인 정보를 확인하고 있습니다.</p>
         : historyPage ? <RoomHistory key={`${user.userId}:${route.key}`} userId={user.userId} />
-        : <CreateRoom key={user.userId} user={user} onBusy={setCreating} />}
+        : <CreateRoom key={user.userId} user={user} onBusy={setCreating} onNew={() => goToSection('new')} />}
   </RoomShell>
 }
 
-function CreateRoom({ user, onBusy }) {
+function CreateRoom({ user, onBusy, onNew }) {
   const route = useLocation()
   useEffect(() => {
     const section = route.state?.section
@@ -123,10 +124,21 @@ function CreateRoom({ user, onBusy }) {
     }
   }
   return <div className="room-create">
-    <div className="room-heading"><h1>강연자 홈</h1></div>
+    <div className="room-heading host-home-hero">
+      <div className="host-home-intro">
+        <h1>강연자 홈</h1>
+        <p>진행 중인 강연을 이어가거나 새로운 강연을 준비하세요.</p>
+        <button className="host-create-shortcut" type="button" disabled={busy} onClick={onNew}>
+          <Icon name="plus" size={17} />새 강연 작성
+        </button>
+      </div>
+      <div className="host-home-art" aria-hidden="true" />
+    </div>
     <HomeRoomLists />
     <form className="room-card" onSubmit={submit} aria-labelledby="host-create-title">
-      <h2 id="host-create-title">새 강연방</h2>
+      <div className="room-form-heading"><span className="room-heading-icon"><Icon name="mic" /></span>
+        <div><h2 id="host-create-title">새 강연방</h2><p className="room-caption">방을 만든 뒤 청중을 초대하고 강연을 시작할 수 있어요.</p></div>
+      </div>
       {restored && <p className="room-note" role="status">작성 중이던 내용을 불러왔습니다.</p>}
       {storageError && <p role="alert">임시 저장을 사용할 수 없습니다. 새로고침하거나 로그인 화면으로 이동하면 작성 내용이 사라질 수 있습니다.</p>}
       <label htmlFor="room-title">강연 제목 <span className="room-required">필수</span></label>
@@ -135,14 +147,13 @@ function CreateRoom({ user, onBusy }) {
       <small id="title-count" className="room-count">{draft.title.length} / 200</small>
       <p id="create-error" role={error ? 'alert' : undefined}>{error}</p>
       <label htmlFor="room-description">강연 설명 <span className="room-optional">선택</span></label>
-      <textarea id="room-description" maxLength={10000} rows={6} value={draft.description} disabled={busy} placeholder="청중에게 전하고 싶은 강연 소개를 적어주세요."
+      <textarea id="room-description" maxLength={10000} rows={3} value={draft.description} disabled={busy} placeholder="청중에게 전하고 싶은 강연 소개를 적어주세요."
         onChange={e => update({ ...draft, description: e.target.value })} aria-describedby="description-count" />
       <small id="description-count" className="room-count">{draft.description.length.toLocaleString()} / 10,000</small>
       {!busy && draft.uncertain && <div className="room-warning" role="alert"><strong>생성 여부를 확인하지 못했습니다.</strong><p>서버에서 이미 방을 만들었을 수 있습니다. 다시 생성하면 중복 방이 생길 수 있습니다.</p></div>}
       <div className="room-form-actions"><button type="button" className="room-secondary" disabled={busy} onClick={() => {
         if (window.confirm('작성 내용과 임시 저장 내용을 지울까요? 이미 생성된 강연방은 삭제되지 않습니다.')) { update({ ...emptyDraft }); setError('') }
-      }}>입력 초기화</button><button disabled={busy}>{busy ? '강연방 생성 중…' : '강연방 만들기'}</button></div>
-      <p className="room-caption">방을 만들어도 강연은 자동으로 시작되지 않습니다.</p>
+      }}>입력 초기화</button><button disabled={busy}>{busy ? '강연방 생성 중…' : '강연방 만들기'}<Icon name="arrow-right" size={16} /></button></div>
     </form>
   </div>
 }
@@ -220,8 +231,11 @@ function RoomDetail({ id, userId, shell, logoutNotice }) {
           <h1>{room.title}</h1>
           {room.status === 'ENDED' && <p>종료된 강연입니다. 새로운 참여는 불가능합니다.</p>}
         </div>
-        <RoomControls room={room} userId={userId} recorder={recorder} onRoom={acceptTransition}
-          onAccessError={deny} onEnding={setEnding} offline={!!error} />
+        <div className="host-room-tools">
+          {room.status === 'LIVE' && <a className="host-room-jump" href="#poll-title"><Icon name="chart" size={17} />투표·이해도 체크</a>}
+          <RoomControls room={room} userId={userId} recorder={recorder} onRoom={acceptTransition}
+            onAccessError={deny} onEnding={setEnding} offline={!!error} />
+        </div>
       </div>
       {room.status === 'ENDED' && <RoomReportStatus roomId={id} endedAt={room.endedAt} onAccessError={deny} />}
       {['LIVE', 'ENDED'].includes(room.status) && <RoomWorkspace room={room} userId={userId}
