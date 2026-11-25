@@ -38,6 +38,7 @@ public class ChatMessage {
     private Instant receivedAt;
 
     // 화면이 전송마다 만든 UUID. 같은 작성자의 같은 값은 한 번만 저장한다. 식별자 없이 온 요청은 null 이다.
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "client_message_id", length = 36)
     private String clientMessageId;
 

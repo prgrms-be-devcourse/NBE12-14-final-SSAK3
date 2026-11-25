@@ -102,13 +102,11 @@ test('응답 유실 후 원문과 입력을 복구하고, 내역 갱신 후에�
   expect(state.sent).toHaveLength(1)
   await retry.click()
   await expect.poll(() => state.sent.length).toBe(2)
-  expect(state.sent[1].attempt).not.toBe(state.sent[0].attempt)
-  // 첫 전송의 지연 알림이 새 전송의 입력을 지우면 안 된다.
-  state.chat.broadcast(state.saved[0], state.sent[0].attempt)
-  await expect(input).toHaveValue(content)
-  state.chat.broadcast(message(2, content, guest), state.sent[1].attempt)
+  // 같은 전송 식별자로 다시 보내므로 서버는 이미 저장한 메시지를 돌려주고 새로 저장하지 않는다.
+  expect(state.sent[1].attempt).toBe(state.sent[0].attempt)
+  state.chat.broadcast(state.saved[0], state.sent[1].attempt)
   await expect(input).toHaveValue('')
-  await expect(panel.getByRole('log').getByText(content, { exact: true })).toHaveCount(2)
+  await expect(panel.getByRole('log').getByText(content, { exact: true })).toHaveCount(1)
 })
 
 test('이전 질문을 읽는 중에는 위치를 유지하고 중복 없는 새 메시지 수를 표시한다', async ({ page }) => {
