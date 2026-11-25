@@ -43,7 +43,12 @@ Table chat_messages {
   host_user_id bigint [ref: > users.id]
   content text [not null]
   received_at datetime [not null]
-  indexes { (lecture_room_id, received_at, id) }
+  client_message_id char(36) [note: '화면이 전송마다 만든 UUID. 재전송 중복 저장 방지용이며 없는 요청은 NULL']
+  indexes {
+    (lecture_room_id, received_at, id)
+    (lecture_room_id, participant_id, client_message_id) [unique]
+    (lecture_room_id, host_user_id, client_message_id) [unique]
+  }
   Note: 'participant_id와 host_user_id 중 정확히 하나만 존재. AI 청중 의견 분석은 participant_id가 있는 메시지만 대상'
 }
 
