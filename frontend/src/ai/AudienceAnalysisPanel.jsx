@@ -14,7 +14,7 @@ function statusText(analysis) {
   if (analysis.status === 'PENDING') return '새 청중 의견 분석을 기다리고 있습니다.'
   if (analysis.status === 'PROCESSING') return '새 청중 의견을 분석하고 있습니다.'
   if (analysis.status === 'FAILED') return '이 구간의 의견을 요약하지 못했습니다.'
-  return analysis.topicGroups.length ? '이 구간의 분석이 완료되었습니다.' : '이 구간에는 표시할 새 요약이 없습니다.'
+  return analysis.topicGroups.length ? '이 구간의 분석이 완료되었습니다.' : '마지막 분석 결과 이후 새로운 질문이나 의견이 없습니다.'
 }
 
 export function AudienceAnalysisPanel({ state, actions }) {
@@ -38,12 +38,15 @@ export function AudienceAnalysisPanel({ state, actions }) {
       <div className="ai-status" role="status">
         {latest && <span>최근 분석 구간 · {interval(latest)}</span>}
         <p>{statusText(latest)}</p>
+        {state.lastSummaryAt && <span>마지막 유효 분석 결과 · {timestamp(state.lastSummaryAt)}</span>}
+        {state.lastCompletedAt && <span>마지막 정상 분석 완료 · {timestamp(state.lastCompletedAt)}</span>}
       </div>
       {pending && <div className="ai-new" role="status"><span>새 요약이 있습니다. 읽던 원문을 유지하고 있습니다.</span>
         <button onClick={actions.showLatest}>새 요약 보기</button></div>}
       {state.current ? <AnalysisGroup analysis={state.current} state={state} actions={actions}
         label={latest?.analysisId === state.current.analysisId ? '최신 요약' : '마지막 요약'} />
-        : <p className="ai-empty">최근 조회 범위에 표시할 요약이 없습니다.</p>}
+        : latest?.status !== 'COMPLETED' || latest.topicGroups.length > 0
+          ? <p className="ai-empty">최근 조회 범위에 표시할 요약이 없습니다.</p> : null}
       <div className="ai-history">
         <button className="room-secondary" aria-expanded={historyOpen} aria-controls="ai-history-content"
           onClick={() => {
