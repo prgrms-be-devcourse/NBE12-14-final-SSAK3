@@ -90,6 +90,7 @@
 | --- | --- |
 | 강연자 채팅 | `chat_messages.host_user_id` 사용 |
 | 청중 채팅 | `chat_messages.participant_id` 사용 |
+| 채팅 중복 저장 | 강연방·작성자·`client_message_id` UNIQUE (식별자 없는 요청은 제외) |
 | AI 청중 의견 | 강연자 채팅 제외 |
 | 주제별 AI 요약 | `ai_topic_groups.topic`, `summary`, `category` |
 | 원문 메시지 연결 | `ai_topic_group_messages` |

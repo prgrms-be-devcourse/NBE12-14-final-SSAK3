@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional(readOnly = true)
@@ -27,28 +28,57 @@ public class ChatMessageService {
     private final ChatMessageQueryRepository repository;
     private final ChatMessageRepository messageRepository;
 
+    /** 전송 식별자 없이 저장한다. 중복 검사를 하지 않는다. */
     @Transactional
     public ChatMessageView saveFromParticipant(long roomId, long participantId, String content) {
+        return saveFromParticipant(roomId, participantId, content, null);
+    }
+
+    /** 전송 식별자 없이 저장한다. 중복 검사를 하지 않는다. */
+    @Transactional
+    public ChatMessageView saveFromHost(long roomId, long hostUserId, String content) {
+        return saveFromHost(roomId, hostUserId, content, null);
+    }
+
+    @Transactional
+    public ChatMessageView saveFromParticipant(long roomId, long participantId, String content, String clientMessageId) {
         String text = normalize(content);
         String status = findRoomStatus(roomId);
         String nickname = repository.findParticipantNickname(roomId, participantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN));
         requireLive(status);
 
-        ChatMessage saved = messageRepository.save(ChatMessage.ofParticipant(roomId, participantId, text));
-        return view(saved, new ChatSenderView(SenderType.PARTICIPANT, participantId, nickname));
+        ChatSenderView sender = new ChatSenderView(SenderType.PARTICIPANT, participantId, nickname);
+        // 같은 전송 식별자로 이미 저장했다면 새로 저장하지 않고 그 메시지를 돌려준다. 동시에 들어온 경우는 DB 유니크 제약이 막는다.
+        if (clientMessageId != null) {
+            Optional<ChatMessage> existing = messageRepository
+                    .findByLectureRoomIdAndParticipantIdAndClientMessageId(roomId, participantId, clientMessageId);
+            if (existing.isPresent()) {
+                return view(existing.get(), sender);
+            }
+        }
+        ChatMessage saved = messageRepository.save(ChatMessage.ofParticipant(roomId, participantId, text, clientMessageId));
+        return view(saved, sender);
     }
 
     @Transactional
-    public ChatMessageView saveFromHost(long roomId, long hostUserId, String content) {
+    public ChatMessageView saveFromHost(long roomId, long hostUserId, String content, String clientMessageId) {
         String text = normalize(content);
         String status = findRoomStatus(roomId);
         String name = repository.findHostName(roomId, hostUserId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN));
         requireLive(status);
 
-        ChatMessage saved = messageRepository.save(ChatMessage.ofHost(roomId, hostUserId, text));
-        return view(saved, new ChatSenderView(SenderType.HOST, hostUserId, name));
+        ChatSenderView sender = new ChatSenderView(SenderType.HOST, hostUserId, name);
+        if (clientMessageId != null) {
+            Optional<ChatMessage> existing = messageRepository
+                    .findByLectureRoomIdAndHostUserIdAndClientMessageId(roomId, hostUserId, clientMessageId);
+            if (existing.isPresent()) {
+                return view(existing.get(), sender);
+            }
+        }
+        ChatMessage saved = messageRepository.save(ChatMessage.ofHost(roomId, hostUserId, text, clientMessageId));
+        return view(saved, sender);
     }
 
     public ChatMessagePageView getMessages(long roomId, StompActor actor, Long cursor, int size) {

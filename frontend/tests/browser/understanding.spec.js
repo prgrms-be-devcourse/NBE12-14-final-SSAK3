@@ -15,7 +15,15 @@ const card = page => page.getByRole('region', { name: '지금 설명을 이해�
 const ended = page => page.getByText('이해도 체크가 마감되었어요.')
 
 async function setup(page, { polls = [], mine = null } = {}) {
-  const state = { polls, mine, puts: [], putFailure: null, subscribed: false, push: null }
+  const subscribers = new Map()
+  const state = {
+    polls, mine, puts: [], putFailure: null,
+    push(event) {
+      for (const [socket, id] of subscribers) {
+        socket.send(`MESSAGE\ndestination:${topic}\nsubscription:${id}\nmessage-id:${crypto.randomUUID()}\n\n${JSON.stringify(event)}\0`)
+      }
+    },
+  }
   await page.route('**/api/v1/**', route => {
     const request = route.request()
     const path = new URL(request.url()).pathname
@@ -39,18 +47,19 @@ async function setup(page, { polls = [], mine = null } = {}) {
     throw new Error(`예상하지 않은 API 호출: ${request.method()} ${path}`)
   })
   await page.routeWebSocket('**/ws', socket => {
+    socket.onClose(() => subscribers.delete(socket))
     socket.onMessage(frame => {
       const message = frame.toString()
       if (message.startsWith('CONNECT\n')) socket.send('CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0')
       if (message.startsWith('SUBSCRIBE\n') && message.includes(`destination:${topic}\n`)) {
         const id = /^id:(.+)$/m.exec(message)[1]
-        state.subscribed = true
-        state.push = event => socket.send(`MESSAGE\ndestination:${topic}\nsubscription:${id}\nmessage-id:${crypto.randomUUID()}\n\n${JSON.stringify(event)}\0`)
+        subscribers.set(socket, id)
       }
     })
   })
   await page.goto('/join/WORKSHOP')
-  await expect.poll(() => state.subscribed).toBe(true)
+  // 일반 투표와 이해도 체크가 같은 토픽을 각자 구독한다.
+  await expect.poll(() => subscribers.size).toBe(2)
   return state
 }
 

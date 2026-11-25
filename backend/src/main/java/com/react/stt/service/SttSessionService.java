@@ -106,6 +106,18 @@ public class SttSessionService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND)).view(null, room.status());
     }
 
+    /** 강연 종료 트랜잭션이 방 행을 잠근 뒤 호출한다. */
+    public void closeOnRoomEnded(long roomId, LocalDateTime endedAt) {
+        jdbc.sql("""
+                UPDATE stt_sessions SET status = 'STOPPED', ended_at = ?
+                WHERE lecture_room_id = ? AND status = 'RECORDING'
+                """).params(endedAt, roomId).update();
+        jdbc.sql("""
+                UPDATE stt_gaps g JOIN stt_sessions s ON s.id = g.stt_session_id
+                SET g.ended_at = ? WHERE s.lecture_room_id = ? AND g.ended_at IS NULL
+                """).params(endedAt, roomId).update();
+    }
+
     private Session requireRecordingKey(long roomId, long sessionId, UUID startKey) {
         Session session = jdbc.sql(SESSIONS + "AND id = ?").params(roomId, sessionId).query(Session.class).optional()
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));

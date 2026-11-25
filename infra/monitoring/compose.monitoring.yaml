@@ -1,0 +1,43 @@
+# SCRUM-91: 로컬 모니터링 환경
+# 기존 애플리케이션 Docker Compose와 분리하여 실행한다.
+
+name: react-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:9090:9090"
+
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=3d
+
+  grafana:
+    image: grafana/grafana:13.3.0-ubuntu
+    restart: unless-stopped
+
+    depends_on:
+      - prometheus
+
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+      # SCRUM-91: 데이터 소스 및 대시보드 자동 구성
+      - ./grafana/datasource.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
+      - ./grafana/dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/react-monitoring.json:/var/lib/grafana/dashboards/react-monitoring.json:ro
+
+volumes:
+  prometheus-data:
+  grafana-data:

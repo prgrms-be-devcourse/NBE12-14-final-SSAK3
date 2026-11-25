@@ -37,20 +37,26 @@ public class ChatMessage {
     @Column(name = "received_at", nullable = false)
     private Instant receivedAt;
 
-    private ChatMessage(Long lectureRoomId, Long participantId, Long hostUserId, String content) {
+    // 화면이 전송마다 만든 UUID. 같은 작성자의 같은 값은 한 번만 저장한다. 식별자 없이 온 요청은 null 이다.
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "client_message_id", length = 36)
+    private String clientMessageId;
+
+    private ChatMessage(Long lectureRoomId, Long participantId, Long hostUserId, String content, String clientMessageId) {
         this.lectureRoomId = lectureRoomId;
         this.participantId = participantId;
         this.hostUserId = hostUserId;
         this.content = content;
+        this.clientMessageId = clientMessageId;
         // DATETIME 은 초 단위라 DB 가 반올림하지 않도록 미리 초로 자른다. 반환값과 조회값이 같아진다.
         this.receivedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
     }
 
-    public static ChatMessage ofParticipant(Long lectureRoomId, Long participantId, String content) {
-        return new ChatMessage(lectureRoomId, participantId, null, content);
+    public static ChatMessage ofParticipant(Long lectureRoomId, Long participantId, String content, String clientMessageId) {
+        return new ChatMessage(lectureRoomId, participantId, null, content, clientMessageId);
     }
 
-    public static ChatMessage ofHost(Long lectureRoomId, Long hostUserId, String content) {
-        return new ChatMessage(lectureRoomId, null, hostUserId, content);
+    public static ChatMessage ofHost(Long lectureRoomId, Long hostUserId, String content, String clientMessageId) {
+        return new ChatMessage(lectureRoomId, null, hostUserId, content, clientMessageId);
     }
 }

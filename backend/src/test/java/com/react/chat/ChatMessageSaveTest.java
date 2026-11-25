@@ -147,6 +147,97 @@ class ChatMessageSaveTest {
     }
 
     @Test
+    void 청중이_같은_전송_식별자로_다시_보내면_기존_메시지를_돌려주고_새로_저장하지_않는다() {
+        String id = UUID.randomUUID().toString();
+
+        ChatMessageView first = service.saveFromParticipant(room, participant, "질문입니다", id);
+        ChatMessageView again = service.saveFromParticipant(room, participant, "질문입니다", id);
+
+        assertThat(again.messageId()).isEqualTo(first.messageId());
+        assertThat(again.sender()).isEqualTo(first.sender());
+        assertThat(again.receivedAt()).isEqualTo(first.receivedAt());
+        assertThat(messageCount(room)).isEqualTo(1);
+    }
+
+    @Test
+    void 강연자가_같은_전송_식별자로_다시_보내면_기존_메시지를_돌려주고_새로_저장하지_않는다() {
+        String id = UUID.randomUUID().toString();
+
+        ChatMessageView first = service.saveFromHost(room, hostUser, "설명입니다", id);
+        ChatMessageView again = service.saveFromHost(room, hostUser, "설명입니다", id);
+
+        assertThat(again.messageId()).isEqualTo(first.messageId());
+        assertThat(messageCount(room)).isEqualTo(1);
+    }
+
+    @Test
+    void 전송_식별자가_없으면_중복_검사를_하지_않는다() {
+        ChatMessageView first = service.saveFromParticipant(room, participant, "같은 문구", null);
+        ChatMessageView second = service.saveFromParticipant(room, participant, "같은 문구", null);
+        service.saveFromHost(room, hostUser, "같은 문구", null);
+        service.saveFromHost(room, hostUser, "같은 문구", null);
+
+        assertThat(second.messageId()).isNotEqualTo(first.messageId());
+        assertThat(messageCount(room)).isEqualTo(4);
+    }
+
+    @Test
+    void 같은_전송_식별자라도_작성자가_다르면_각각_저장한다() {
+        String id = UUID.randomUUID().toString();
+        long otherParticipant = newParticipant(room, "청중B");
+
+        ChatMessageView a = service.saveFromParticipant(room, participant, "A", id);
+        ChatMessageView b = service.saveFromParticipant(room, otherParticipant, "B", id);
+        ChatMessageView host = service.saveFromHost(room, hostUser, "H", id);
+
+        assertThat(java.util.Set.of(a.messageId(), b.messageId(), host.messageId())).hasSize(3);
+        assertThat(messageCount(room)).isEqualTo(3);
+    }
+
+    @Test
+    void 같은_강연자라도_강연방이_다르면_같은_전송_식별자를_각각_저장한다() {
+        String id = UUID.randomUUID().toString();
+        long otherRoom = newRoom(hostUser, "LIVE");
+
+        ChatMessageView here = service.saveFromHost(room, hostUser, "여기", id);
+        ChatMessageView there = service.saveFromHost(otherRoom, hostUser, "저기", id);
+
+        assertThat(there.messageId()).isNotEqualTo(here.messageId());
+        assertThat(messageCount(room)).isEqualTo(1);
+        assertThat(messageCount(otherRoom)).isEqualTo(1);
+    }
+
+    @Test
+    void 종료된_강연방에서는_이미_저장된_전송_식별자의_재전송도_거절한다() {
+        String id = UUID.randomUUID().toString();
+        service.saveFromParticipant(room, participant, "질문", id);
+        service.saveFromHost(room, hostUser, "답변", id);
+        jdbc.sql("UPDATE lecture_rooms SET status = 'ENDED' WHERE id = ?").param(room).update();
+
+        assertRejected(ErrorCode.ROOM_ENDED, () -> service.saveFromParticipant(room, participant, "질문", id));
+        assertRejected(ErrorCode.ROOM_ENDED, () -> service.saveFromHost(room, hostUser, "답변", id));
+        assertThat(messageCount(room)).isEqualTo(2);
+    }
+
+    @Test
+    void 동시에_들어온_같은_전송_식별자는_DB_유니크_제약이_막는다() {
+        String id = UUID.randomUUID().toString();
+        String insertParticipant = "INSERT INTO chat_messages(lecture_room_id,participant_id,content,received_at,client_message_id)"
+                + " VALUES (?, ?, 'x', NOW(), ?)";
+        String insertHost = "INSERT INTO chat_messages(lecture_room_id,host_user_id,content,received_at,client_message_id)"
+                + " VALUES (?, ?, 'x', NOW(), ?)";
+
+        jdbc.sql(insertParticipant).params(room, participant, id).update();
+        jdbc.sql(insertHost).params(room, hostUser, id).update();
+
+        assertThatThrownBy(() -> jdbc.sql(insertParticipant).params(room, participant, id).update())
+                .isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
+        assertThatThrownBy(() -> jdbc.sql(insertHost).params(room, hostUser, id).update())
+                .isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
+        assertThat(messageCount(room)).isEqualTo(2);
+    }
+
+    @Test
     void savedMessagesAreReadableThroughHistory() {
         ChatMessageView first = service.saveFromParticipant(room, participant, "질문입니다");
         ChatMessageView second = service.saveFromHost(room, hostUser, "답변입니다");

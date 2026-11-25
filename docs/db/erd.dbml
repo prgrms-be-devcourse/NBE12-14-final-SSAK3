@@ -43,8 +43,11 @@ Table chat_messages {
   host_user_id bigint [ref: > users.id]
   content text [not null]
   received_at datetime [not null]
+  client_message_id char(36) [note: '화면이 전송마다 만든 UUID. 재전송 중복 저장 방지용이며 없는 요청은 NULL']
   indexes {
     (lecture_room_id, received_at, id)
+    (lecture_room_id, participant_id, client_message_id) [unique]
+    (lecture_room_id, host_user_id, client_message_id) [unique]
     participant_id
     host_user_id
   }
@@ -141,9 +144,11 @@ Table ai_analyses {
   model_name varchar(100)
   error_message varchar(500)
   created_at datetime [not null]
+  processing_started_at datetime
   completed_at datetime
   indexes {
     (lecture_room_id, window_start_at, window_end_at) [unique]
+    (status, processing_started_at) [name: 'idx_ai_analyses_status_processing_started']
   }
 }
 
