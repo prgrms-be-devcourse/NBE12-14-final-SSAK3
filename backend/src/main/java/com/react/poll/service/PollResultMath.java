@@ -21,4 +21,9 @@ public final class PollResultMath {
     public static long unresponded(long totalParticipants, long respondedParticipants) {
         return totalParticipants - respondedParticipants;
     }
+
+    /** 이해 부족 라운드 표시: 헷갈림+모르겠음이 minCount 명 이상이고 응답자 대비 비율이 ratio% 이상이다. */
+    public static boolean lowUnderstanding(long lackCount, double lackRatio, int minCount, double ratio) {
+        return lackCount >= minCount && lackRatio >= ratio;
+    }
 }

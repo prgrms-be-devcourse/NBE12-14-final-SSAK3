@@ -34,7 +34,24 @@ test('keeps last summary for empty, processing, failed windows and does not regr
     await e.feed.start()
     assert.equal(e.state.current.analysisId, 3)
     assert.equal(e.state.analyses[0].status, status)
+    assert.deepEqual(e.state.visibleAnalyses.map(value => value.analysisId),
+      status === 'COMPLETED' ? [2] : [4, 2])
   }
+})
+
+test('hides repeated empty completions while retaining their completion time separately from the last summary', async t => {
+  const e = harness(t); await e.feed.start()
+  const summaryTime = e.state.lastSummaryAt
+  e.analyses = Array.from({ length: 10 }, (_, index) => analysis(11 - index, 'COMPLETED', false))
+  await e.feed.start()
+  assert.equal(e.state.current.analysisId, 1)
+  assert.deepEqual(e.state.visibleAnalyses, [])
+  assert.equal(e.state.lastSummaryAt, summaryTime)
+  assert.equal(e.state.lastCompletedAt, e.analyses[0].windowEndAt)
+  e.analyses = [analysis(12), ...e.analyses]
+  await e.feed.start()
+  assert.equal(e.state.current.analysisId, 12)
+  assert.deepEqual(e.state.visibleAnalyses.map(value => value.analysisId), [12])
 })
 
 test('sources pin multiple cards, successful source reads are reused, explicit latest clears all expansion', async t => {

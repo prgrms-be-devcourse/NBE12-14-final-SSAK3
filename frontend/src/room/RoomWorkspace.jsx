@@ -4,6 +4,7 @@ import { ChatPanel } from '../chat/ChatPanel.jsx'
 import { SttPanel } from '../stt/SttPanel.jsx'
 import { SavedSpeech } from './SavedSpeech.jsx'
 import { PollCreatePanel } from '../poll/PollCreatePanel.jsx'
+import { UnderstandingRounds } from '../poll/UnderstandingRounds.jsx'
 import { UnderstandingSummary } from '../poll/UnderstandingSummary.jsx'
 import { PollResults } from '../poll/PollResults.jsx'
 
@@ -79,6 +80,7 @@ export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError 
     </div>
 
     {live && <PollCreatePanel roomId={room.roomId} ending={ending} />}
+    <UnderstandingRounds roomId={room.roomId} />
     <UnderstandingSummary roomId={room.roomId} />
     <PollResults roomId={room.roomId} />
     {!live && <SavedSpeech roomId={room.roomId} onAccessError={onAccessError} />}

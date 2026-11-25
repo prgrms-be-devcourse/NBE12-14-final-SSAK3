@@ -1,7 +1,7 @@
 // A feed owns one room. Dispose invalidates every outstanding response, including source requests.
 export const initialFeed = () => ({ room: null, analyses: [], visibleAnalyses: [], current: null,
   candidate: null, openIds: [], sources: {}, limit: 10, busy: false, loaded: false,
-  error: false, fatal: null, checkedAt: null })
+  error: false, fatal: null, checkedAt: null, lastSummaryAt: null, lastCompletedAt: null })
 
 export function sortedAnalyses(analyses) {
   return [...analyses].sort((a, b) => Date.parse(b.windowStartAt) - Date.parse(a.windowStartAt)
@@ -9,6 +9,22 @@ export function sortedAnalyses(analyses) {
 }
 
 export const latestSummary = analyses => analyses.find(a => a.status === 'COMPLETED' && a.topicGroups.length > 0)
+const isEmptyCompletion = analysis => analysis.status === 'COMPLETED' && analysis.topicGroups.length === 0
+const visibleAnalyses = analyses => analyses.filter(analysis => !isEmptyCompletion(analysis))
+const completedAt = analysis => analysis?.completedAt || analysis?.windowEndAt || null
+
+function latestTime(...values) {
+  return values.filter(Boolean).sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null
+}
+
+function uniqueAnalyses(analyses) {
+  const byId = new Map()
+  for (const analysis of analyses) {
+    if (!analysis || !Array.isArray(analysis.topicGroups) || byId.has(analysis.analysisId)) continue
+    byId.set(analysis.analysisId, analysis)
+  }
+  return sortedAnalyses([...byId.values()])
+}
 
 function newerSummary(incoming, previous) {
   if (!incoming) return previous
@@ -29,18 +45,23 @@ export function createAudienceFeed({ roomId, request, onChange, onUnauthenticate
     if (status === 401) onUnauthenticated()
   }
   function applyView() {
-    emit({ current: state.candidate, visibleAnalyses: state.analyses, openIds: [] })
+    emit({ current: state.candidate, visibleAnalyses: visibleAnalyses(state.analyses), openIds: [] })
   }
   function accept(data, limit) {
     if (String(data?.roomId) !== String(roomId) || !Array.isArray(data.analyses)) throw new Error('INVALID_ANALYSES')
-    const analyses = sortedAnalyses(data.analyses)
+    const analyses = uniqueAnalyses(data.analyses)
+    const visible = visibleAnalyses(analyses)
     const candidate = newerSummary(latestSummary(analyses), state.candidate)
-    const patch = { analyses, candidate, limit, loaded: true, error: false, checkedAt: new Date().toISOString() }
-    if (!state.openIds.length) Object.assign(patch, { current: candidate, visibleAnalyses: analyses })
+    const latestCompleted = analyses.find(analysis => analysis.status === 'COMPLETED')
+    const patch = { analyses, candidate, limit, loaded: true, error: false, checkedAt: new Date().toISOString(),
+      // A completion without topics proves polling is still healthy, but is not a summary.
+      lastSummaryAt: latestTime(completedAt(candidate), state.lastSummaryAt),
+      lastCompletedAt: latestTime(data.lastCompletedAt, completedAt(latestCompleted), state.lastCompletedAt) }
+    if (!state.openIds.length) Object.assign(patch, { current: candidate, visibleAnalyses: visible })
     else if (limit > state.limit) {
       // An explicit range expansion can reveal older results without dropping an open source card.
       const pinned = state.visibleAnalyses.filter(a => a.topicGroups.some(t => state.openIds.includes(t.topicGroupId)))
-      const byId = new Map([...analyses, ...pinned].map(a => [a.analysisId, a]))
+      const byId = new Map([...visible, ...pinned].map(a => [a.analysisId, a]))
       patch.visibleAnalyses = sortedAnalyses([...byId.values()])
     }
     emit(patch)

@@ -149,6 +149,13 @@ Response — 200 OK
 
 **GET** `/api/v1/rooms/{roomId}/polls/understanding-rounds` — HOST, 강연방 소유자
 
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+| --- | --- | --- | --- | --- |
+| minCount | Integer | N | 3 | 이해 부족으로 보는 헷갈림+모르겠음의 최소 인원, 1 이상 |
+| ratio | Double | N | 40 | 이해 부족으로 보는 응답자 대비 비율(%), 0 초과 100 이하 |
+
+예: `GET /api/v1/rooms/10/polls/understanding-rounds?minCount=3&ratio=40`
+
 ```json
 {
   "data": {
@@ -173,3 +180,5 @@ Response — 200 OK
 ```
 
 규칙: 마감된 `UNDERSTANDING` 투표를 시간순으로 나열해 시간대별 이해도 변화를 보여 준다. `lackCount` 는 `CONFUSED + NOT_UNDERSTOOD`, `lackRatio` 의 분모는 응답자 수이며, `lackCount ≥ minCount`(기본 3) 이고 `lackRatio ≥ ratio`(기본 40, 0 초과 100 이하)이면 `lowUnderstanding` 이 `true` 다. 결과는 관찰한 수치이며 원인을 단정하지 않는다. 진행 중인 라운드는 포함하지 않는다.
+`rounds` 는 이해도 체크를 만든 순서(오래된 것부터)이고 일반 투표는 담지 않는다. `openedAt` 은 체크를 연 시각, `closedAt` 은 마감 시각(자동 마감이면 `closesAt`)이다. `counts` 는 세 선택지를 항상 모두 담으며, 숫자는 투표 결과 조회(`/results`)와 같은 집계를 쓴다. 선택하지 않은 청중은 `respondedParticipants` 에 들어가지 않고 `NOT_UNDERSTOOD` 로도 세지 않는다. 응답자가 없으면 `lackRatio` 는 `0.0` 이다. 응답의 `ratio`·`minCount` 는 이번 계산에 쓴 기준이다. 청중 개개인의 선택은 내려주지 않는다.
+오류: `400 INVALID_INPUT`(`minCount`·`ratio` 범위 밖이거나 숫자가 아님), `401 UNAUTHENTICATED`, `403 FORBIDDEN`(방 소유자가 아님·청중 역할), `404 ROOM_NOT_FOUND`

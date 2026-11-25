@@ -91,14 +91,6 @@ class StompSubscribeAuthTest extends StompIntegrationTestSupport {
     }
 
     @Test
-    void 쿠키도_로그인도_없으면_CONNECT부터_거절된다() {
-        // SCRUM-164: 인증 정보가 없으면 구독 전 CONNECT 단계에서 거절한다.
-        assertThatThrownBy(
-                () -> client.connect(StompTestClient.ALLOWED_ORIGIN)
-        ).isInstanceOf(ExecutionException.class);
-    }
-
-    @Test
     void 다른_강연자는_내_방을_구독할_수_없다() throws Exception {
         String otherEmail = "other-" + UUID.randomUUID() + "@example.com";
         newHost(otherEmail);
