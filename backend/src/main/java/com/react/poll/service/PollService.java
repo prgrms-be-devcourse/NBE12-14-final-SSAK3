@@ -12,11 +12,14 @@ import com.react.poll.dto.PollOptionView;
 import com.react.poll.dto.PollResponseView;
 import com.react.poll.dto.PollResultView;
 import com.react.poll.dto.PollView;
+import com.react.poll.dto.UnderstandingRoundView;
+import com.react.poll.dto.UnderstandingRoundsView;
 import com.react.poll.entity.Poll;
 import com.react.poll.entity.PollCloseReason;
 import com.react.poll.entity.PollResponse;
 import com.react.poll.entity.PollStatus;
 import com.react.poll.entity.PollType;
+import com.react.poll.entity.UnderstandingStatus;
 import com.react.poll.repository.PollQueryRepository;
 import com.react.poll.repository.PollRepository;
 import com.react.poll.repository.PollResponseRepository;
@@ -29,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -41,6 +45,8 @@ public class PollService {
     static final int MIN_DURATION_SECONDS = 10;
     static final int MAX_DURATION_SECONDS = 300;
     static final String DEFAULT_UNDERSTANDING_QUESTION = "지금 설명을 이해하셨나요?";
+    static final int DEFAULT_LOW_UNDERSTANDING_MIN_COUNT = 3;
+    static final double DEFAULT_LOW_UNDERSTANDING_RATIO = 40.0;
     private static final int MIN_OPTIONS = 2;
     private static final int MAX_OPTIONS = 5;
     private static final int MAX_QUESTION_LENGTH = 500;
@@ -224,6 +230,44 @@ public class PollService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
         requireOwner(room, hostEmail);
         return aggregate(roomPoll(roomId, pollId), roomId);
+    }
+
+    /**
+     * 마감된 이해도 체크를 시간순으로 비교한다. 강연방 소유자만 조회하며, 진행 중인 라운드와 일반 투표는 담지 않는다.
+     * 한 읽기 전용 트랜잭션에서 라운드를 모두 집계하므로 같은 시점의 데이터이고, 숫자는 투표 결과 조회와 같은 집계를 쓴다.
+     */
+    public UnderstandingRoundsView understandingRounds(long roomId, String hostEmail, Integer minCountParam, Double ratioParam) {
+        int minCount = minCountParam == null ? DEFAULT_LOW_UNDERSTANDING_MIN_COUNT : minCountParam;
+        double ratio = ratioParam == null ? DEFAULT_LOW_UNDERSTANDING_RATIO : ratioParam;
+        if (minCount < 1 || !(ratio > 0 && ratio <= 100)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        var room = rooms.findRoom(roomId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
+        requireOwner(room, hostEmail);
+
+        Instant now = now();
+        List<UnderstandingRoundView> rounds = polls.findByLectureRoomIdAndTypeOrderByIdAsc(roomId, PollType.UNDERSTANDING).stream()
+                .filter(poll -> poll.effectiveStatus(now) == PollStatus.CLOSED)
+                .map(poll -> round(poll, roomId, minCount, ratio))
+                .toList();
+        return new UnderstandingRoundsView(roomId, ratio, minCount, rounds);
+    }
+
+    private UnderstandingRoundView round(Poll poll, long roomId, int minCount, double ratio) {
+        PollResultView result = aggregate(poll, roomId);
+        Map<UnderstandingStatus, Long> counts = new EnumMap<>(UnderstandingStatus.class);
+        for (UnderstandingStatus status : UnderstandingStatus.values()) {
+            counts.put(status, 0L);
+        }
+        result.options().forEach(option -> counts.merge(option.understandingStatus(), option.count(), Long::sum));
+        long lack = counts.get(UnderstandingStatus.CONFUSED) + counts.get(UnderstandingStatus.NOT_UNDERSTOOD);
+        double lackRatio = PollResultMath.percentage(lack, result.respondedParticipants());
+        // 자동 마감이면 closedAt 은 closesAt 이다. 아직 마감 처리 전이라 비어 있어도 같은 값을 쓴다.
+        Instant closedAt = poll.getClosedAt() != null ? poll.getClosedAt() : poll.getClosesAt();
+        return new UnderstandingRoundView(poll.getId(), poll.getCreatedAt(), closedAt, result.totalParticipants(),
+                result.respondedParticipants(), counts, lack, lackRatio,
+                PollResultMath.lowUnderstanding(lack, lackRatio, minCount, ratio));
     }
 
     /**

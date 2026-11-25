@@ -2,6 +2,7 @@ package com.react.poll.repository;
 
 import com.react.poll.entity.Poll;
 import com.react.poll.entity.PollStatus;
+import com.react.poll.entity.PollType;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,6 +23,10 @@ public interface PollRepository extends JpaRepository<Poll, Long> {
 
     @EntityGraph(attributePaths = "options")
     List<Poll> findByLectureRoomIdOrderByIdDesc(Long lectureRoomId);
+
+    /** 한 강연방의 같은 종류 투표를 만든 순서대로. 이해도 체크 라운드 비교에 쓴다. */
+    @EntityGraph(attributePaths = "options")
+    List<Poll> findByLectureRoomIdAndTypeOrderByIdAsc(Long lectureRoomId, PollType type);
 
     /** 마감 처리와 응답이 같은 투표를 동시에 바꾸지 못하도록 행을 잠그고 최신 값을 읽는다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
