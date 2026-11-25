@@ -4,8 +4,13 @@ import com.react.auth.entity.User;
 import com.react.room.entity.LectureRoom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.messaging.simp.stomp.StompFrameHandler;
+import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 
+import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -109,6 +114,110 @@ class StompConnectionTest extends StompIntegrationTestSupport {
         assertThatThrownBy(() ->
                 client.connect("http://evil.example.com", cookies)
         ).isInstanceOf(ExecutionException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"HOST", "PARTICIPANT"})
+    void CONNECT에서_선택한_역할을_SUBSCRIBE에서_변경할_수_없다(
+            String connectedRole
+    ) throws Exception {
+        LectureRoom room = newRoom(host, "구독 역할 변경 테스트");
+
+        String requestedRole = "HOST".equals(connectedRole)
+                ? "PARTICIPANT"
+                : "HOST";
+
+        StompSession session = client.connectWithRole(
+                StompTestClient.ALLOWED_ORIGIN,
+                connectedRole,
+                loginCookies(hostEmail),
+                participantCookie(room)
+        );
+
+        try {
+            assertThat(session.isConnected()).isTrue();
+
+            String topic = "/topic/rooms/" + room.getId() + "/chat";
+
+            // CONNECT에서 선택한 역할로 정상 구독할 수 있는지 확인한다.
+            var queue = client.subscribe(session, topic);
+
+            assertThat(StompTestClient.awaitBroadcast(queue,
+                    () -> broker.convertAndSend(topic, Map.of("type", "WARMUP"))))
+                    .isNotNull();
+
+            // CONNECT에서 선택한 역할과 다른 역할로 구독을 시도한다.
+            StompHeaders headers = new StompHeaders();
+            headers.setDestination(topic);
+            headers.set("X-Chat-Role", requestedRole);
+
+            session.subscribe(headers, new StompFrameHandler() {
+                @Override
+                public Type getPayloadType(StompHeaders headers) {
+                    return Map.class;
+                }
+
+                @Override
+                public void handleFrame(StompHeaders headers, Object payload) {
+                    // 역할 변경 시도가 거절되어 연결이 종료되는지 확인한다.
+                }
+            });
+
+            assertThat(StompTestClient.awaitClosed(session)).isTrue();
+        } finally {
+            if (session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"HOST", "PARTICIPANT"})
+    void CONNECT에서_선택한_역할을_SEND에서_변경할_수_없다(
+            String connectedRole
+    ) throws Exception {
+        LectureRoom room = newRoom(host, "전송 역할 변경 테스트");
+
+        jdbc.sql("UPDATE lecture_rooms SET status = 'LIVE' WHERE id = ?")
+                .param(room.getId())
+                .update();
+
+        String requestedRole = "HOST".equals(connectedRole)
+                ? "PARTICIPANT"
+                : "HOST";
+
+        StompSession session = client.connectWithRole(
+                StompTestClient.ALLOWED_ORIGIN,
+                connectedRole,
+                loginCookies(hostEmail),
+                participantCookie(room)
+        );
+
+        try {
+            assertThat(session.isConnected()).isTrue();
+
+            // CONNECT에서 선택한 역할과 다른 역할로 채팅을 전송한다.
+            StompHeaders headers = new StompHeaders();
+            headers.setDestination("/app/rooms/" + room.getId() + "/chat");
+            headers.set("X-Chat-Role", requestedRole);
+
+            session.send(headers, Map.of("content", "역할 변경 시도"));
+
+            assertThat(StompTestClient.awaitClosed(session)).isTrue();
+
+            // 역할 변경을 시도한 메시지는 DB에 저장되지 않아야 한다.
+            long savedCount = jdbc.sql(
+                            "SELECT COUNT(*) FROM chat_messages WHERE lecture_room_id = ?")
+                    .param(room.getId())
+                    .query(Long.class)
+                    .single();
+
+            assertThat(savedCount).isZero();
+        } finally {
+            if (session.isConnected()) {
+                session.disconnect();
+            }
+        }
     }
 
     private String participantCookie(LectureRoom room) {
