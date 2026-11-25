@@ -108,7 +108,8 @@ function RoomChatPanel({ roomId, live, viewer, since, onAccessError, storageKey,
   function submit(event) {
     event.preventDefault()
     if (!canSend || (pending.current && !pending.current.uncertain)) return
-    const token = randomUuid()
+    // 결과를 확인하지 못한 전송을 다시 보낼 때는 같은 식별자를 써서, 서버가 이미 저장했다면 중복 저장하지 않게 한다.
+    const token = attempt?.uncertain ? attempt.token : randomUuid()
     mark({ token, content, uncertain: false })
     setSendError('')
     try {
