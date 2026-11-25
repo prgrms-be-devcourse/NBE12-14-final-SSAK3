@@ -183,6 +183,23 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void AI_분석은_PROCESSING_시작_시각과_stale_복구용_인덱스를_가진다() {
+        List<String> columns = jdbc.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'ai_analyses'
+                """, String.class);
+        List<String> indexes = jdbc.queryForList("""
+                SELECT DISTINCT index_name
+                FROM information_schema.statistics
+                WHERE table_schema = DATABASE() AND table_name = 'ai_analyses'
+                """, String.class);
+
+        assertThat(columns).contains("processing_started_at");
+        assertThat(indexes).contains("idx_ai_analyses_status_processing_started");
+    }
+
+    @Test
     void 존재하지_않는_강연방을_참조할_수_없다() {
         assertThatThrownBy(() -> insertParticipant(999_999L, "token-x"))
                 .isInstanceOf(DataIntegrityViolationException.class);

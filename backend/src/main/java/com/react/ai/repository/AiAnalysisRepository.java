@@ -42,9 +42,20 @@ public class AiAnalysisRepository {
     public boolean markProcessing(long analysisId) {
         return jdbc.sql("""
                 UPDATE ai_analyses
-                SET status = 'PROCESSING'
+                SET status = 'PROCESSING', processing_started_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND status = 'PENDING'
                 """).param(analysisId).update() == 1;
+    }
+
+    /** 재시도 직전에 분석이 여전히 처리 중인지 확인한다. */
+    public boolean isProcessing(long analysisId) {
+        return jdbc.sql("""
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM ai_analyses
+                    WHERE id = ? AND status = 'PROCESSING'
+                )
+                """).param(analysisId).query(Boolean.class).single();
     }
 
     public boolean completeEmpty(long analysisId) {
@@ -95,13 +106,17 @@ public class AiAnalysisRepository {
     }
 
     /** 서버 중단 등으로 남은 미완료 분석은 재호출하지 않고 종결해 후속 처리를 막지 않는다. */
+    /** PENDING은 생성 시각, PROCESSING은 실제 처리 시작 시각을 기준으로 중단 작업을 종결한다. */
     public int abortStaleInFlight(Duration staleThreshold) {
         return jdbc.sql("""
                 UPDATE ai_analyses
                 SET status = 'FAILED', error_message = 'STALE_ANALYSIS_ABORTED', completed_at = CURRENT_TIMESTAMP
-                WHERE status IN ('PENDING', 'PROCESSING')
-                  AND created_at <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND)
-                """).param(staleThreshold.toSeconds()).update();
+                WHERE (status = 'PENDING'
+                       AND created_at <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND))
+                   OR (status = 'PROCESSING'
+                       AND COALESCE(processing_started_at, created_at)
+                           <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND))
+                """).params(staleThreshold.toSeconds(), staleThreshold.toSeconds()).update();
     }
 
     public Optional<Analysis> find(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {
