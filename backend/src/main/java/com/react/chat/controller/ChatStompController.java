@@ -7,6 +7,7 @@ import com.react.chat.dto.ChatSendRequest;
 import com.react.chat.service.ChatMessageService;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
+import com.react.global.monitoring.ChatMessageMetrics;
 import com.react.global.websocket.StompActor;
 import com.react.global.websocket.StompActorResolver;
 import lombok.RequiredArgsConstructor;
@@ -32,22 +33,28 @@ public class ChatStompController {
     private final StompActorResolver actors;
     private final ChatMessageService messages;
     private final SimpMessagingTemplate broker;
+    private final ChatMessageMetrics metrics;
 
     /** 작성자는 서버가 쿠키·로그인으로 정한다. 본문에서는 content 만 읽는다. */
     @MessageMapping("/rooms/{roomId}/chat")
     public void send(@DestinationVariable long roomId, @Payload ChatSendRequest request,
-            SimpMessageHeaderAccessor headers) {
+                     SimpMessageHeaderAccessor headers) {
         StompActor actor = actors.resolveChat(roomId, headers);
+        String attempt = attempt(headers);
         ChatMessageView saved = actor.type() == StompActor.Type.HOST
-                ? messages.saveFromHost(roomId, actor.id(), request.content())
-                : messages.saveFromParticipant(roomId, actor.id(), request.content());
+                ? messages.saveFromHost(roomId, actor.id(), request.content(), attempt)
+                : messages.saveFromParticipant(roomId, actor.id(), request.content(), attempt);
+
+        // SCRUM-91: 저장에 성공한 채팅 메시지 수를 기록한다.
+        metrics.recordSavedMessage();
 
         // 저장 서비스가 끝났으므로 이미 커밋된 뒤다. 방송이 실패해도 저장된 채팅은 유지하고, 내역 조회로 복구할 수 있다.
+        // 같은 전송 식별자의 재전송이면 이미 저장된 메시지가 같은 헤더로 다시 방송된다.
         try {
-            String attempt = attempt(headers);
             broker.convertAndSend("/topic/rooms/" + roomId + "/chat", ChatCreatedEvent.of(roomId, saved),
                     attempt == null ? null : Map.of(ATTEMPT_HEADER, attempt));
         } catch (RuntimeException e) {
+            metrics.recordBroadcastFailure();
             log.warn("채팅 전송 실패. roomId={}, messageId={}", roomId, saved.messageId(), e);
         }
     }

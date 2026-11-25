@@ -18,6 +18,13 @@ spring:
     hibernate:
       ddl-auto: validate
 
+# 로컬에서만 API 문서를 연다: http://localhost:8080/swagger-ui/index.html
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
 # 로컬 HTTP 환경에서만 Secure=false
 # 운영 환경에서는 HTTPS와 Secure=true 유지
 server:

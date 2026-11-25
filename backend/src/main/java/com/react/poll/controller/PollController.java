@@ -11,6 +11,7 @@ import com.react.poll.dto.PollResponseView;
 import com.react.poll.dto.PollResultView;
 import com.react.poll.dto.PollView;
 import com.react.poll.dto.RespondPollRequest;
+import com.react.poll.dto.UnderstandingRoundsView;
 import com.react.poll.entity.PollStatus;
 import com.react.poll.service.PollService;
 import com.react.room.service.ParticipantSessionResolver;
@@ -71,6 +72,15 @@ public class PollController {
     public ApiResponse<PollResultView> results(@PathVariable long roomId, @PathVariable long pollId,
                                                Authentication authentication) {
         return ApiResponse.of(polls.results(roomId, pollId, email(authentication)));
+    }
+
+    /** 마감된 이해도 체크를 시간순으로 비교한다. 강연방 소유자(HOST)만 조회한다. */
+    @GetMapping("/understanding-rounds")
+    public ApiResponse<UnderstandingRoundsView> understandingRounds(@PathVariable long roomId,
+                                                                    @RequestParam(required = false) Integer minCount,
+                                                                    @RequestParam(required = false) Double ratio,
+                                                                    Authentication authentication) {
+        return ApiResponse.of(polls.understandingRounds(roomId, email(authentication), minCount, ratio));
     }
 
     /** 참여자는 해당 방의 PARTICIPANT_SESSION 쿠키로만 확인한다. 쿠키가 없으면 401, 다른 방 것이면 403 이다. */

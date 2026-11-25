@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.react.auth.entity.User;
 import com.react.auth.repository.UserRepository;
 import com.react.room.service.LectureParticipantService;
+import com.react.stt.dto.SttGap;
+import com.react.stt.dto.SttSessionView;
+import com.react.stt.service.SttSessionService;
 import jakarta.servlet.http.Cookie;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +50,7 @@ class LectureRoomLifecycleIntegrationTest {
     @Autowired DataSource dataSource;
     @Autowired UserRepository userRepository;
     @Autowired LectureParticipantService participants;
+    @Autowired SttSessionService stt;
 
     private String ownerEmail;
     private String otherEmail;
@@ -255,6 +259,61 @@ class LectureRoomLifecycleIntegrationTest {
                 .single()).isEqualTo("ROOM_ENDED");
     }
 
+
+    @Test
+    void 강연_종료시_해당_방의_녹음과_열린_누락_구간만_같은_시각에_닫는다() throws Exception {
+        long roomId = createRoom();
+        long otherRoomId = createRoom();
+        startRoom(roomId);
+        startRoom(otherRoomId);
+        UUID key = UUID.randomUUID();
+        UUID otherKey = UUID.randomUUID();
+        var recording = startRecordingWithGap(roomId, key);
+        var otherRecording = startRecordingWithGap(otherRoomId, otherKey);
+
+        endRoom(roomId);
+
+        var endedAt = jdbc.sql("SELECT ended_at FROM lecture_rooms WHERE id = ?").param(roomId)
+                .query(LocalDateTime.class).single().atZone(ZoneId.of("Asia/Seoul")).toInstant();
+        var stopped = stt.start(roomId, ownerEmail, key).session();
+        assertThat(stopped.sttSessionId()).isEqualTo(recording.sttSessionId());
+        assertThat(stopped.status()).isEqualTo("STOPPED");
+        assertThat(stopped.endedAt()).isEqualTo(endedAt);
+        assertThat(stt.records(roomId, ownerEmail, null, null).gaps()).singleElement()
+                .satisfies(gap -> assertThat(gap.endedAt()).isEqualTo(endedAt));
+        assertThat(stt.start(otherRoomId, ownerEmail, otherKey).session()).isEqualTo(otherRecording);
+        assertThat(stt.records(otherRoomId, ownerEmail, null, null).gaps()).singleElement()
+                .satisfies(gap -> assertThat(gap.endedAt()).isNull());
+    }
+
+    @Test
+    void 강연_종료시_이미_종료된_녹음_세션과_누락_구간의_시각을_보존한다() throws Exception {
+        long roomId = createRoom();
+        startRoom(roomId);
+        UUID key = UUID.randomUUID();
+        var recording = startRecordingWithGap(roomId, key);
+        stt.stop(roomId, recording.sttSessionId(), ownerEmail, SttSessionService.StopReason.ERROR);
+        // 같은 초에 테스트를 마쳐도 기존 종료 시각을 덮어쓰는 회귀를 검출한다.
+        jdbc.sql("UPDATE stt_sessions SET started_at = started_at - INTERVAL 1 MINUTE, ended_at = ended_at - INTERVAL 1 MINUTE WHERE id = ?")
+                .param(recording.sttSessionId()).update();
+        jdbc.sql("UPDATE stt_gaps SET started_at = started_at - INTERVAL 1 MINUTE, ended_at = ended_at - INTERVAL 1 MINUTE WHERE stt_session_id = ?")
+                .param(recording.sttSessionId()).update();
+        var stopped = stt.start(roomId, ownerEmail, key).session();
+        var gaps = stt.records(roomId, ownerEmail, null, null).gaps();
+        startRecordingWithGap(roomId, UUID.randomUUID());
+
+        endRoom(roomId);
+
+        assertThat(stt.start(roomId, ownerEmail, key).session()).isEqualTo(stopped);
+        assertThat(stt.records(roomId, ownerEmail, null, null).gaps()).containsAll(gaps);
+    }
+
+    private SttSessionView startRecordingWithGap(long roomId, UUID key) {
+        var session = stt.start(roomId, ownerEmail, key).session();
+        stt.openGap(roomId, session.sttSessionId(), ownerEmail,
+                new SttGap.OpenRequest(key, "gap", SttGap.Reason.ERROR, session.startedAt()));
+        return session;
+    }
 
     @Test
     void 이미_만료된_투표는_TIMEOUT으로_마감한다()

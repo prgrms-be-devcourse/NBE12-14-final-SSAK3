@@ -1,0 +1,563 @@
+{
+  "uid": "react-monitoring",
+  "title": "RE:ACT Monitoring",
+  "description": "SCRUM-91: RE:ACT 애플리케이션 성능 모니터링",
+  "tags": ["react", "spring-boot", "monitoring"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 2,
+  "editable": false,
+  "refresh": "15s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 15,
+      "title": "Overview - 핵심 성능 지표",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+      "panels": []
+    },
+    {
+      "id": 1,
+      "title": "CPU Usage",
+      "description": "Spring Boot 프로세스 및 시스템 CPU 사용률",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 1, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_cpu_usage{job=\"re-act-backend\"} * 100",
+          "legendFormat": "Spring Boot"
+        },
+        {
+          "refId": "B",
+          "expr": "system_cpu_usage{job=\"re-act-backend\"} * 100",
+          "legendFormat": "System"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "JVM Memory Usage",
+      "description": "JVM Heap 및 Non-Heap 메모리 사용량",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 1, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(jvm_memory_used_bytes{job=\"re-act-backend\",area=\"heap\"})",
+          "legendFormat": "Heap"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(jvm_memory_used_bytes{job=\"re-act-backend\",area=\"nonheap\"})",
+          "legendFormat": "Non-Heap"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "HTTP Request Rate",
+      "description": "초당 REST API 요청 수",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 9, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"re-act-backend\",uri=~\"/api/.*\"}[$__rate_interval]))",
+          "legendFormat": "Requests"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "HTTP Response Time",
+      "description": "REST API 평균 및 p95, p99 응답 시간",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 9, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * sum(rate(http_server_requests_seconds_sum{job=\"re-act-backend\",uri=~\"/api/.*\"}[$__rate_interval])) / sum(rate(http_server_requests_seconds_count{job=\"re-act-backend\",uri=~\"/api/.*\"}[$__rate_interval]))",
+          "legendFormat": "Average"
+        },
+        {
+          "refId": "B",
+          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"re-act-backend\",uri=~\"/api/.*\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"re-act-backend\",uri=~\"/api/.*\"}[$__rate_interval])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "HTTP Error Rate",
+      "description": "REST API 전체 요청 대비 4xx 및 5xx 응답 비율",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 17, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum(rate(http_server_requests_seconds_count{job=\"re-act-backend\",uri=~\"/api/.*\",status=~\"4..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_requests_seconds_count{job=\"re-act-backend\",uri=~\"/api/.*\"}[$__rate_interval]))",
+          "legendFormat": "4xx"
+        },
+        {
+          "refId": "B",
+          "expr": "100 * (sum(rate(http_server_requests_seconds_count{job=\"re-act-backend\",uri=~\"/api/.*\",status=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_requests_seconds_count{job=\"re-act-backend\",uri=~\"/api/.*\"}[$__rate_interval]))",
+          "legendFormat": "5xx"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "DB Connection Pool",
+      "description": "HikariCP 활성, 유휴, 최대 커넥션 수",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 17, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{job=\"re-act-backend\"}",
+          "legendFormat": "Active"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_idle{job=\"re-act-backend\"}",
+          "legendFormat": "Idle"
+        },
+        {
+          "refId": "C",
+          "expr": "hikaricp_connections_max{job=\"re-act-backend\"}",
+          "legendFormat": "Max"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 16,
+      "title": "Infrastructure - 상세 병목 분석",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {"x": 0, "y": 25, "w": 24, "h": 1},
+      "panels": [
+        {
+          "id": 6,
+          "title": "DB Pending Connections",
+          "description": "DB 커넥션 할당을 기다리는 스레드 수",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 26, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "hikaricp_connections_pending{job=\"re-act-backend\"}",
+              "legendFormat": "Pending"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "title": "JVM Threads",
+          "description": "JVM 전체 활성 스레드 및 데몬 스레드 수",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 26, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "jvm_threads_live_threads{job=\"re-act-backend\"}",
+              "legendFormat": "Live"
+            },
+            {
+              "refId": "B",
+              "expr": "jvm_threads_daemon_threads{job=\"re-act-backend\"}",
+              "legendFormat": "Daemon"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "title": "GC Average Pause Time",
+          "description": "GC 발생 시 평균 정지 시간",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 34, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "1000 * sum(rate(jvm_gc_pause_seconds_sum{job=\"re-act-backend\"}[$__rate_interval])) / sum(rate(jvm_gc_pause_seconds_count{job=\"re-act-backend\"}[$__rate_interval]))",
+              "legendFormat": "GC Pause"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 10,
+          "title": "Redis Average Command Latency",
+          "description": "Redis 명령 평균 응답 시간",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 34, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "1000 * sum(rate(lettuce_command_completion_seconds_sum{job=\"re-act-backend\"}[$__rate_interval])) / sum(rate(lettuce_command_completion_seconds_count{job=\"re-act-backend\"}[$__rate_interval]))",
+              "legendFormat": "Redis"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "min": 0
+            },
+            "overrides": []
+          }
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "RE:ACT Service - 서비스 특화 지표",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": {"x": 0, "y": 26, "w": 24, "h": 1},
+      "panels": [
+        {
+          "id": 11,
+          "title": "WebSocket Active Threads",
+          "description": "WebSocket 송수신 작업을 처리하는 스레드 수",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 27, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "executor_active_threads{job=\"re-act-backend\",name=\"clientInboundChannelExecutor\"}",
+              "legendFormat": "Inbound"
+            },
+            {
+              "refId": "B",
+              "expr": "executor_active_threads{job=\"re-act-backend\",name=\"clientOutboundChannelExecutor\"}",
+              "legendFormat": "Outbound"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "title": "WebSocket Queued Tasks",
+          "description": "WebSocket 송수신 처리 대기 작업 수",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 27, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "executor_queued_tasks{job=\"re-act-backend\",name=\"clientInboundChannelExecutor\"}",
+              "legendFormat": "Inbound"
+            },
+            {
+              "refId": "B",
+              "expr": "executor_queued_tasks{job=\"re-act-backend\",name=\"clientOutboundChannelExecutor\"}",
+              "legendFormat": "Outbound"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 13,
+          "title": "AI Scheduler Executions",
+          "description": "AI 분석 및 종료 처리 스케줄러 누적 실행 횟수",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 35, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "react_ai_scheduler_live_executions_total{job=\"re-act-backend\"}",
+              "legendFormat": "Live Analysis"
+            },
+            {
+              "refId": "B",
+              "expr": "react_ai_scheduler_finalization_executions_total{job=\"re-act-backend\"}",
+              "legendFormat": "Finalization"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 14,
+          "title": "AI Scheduler Average Duration",
+          "description": "AI 분석 및 종료 처리 스케줄러 평균 실행 시간",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 35, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "1000 * sum(rate(react_ai_scheduler_live_duration_seconds_sum{job=\"re-act-backend\"}[$__rate_interval])) / sum(rate(react_ai_scheduler_live_duration_seconds_count{job=\"re-act-backend\"}[$__rate_interval]))",
+              "legendFormat": "Live Analysis"
+            },
+            {
+              "refId": "B",
+              "expr": "1000 * sum(rate(react_ai_scheduler_finalization_duration_seconds_sum{job=\"re-act-backend\"}[$__rate_interval])) / sum(rate(react_ai_scheduler_finalization_duration_seconds_count{job=\"re-act-backend\"}[$__rate_interval]))",
+              "legendFormat": "Finalization"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+
+        {
+          "id": 18,
+          "title": "WebSocket Active Sessions",
+          "description": "현재 연결된 STOMP 세션 수",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 43, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "react_websocket_sessions_active{job=\"re-act-backend\"}",
+              "legendFormat": "Active Sessions"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 19,
+          "title": "Chat Message Throughput",
+          "description": "초당 저장에 성공한 채팅 메시지 수",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 43, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(react_chat_messages_saved_total{job=\"re-act-backend\"}[$__rate_interval]))",
+              "legendFormat": "Saved Messages/s"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "suffix: msg/s",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 20,
+          "title": "Chat Broadcast Failures",
+          "description": "채팅 메시지 방송 호출 실패 누적 횟수",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 51, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "react_chat_broadcast_failures_total{job=\"re-act-backend\"}",
+              "legendFormat": "Failures"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+
+        {
+          "id": 21,
+          "title": "Gemini LLM Calls",
+          "description": "Gemini 청중 분석 호출 이력의 성공 및 실패 누적 횟수",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 51, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "react_llm_calls_total{job=\"re-act-backend\",status=\"success\"}",
+              "legendFormat": "Success"
+            },
+            {
+              "refId": "B",
+              "expr": "react_llm_calls_total{job=\"re-act-backend\",status=\"failed\"}",
+              "legendFormat": "Failed"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 22,
+          "title": "Gemini LLM Token Usage",
+          "description": "Gemini 청중 분석 누적 토큰 사용량",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 59, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "react_llm_tokens_input_total{job=\"re-act-backend\"}",
+              "legendFormat": "Input Tokens"
+            },
+            {
+              "refId": "B",
+              "expr": "react_llm_tokens_output_total{job=\"re-act-backend\"}",
+              "legendFormat": "Output Tokens"
+            },
+            {
+              "refId": "C",
+              "expr": "react_llm_tokens_total{job=\"re-act-backend\"}",
+              "legendFormat": "Total Tokens"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 23,
+          "title": "Gemini Estimated Cost",
+          "description": "설정된 토큰 단가를 기준으로 계산한 누적 추정 비용",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 59, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "react_llm_cost_estimated_microusd_total{job=\"re-act-backend\"} / 1000000",
+              "legendFormat": "Estimated Cost"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "min": 0,
+              "decimals": 6
+            },
+            "overrides": []
+          }
+        }
+      ]
+    }
+  ]
+}

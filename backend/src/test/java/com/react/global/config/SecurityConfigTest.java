@@ -178,4 +178,11 @@ class SecurityConfigTest {
                         .value("UNAUTHENTICATED"));
     }
 
+    // 기본 설정(운영 포함)에서는 API 문서가 꺼져 있다. 401 이 아니라 404 여야 문서 경로 허용 규칙이 맞는 것이다.
+    @Test
+    void 기본_설정에서는_API_문서가_열리지_않는다() throws Exception {
+        mvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
+        mvc.perform(get("/swagger-ui/index.html")).andExpect(status().isNotFound());
+    }
+
 }

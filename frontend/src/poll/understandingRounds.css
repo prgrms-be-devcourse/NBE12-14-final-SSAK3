@@ -1,0 +1,40 @@
+.understanding-rounds {
+  grid-column: 1 / -1;
+  padding: 20px;
+  border: 1px solid #dde3e8;
+  border-radius: 16px;
+  background: #fff;
+}
+.understanding-rounds-heading { display: flex; align-items: baseline; gap: 10px; }
+.understanding-rounds h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
+.understanding-rounds-heading span { color: #526170; font-size: 13px; }
+.understanding-rounds-note { margin: 10px 0 0; color: #526170; font-size: 13px; line-height: 1.5; }
+.understanding-rounds-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0 0; color: #8a2a22; font-size: 14px; }
+.understanding-rounds-error button { min-height: 36px; padding: 4px 12px; border: 1px solid #c7d3c6; border-radius: 8px; background: #fff; color: #354a3e; }
+
+.understanding-rounds-chart { display: block; width: 100%; max-width: 760px; height: auto; margin-top: 8px; }
+.understanding-rounds-grid line { stroke: #dde3e8; stroke-width: 1; }
+.understanding-rounds-axis text { fill: #526170; font-size: 11px; }
+.understanding-rounds-label { fill: #172721; font-size: 12px; font-weight: 700; }
+.understanding-rounds-time { fill: #526170; font-size: 11px; }
+.understanding-rounds-threshold { stroke: #172721; stroke-width: 1.5; stroke-dasharray: 5 4; }
+.understanding-rounds-flag rect { fill: #963a32; }
+.understanding-rounds-flag text { fill: #fff; font-size: 11px; font-weight: 700; }
+rect.understanding-rounds-understood, .understanding-rounds-swatch.understanding-rounds-understood { fill: #184d3b; background: #184d3b; }
+rect.understanding-rounds-confused, .understanding-rounds-swatch.understanding-rounds-confused { fill: #e8b84a; background: #e8b84a; }
+rect.understanding-rounds-not_understood, .understanding-rounds-swatch.understanding-rounds-not_understood { fill: #b3412f; background: #b3412f; }
+
+.understanding-rounds-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 4px 0 0; padding: 0; list-style: none; color: #354a3e; font-size: 13px; }
+.understanding-rounds-legend li { display: inline-flex; align-items: center; gap: 7px; }
+.understanding-rounds-swatch { display: inline-block; width: 14px; height: 14px; }
+.understanding-rounds-dash { display: inline-block; width: 22px; height: 0; border-top: 2px dashed #172721; }
+
+.understanding-rounds-table { margin-top: 16px; overflow-x: auto; }
+.understanding-rounds-table table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.understanding-rounds-table caption { padding-bottom: 8px; color: #526170; font-size: 13px; text-align: left; }
+.understanding-rounds-table th, .understanding-rounds-table td { padding: 8px 12px; border-bottom: 1px solid #dde3e8; text-align: right; }
+.understanding-rounds-table thead th { background: #f2f4ec; }
+.understanding-rounds-table th:first-child, .understanding-rounds-table th:last-child, .understanding-rounds-table td:last-child { text-align: left; }
+.understanding-rounds-table tbody th { font-weight: 700; }
+.understanding-rounds-table time { margin-left: 6px; color: #526170; font-size: 12px; font-weight: 400; }
+.understanding-rounds-badge { display: inline-block; padding: 2px 9px; border-radius: 99px; background: #963a32; color: #fff; font-size: 12px; font-weight: 700; }

@@ -50,7 +50,7 @@ export function ReportFollowUp({ followUp, findRecord }) {
   const hasCandidates = status === 'CANDIDATES'
   return <section className="report-follow-up" aria-labelledby="report-follow-up-title">
     <header className="report-section-heading">
-      <h2 id="report-follow-up-title">후속 답변 후보</h2>
+      <h2 id="report-follow-up-title" tabIndex={-1}>후속 답변 후보</h2>
       {hasCandidates && <span className="report-muted">총 {groups.length}묶음</span>}
     </header>
     {hasCandidates ? <>

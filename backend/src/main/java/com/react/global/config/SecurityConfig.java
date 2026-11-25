@@ -91,6 +91,22 @@ public class SecurityConfig {
                                 "/actuator/info"
                         ).permitAll()
 
+                        // SCRUM-91: Prometheus 모니터링 지표 수집
+                        // 운영 환경에서는 외부 인터넷에 노출하지 않는다.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/actuator/prometheus"
+                        ).permitAll()
+
+                        // API 문서: 로컬 프로파일에서만 켜지며(springdoc.*.enabled), 꺼져 있으면 404 가 된다.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**"
+                        ).permitAll()
+
                         // 청중 입장 API: SCRUM-128
                         // HOST 로그인 없이 입장 가능하지만 CSRF 토큰은 필요
                         .requestMatchers(

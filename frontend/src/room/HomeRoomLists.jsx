@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { request } from '../stt/api.js'
 import { loginFor } from './state.js'
 import { RoomDeleteDialog } from './RoomDeleteDialog.jsx'
+import { Icon } from '../ui/Icon.jsx'
 
 const pageSize = 3
 const roomTime = new Intl.DateTimeFormat('ko-KR', {
@@ -52,7 +53,7 @@ function RoomRows({ rooms, onDelete }) {
           : <small>{ready ? '생성 일시 미기록' : '시작 일시 미기록'}</small>}
       </div>
       <span className="room-row-actions">
-        <a aria-describedby={labelId} href={`/host/rooms/${room.roomId}`}>{ready ? '강연방 열기' : '강연으로 돌아가기'}</a>
+        <a aria-describedby={labelId} href={`/host/rooms/${room.roomId}`}>{ready ? '강연방 열기' : '강연으로 돌아가기'}<Icon name="arrow-right" size={16} /></a>
         {ready && <RoomMenu room={room} onDelete={onDelete} />}
       </span>
     </li>
@@ -174,15 +175,15 @@ export function HomeRoomLists() {
         <button type="button" className="room-secondary" disabled={pending === 'home'} onClick={() => load()}>다시 불러오기</button>
       </div>}
       {lists === null && !error && <p role="status">강연방 목록을 불러오고 있습니다.</p>}
-      {lists?.liveRooms.length === 0 && !error && <p role="status">현재 진행 중인 강연이 없습니다</p>}
+      {lists?.liveRooms.length === 0 && !error && <p className="room-empty-live" role="status"><Icon name="radio" size={20} />현재 진행 중인 강연이 없습니다</p>}
       {lists?.liveRooms.length > 0 && <div className="room-card">
-        <h2>진행 중인 내 강연</h2>
+        <h2><span className="room-heading-icon"><Icon name="radio" /></span>진행 중인 내 강연</h2>
         <RoomRows rooms={lists.liveRooms} />
       </div>}
     </section>
     {lists?.readyRooms.rooms.length > 0 && <section className="room-live-list room-ready-list" aria-labelledby="host-ready-heading">
       <div className="room-card">
-        <h2 id="host-ready-heading">준비 중인 강연</h2>
+        <h2 id="host-ready-heading"><span className="room-heading-icon"><Icon name="calendar" /></span>준비 중인 강연</h2>
         <RoomRows rooms={lists.readyRooms.rooms} onDelete={room => { setNotice(''); setSelected(room) }} />
         {lists.readyRooms.nextCursor && <div className="room-ready-more">
           {moreFailed && <p role="alert">다음 강연방을 불러오지 못했어요.</p>}

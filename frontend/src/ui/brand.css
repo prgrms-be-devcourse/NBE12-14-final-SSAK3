@@ -1,0 +1,10 @@
+.studio-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .32em;
+  color: inherit;
+  font: 900 28px/1 Arial, Pretendard, sans-serif;
+  letter-spacing: -.067em;
+  white-space: nowrap;
+}
+.studio-brand img { display: block; width: 1.12em; height: 1.12em; flex: none; }

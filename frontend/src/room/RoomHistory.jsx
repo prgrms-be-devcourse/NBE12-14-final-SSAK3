@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigationType } from 'react-router-dom'
 import { useRoomHistory } from './useRoomHistory.js'
+import { Icon } from '../ui/Icon.jsx'
 import './history.css'
 
 // Entries live only in this document. Reloads and fresh menu navigations always
@@ -20,12 +21,12 @@ function HistoryRow({ row, remember }) {
   return <li>
     <div className="history-room-info">
       <h2 id={titleId}>{row.title}</h2>
-      {row.endedAt ? <time dateTime={row.endedAt}>{endedTime.format(new Date(row.endedAt))} 종료</time>
+      {row.endedAt ? <time dateTime={row.endedAt}><Icon name="clock" size={14} />{endedTime.format(new Date(row.endedAt))} 종료</time>
         : <small>종료 시각 미기록</small>}
     </div>
     <div className="history-row-actions">
       <Link to={roomPath} aria-describedby={titleId}
-        onClick={event => remember(event, row.roomId)}>강연 기록 열기</Link>
+        onClick={event => remember(event, row.roomId)}>강연 기록 열기<Icon name="arrow-right" size={15} /></Link>
       {row.reportStatus === 'COMPLETED'
         ? <Link className="history-report-link" to={roomPath + '/report'} aria-describedby={titleId}
             onClick={event => remember(event, row.roomId)}>회고 보고서 보기</Link>
@@ -72,7 +73,8 @@ export function RoomHistory({ userId }) {
       : view.headError ? '새 강연 기록을 확인하지 못했어요.' : ''
   return <section className="host-history" aria-labelledby="history-title">
     <div className="history-heading">
-      <h1 id="history-title">내 강연 기록</h1>
+      <div><h1 id="history-title">내 강연 기록</h1>
+        <p>종료된 강연의 기록과 회고 보고서를 확인하세요.</p></div>
       {view.hasNew && <button type="button" className="room-secondary"
         disabled={!!view.loading} onClick={() => loadPage('latest')}>새 강연 기록 보기</button>}
     </div>
@@ -83,6 +85,7 @@ export function RoomHistory({ userId }) {
             <button className="room-secondary" onClick={() => loadPage('first')}>다시 불러오기</button></div>
         : <p role="status">강연 기록을 불러오고 있어요.</p>
       : view.rows.length === 0 ? <div className="history-empty">
+          <span className="room-heading-icon"><Icon name="history" size={23} /></span>
           <h2>아직 종료한 강연이 없어요.</h2><p>강연을 종료하면 이곳에서 다시 볼 수 있어요.</p></div>
       : <>
         <ul className="history-rows">{view.rows.map(row =>

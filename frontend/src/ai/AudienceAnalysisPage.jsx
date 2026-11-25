@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { Brand } from '../ui/Brand.jsx'
 import { request } from '../stt/api.js'
 import { loginFor } from '../room/state.js'
 import { createAudienceFeed, initialFeed } from './feed.js'
@@ -17,7 +18,7 @@ export function AudienceAnalysisPage() {
 
 function AudienceRoom({ roomId }) {
   return <div className="room-app ai-app">
-    <header className="room-top"><Link to="/">RE:ACT <span>청중의 생각을 강연에</span></Link>
+    <header className="ai-top"><Link to="/" aria-label="RE:ACT 홈"><Brand /></Link>
       <span>AI 요약 확인용 화면</span></header>
     <main><Link className="room-back" to={`/host/rooms/${roomId}`}>← 강연방 상세로 돌아가기</Link>
       <AudienceRoomPanel roomId={roomId} standalone />

@@ -4,6 +4,7 @@ import { ChatPanel } from '../chat/ChatPanel.jsx'
 import { SttPanel } from '../stt/SttPanel.jsx'
 import { SavedSpeech } from './SavedSpeech.jsx'
 import { PollCreatePanel } from '../poll/PollCreatePanel.jsx'
+import { UnderstandingRounds } from '../poll/UnderstandingRounds.jsx'
 import { UnderstandingSummary } from '../poll/UnderstandingSummary.jsx'
 import { PollResults } from '../poll/PollResults.jsx'
 
@@ -58,12 +59,6 @@ export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError 
                 onRecorder={onRecorder} ending={ending} />
     </div>}
 
-    {live && <PollCreatePanel roomId={room.roomId} ending={ending} />}
-
-    <UnderstandingSummary roomId={room.roomId} />
-
-    <PollResults roomId={room.roomId} />
-
     {compact && <div className="room-panel-tabs" role="tablist" aria-label="강연 패널">
       {tabs.map(({ id, label }) => <button key={id} id={`room-tab-${id}`} role="tab"
                                            aria-controls={`room-panel-${id}`} aria-selected={activeTab === id}
@@ -84,6 +79,10 @@ export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError 
                  since={room.startedAt} onAccessError={onAccessError} />
     </div>
 
+    {live && <PollCreatePanel roomId={room.roomId} ending={ending} />}
+    <UnderstandingRounds roomId={room.roomId} />
+    <UnderstandingSummary roomId={room.roomId} />
+    <PollResults roomId={room.roomId} />
     {!live && <SavedSpeech roomId={room.roomId} onAccessError={onAccessError} />}
   </div>
 }

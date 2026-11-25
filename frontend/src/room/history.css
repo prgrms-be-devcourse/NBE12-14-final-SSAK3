@@ -17,6 +17,7 @@
   line-height: 1.3;
   letter-spacing: -.04em;
 }
+.history-heading p { margin: 8px 0 0; font-size: 15px; }
 
 .host-history .history-heading button {
   padding: 8px 12px;
@@ -32,9 +33,11 @@
 
 .history-rows {
   margin: 0;
-  padding: 0;
+  padding: 0 clamp(16px, 2.2vw, 30px);
   list-style: none;
-  border-top: 1px solid var(--host-line);
+  border: 1px solid var(--host-line);
+  border-radius: 16px;
+  background: #fff;
 }
 
 .history-rows li {
@@ -45,10 +48,12 @@
   padding: 20px 4px;
   border-bottom: 1px solid var(--host-line);
 }
+.history-rows li:last-child { border-bottom: 0; }
 
 .history-room-info { min-width: 0; }
 .history-room-info h2 { margin: 0 0 4px; font-size: 1.125rem; overflow-wrap: anywhere; }
 .history-room-info :is(time, small), .history-report-status { color: var(--host-muted); font-size: .875rem; }
+.history-room-info time { display: inline-flex; align-items: center; gap: 5px; }
 
 .history-row-actions {
   display: grid;
@@ -64,6 +69,7 @@
   align-items: center;
   justify-content: center;
   min-height: 44px;
+  gap: 6px;
   padding: 7px 12px;
   border: 1px solid var(--host-line);
   border-radius: 8px;
@@ -73,12 +79,14 @@
 }
 
 .host-history .history-row-actions .history-report-link {
-  border-color: #c6e4de;
-  color: #046861;
-  background: #eef7f5;
+  border-color: #cbd9bf;
+  color: var(--host-green);
+  background: #eff5e8;
 }
+.host-history .history-row-actions a:hover { border-color: #97ad95; background: #f3f7ef; }
 
-.history-empty { padding: 30px 18px; border: 1px solid var(--host-line); border-radius: 12px; }
+.history-empty { padding: 44px 24px; border: 1px solid var(--host-line); border-radius: 16px; background: #fff; text-align: center; }
+.history-empty .room-heading-icon { margin-bottom: 12px; }
 .history-empty h2 { margin: 0; font-size: 1.125rem; }
 .history-empty p { margin: 8px 0; color: var(--host-muted); }
 .history-more { margin-top: 20px; text-align: center; }
@@ -86,6 +94,6 @@
 
 @media (max-width: 650px) {
   .history-rows li { align-items: flex-start; flex-direction: column; padding: 17px 0; }
-  .history-row-actions { grid-template-columns: max-content minmax(0, 1fr); }
+  .history-row-actions { display: flex; flex-wrap: wrap; }
   .history-report-status { padding: 0 8px; }
 }

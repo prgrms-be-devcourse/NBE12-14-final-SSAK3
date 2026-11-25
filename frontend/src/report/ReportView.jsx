@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Icon } from '../ui/Icon.jsx'
 import { ChatOriginal, ClockTime, SpeechOriginal } from './ReportOriginal.jsx'
 import { ReportFollowUp } from './ReportFollowUp.jsx'
 
-const groups = [['mainInterests', '01', '주요 관심사', '청중의 관심이 머문 주제'],
-  ['reviewPoints', '02', '보충 설명 검토 지점', '다시 살펴볼 질문과 반응'],
-  ['suggestions', '03', '다음 강연을 위한 제안', '다음 설명을 준비하는 아이디어']]
+const groups = [['mainInterests', 'message', '주요 관심사'],
+  ['reviewPoints', 'activity', '보충 설명 검토 지점'],
+  ['suggestions', 'arrow-up-right', '다음 강연을 위한 제안']]
 const labels = { CHAT_MESSAGE: '청중 질문·의견', STT_SEGMENT: '강사 발언', POLL_RESULT: '투표·이해도 체크' }
 const choices = { UNDERSTOOD: '이해됨', CONFUSED: '헷갈림', NOT_UNDERSTOOD: '모르겠음' }
 export function elapsed(value, start) {
@@ -116,15 +117,20 @@ export function ReportView({ content, room }) {
   }
   const hasRecords = timeline.some(row => records(row).length || row.sttGaps?.length || row.audienceOpinions?.length)
   return <>
+    <nav className="report-contents" aria-label="보고서 목차">
+      <a href="#report-overview-title"><Icon name="chart" size={16} />강연 요약</a>
+      {content.followUp && <a href="#report-follow-up-title"><Icon name="message" size={16} />후속 답변</a>}
+      <a href="#report-timeline-title"><Icon name="clock" size={16} />시간대별 기록</a>
+    </nav>
     {content.dataLimitations?.length > 0 && <details className="report-global-limit">
       <summary>데이터 한계 안내 <span>{content.dataLimitations.length}건 · 펼쳐 보기</span></summary>
       <ul>{content.dataLimitations.map((s, i) => <li key={i}>{s}</li>)}</ul>
     </details>}
     <section aria-labelledby="report-overview-title">
-      <div className="report-section-heading"><div><span className="report-eyebrow">LECTURE REVIEW</span><h2 id="report-overview-title">강연을 돌아보는 세 가지 관점</h2></div><span className="report-tag report-ai">AI 요약 · 검토용</span></div>
-      <p className="report-muted">{content.evidencePolicy}</p>
-      <div className="report-overview">{groups.map(([key, number, title, description]) => <section className="report-column" key={key} aria-label={title}>
-        <header><span className="report-number">{number}</span><h3>{title}</h3><p>{description}</p></header>
+      <div className="report-section-heading"><h2 id="report-overview-title" tabIndex={-1}>강연을 돌아보는 세 가지 관점</h2><span className="report-tag report-ai">AI 요약 · 검토용</span></div>
+      {content.evidencePolicy && <p className="report-muted">{content.evidencePolicy}</p>}
+      <div className="report-overview">{groups.map(([key, icon, title]) => <section className="report-column" key={key} aria-label={title}>
+        <header><span className="report-column-icon"><Icon name={icon} size={18} /></span><h3>{title}</h3></header>
         {!content.overview[key]?.length && <p className="report-empty">이 항목에 표시할 요약이 없습니다.</p>}
         {(content.overview[key] || []).map((item, i) => <article className="report-card" key={i}>
           <p className="report-card-text">{item.text}</p>
@@ -139,7 +145,7 @@ export function ReportView({ content, room }) {
     {content.followUp && <ReportFollowUp followUp={content.followUp}
       findRecord={(type, id) => recordIndex.get(keyOf(type, id))?.[0]?.record.data} />}
     <section className="report-timeline" aria-labelledby="report-timeline-title">
-      <div className="report-section-heading"><div><span className="report-eyebrow">RECORDS & EVIDENCE</span><h2 id="report-timeline-title">시간대별 상세 기록</h2></div><span className="report-muted">강연 시작 기준 · 1분 단위</span></div>
+      <div className="report-section-heading"><h2 id="report-timeline-title" tabIndex={-1}>시간대별 상세 기록</h2><span className="report-muted">강연 시작 기준 · 1분 단위</span></div>
       {!hasRecords ? <p className="report-empty">표시할 시간대별 기록이 없습니다.</p> : timeline.map((row, index) => {
         const rows = records(row)
         const count = rows.length

@@ -14,6 +14,13 @@ spring:
   jackson:
     time-zone: Asia/Seoul
 
+# API 문서(Swagger UI)는 기본적으로 끈다. 로컬 프로파일에서만 켠다.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 server:
   port: 8080
   shutdown: graceful
@@ -30,7 +37,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+
+  # SCRUM-91: HTTP 요청 응답 시간의 백분위수 측정
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 app:
   cors:

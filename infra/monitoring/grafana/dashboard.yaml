@@ -1,0 +1,17 @@
+# SCRUM-91: Grafana 대시보드 자동 등록
+# 대시보드 정의는 JSON 파일로 관리한다.
+
+apiVersion: 1
+
+providers:
+  - name: react-monitoring
+    orgId: 1
+    folder: RE-ACT
+    type: file
+
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+
+    options:
+      path: /var/lib/grafana/dashboards
