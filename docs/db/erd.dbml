@@ -1,4 +1,4 @@
-// RE:ACT MVP ERD v1.2 (14개 테이블)
+// RE:ACT MVP ERD v1.2 (16개 테이블)
 // dbdiagram.io 에서 열 수 있는 DBML 원본이다. 실제 스키마의 기준은 Flyway 마이그레이션
 // (backend/src/main/resources/db/migration)이며, 이 파일과 어긋나면 새 V 파일로 맞추고 이 파일도 함께 갱신한다.
 // 링크: https://dbdiagram.io/e/6af3e06d063ad9ee168b99b8/6af3f73504c7e97b1d2c23f0
@@ -43,7 +43,11 @@ Table chat_messages {
   host_user_id bigint [ref: > users.id]
   content text [not null]
   received_at datetime [not null]
-  indexes { (lecture_room_id, received_at, id) }
+  indexes {
+    (lecture_room_id, received_at, id)
+    participant_id
+    host_user_id
+  }
   Note: 'participant_id와 host_user_id 중 정확히 하나만 존재. AI 청중 의견 분석은 participant_id가 있는 메시지만 대상'
 }
 
@@ -80,7 +84,11 @@ Table poll_responses {
   poll_option_id bigint [not null, ref: > poll_options.id]
   participant_id bigint [not null, ref: > lecture_participants.id]
   responded_at datetime [not null, note: '마지막으로 선택이 바뀐 서버 시각']
-  indexes { (poll_id, participant_id) [unique] }
+  indexes {
+    (poll_id, participant_id) [unique]
+    poll_option_id
+    participant_id
+  }
   Note: '청중당 투표당 최종 응답 1건. 마감 전 변경은 같은 행을 덮어쓰고 변경 이력은 남기지 않는다. 행이 없으면 미응답'
 }
 
@@ -157,6 +165,27 @@ Table ai_analysis_finalizations {
   }
 }
 
+Table ai_llm_call_usages {
+  id bigint [pk, increment]
+  analysis_id bigint [not null, ref: > ai_analyses.id]
+  attempt_number int [not null]
+  model_name varchar(100)
+  call_status varchar(20) [not null, note: 'SUCCESS, FAILED']
+  error_code varchar(50)
+  prompt_token_count bigint
+  output_token_count bigint
+  total_token_count bigint
+  duration_ms bigint [not null]
+  input_usd_per_million_tokens decimal(20,8)
+  output_usd_per_million_tokens decimal(20,8)
+  estimated_cost_microusd bigint [note: '설정된 모델 단가 기반 추정치이며 실제 청구 비용이 아님']
+  created_at datetime [not null]
+  indexes {
+    (analysis_id, attempt_number) [unique, name: 'uk_ai_llm_call_usages_analysis_attempt']
+    (analysis_id, created_at) [name: 'idx_ai_llm_call_usages_analysis_created']
+  }
+}
+
 Table ai_topic_groups {
   id bigint [pk, increment]
   analysis_id bigint [not null, ref: > ai_analyses.id]
@@ -164,6 +193,7 @@ Table ai_topic_groups {
   category varchar(30) [not null, note: 'QUESTION, OPINION, REQUEST, CONFUSION, MIXED']
   summary text [not null]
   created_at datetime [not null]
+  indexes { analysis_id [name: 'idx_ai_topic_groups_analysis'] }
   Note: '주제별 청중 의견 요약. 대표 질문 아님. 혼합된 의견이면 MIXED로 분류하고 상반된 의견을 요약에 보존'
 }
 
@@ -171,7 +201,10 @@ Table ai_topic_group_messages {
   id bigint [pk, increment]
   topic_group_id bigint [not null, ref: > ai_topic_groups.id]
   chat_message_id bigint [not null, ref: > chat_messages.id]
-  indexes { (topic_group_id, chat_message_id) [unique] }
+  indexes {
+    (topic_group_id, chat_message_id) [unique]
+    chat_message_id [name: 'idx_ai_topic_group_messages_message']
+  }
 }
 
 Table lecture_reports {
