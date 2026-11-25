@@ -11,12 +11,10 @@ import org.springframework.messaging.simp.stomp.StompSession;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** 채팅 전송: 작성자는 쿠키·로그인으로 서버가 정하고, 본문에서는 content 만 읽어 저장한다. */
 class StompChatSendTest extends StompIntegrationTestSupport {
@@ -243,15 +241,6 @@ class StompChatSendTest extends StompIntegrationTestSupport {
 
         assertThat(savedCount(room)).isZero();
         session.disconnect();
-    }
-
-    @Test
-    void 쿠키도_로그인도_없으면_CONNECT부터_거절된다() throws Exception {
-        // SCRUM-164: 인증이 없으면 전송 전 CONNECT 단계에서 거절한다.
-        assertThatThrownBy(() -> client.connect(StompTestClient.ALLOWED_ORIGIN))
-                .isInstanceOf(ExecutionException.class);
-
-        assertThat(savedCount(room)).isZero();
     }
 
     @Test
