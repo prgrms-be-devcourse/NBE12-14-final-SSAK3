@@ -37,7 +37,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+
+  # SCRUM-91: HTTP 요청 응답 시간의 백분위수 측정
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 app:
   cors:

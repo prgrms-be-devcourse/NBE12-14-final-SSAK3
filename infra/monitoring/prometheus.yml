@@ -1,0 +1,13 @@
+# SCRUM-91: Prometheus 모니터링 지표 수집 설정
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # 로컬 Spring Boot 애플리케이션 지표 수집
+  - job_name: re-act-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8080
