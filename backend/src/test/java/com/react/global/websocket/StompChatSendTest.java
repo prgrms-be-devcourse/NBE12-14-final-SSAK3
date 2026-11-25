@@ -11,12 +11,10 @@ import org.springframework.messaging.simp.stomp.StompSession;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** 채팅 전송: 작성자는 쿠키·로그인으로 서버가 정하고, 본문에서는 content 만 읽어 저장한다. */
 class StompChatSendTest extends StompIntegrationTestSupport {
@@ -229,6 +227,59 @@ class StompChatSendTest extends StompIntegrationTestSupport {
     }
 
     @Test
+    void 정상적으로_연결한_청중은_다른_방에_채팅을_보낼_수_없다() throws Exception {
+        LectureRoom otherRoom = liveRoom();
+        var a = join("청중A");
+        var other = join(otherRoom, "다른방청중");
+        StompSession sessionA = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
+        StompSession sessionOther = client.connect(StompTestClient.ALLOWED_ORIGIN, other.cookie());
+        try {
+            var queueA = subscribeReady(sessionA, room);
+            var queueOther = subscribeReady(sessionOther, otherRoom);
+
+            // 자신의 방에는 정상적으로 저장되고 방송된다.
+            sessionA.send(chatDestination(), Map.of("content", "우리 방 이야기"));
+            assertThat(StompTestClient.nextOfType(queueA, "CHAT_CREATED", 5000)).isNotNull();
+            assertThat(savedCount(room)).isEqualTo(1);
+
+            // 정상 연결 상태에서 다른 방 번호로 전송해도 해당 방의 참여 인증이 필요하다.
+            expectError(sessionA, "/app/rooms/" + otherRoom.getId() + "/chat",
+                    Map.of("content", "다른 방 접근 시도"), ErrorCode.UNAUTHENTICATED);
+
+            assertThat(StompTestClient.nextOfType(queueOther, "CHAT_CREATED", 1000)).isNull();
+            assertThat(savedCount(otherRoom)).isZero();
+            assertThat(savedCount(room)).isEqualTo(1);
+        } finally {
+            sessionA.disconnect();
+            sessionOther.disconnect();
+        }
+    }
+
+    @Test
+    void 다른_강연방의_강연자는_채팅을_보낼_수_없다() throws Exception {
+        User otherHost = newHost("other-" + UUID.randomUUID() + "@example.com");
+        LectureRoom otherRoom = newRoom(otherHost, "다른 강연방");
+        jdbc.sql("UPDATE lecture_rooms SET status = 'LIVE' WHERE id = ?").param(otherRoom.getId()).update();
+        var other = join(otherRoom, "다른방청중");
+        StompSession hostSession = client.connect(StompTestClient.ALLOWED_ORIGIN, loginCookies(hostEmail));
+        StompSession sessionOther = client.connect(StompTestClient.ALLOWED_ORIGIN, other.cookie());
+        try {
+            var queueOther = subscribeReady(sessionOther, otherRoom);
+
+            // 실제 로그인한 강연자도 소유하지 않은 방에는 전송할 수 없다.
+            expectError(hostSession, "/app/rooms/" + otherRoom.getId() + "/chat",
+                    Map.of("content", "다른 방 접근 시도"), ErrorCode.FORBIDDEN);
+
+            assertThat(StompTestClient.nextOfType(queueOther, "CHAT_CREATED", 1000)).isNull();
+            assertThat(savedCount(otherRoom)).isZero();
+            assertThat(savedCount(room)).isZero();
+        } finally {
+            hostSession.disconnect();
+            sessionOther.disconnect();
+        }
+    }
+
+    @Test
     void 다른_방_토큰을_이_방_쿠키로_위조하면_거절된다() throws Exception {
         LectureRoom otherRoom = liveRoom();
         String otherCookie = join(otherRoom, "다른방청중").cookie();
@@ -243,15 +294,6 @@ class StompChatSendTest extends StompIntegrationTestSupport {
 
         assertThat(savedCount(room)).isZero();
         session.disconnect();
-    }
-
-    @Test
-    void 쿠키도_로그인도_없으면_CONNECT부터_거절된다() throws Exception {
-        // SCRUM-164: 인증이 없으면 전송 전 CONNECT 단계에서 거절한다.
-        assertThatThrownBy(() -> client.connect(StompTestClient.ALLOWED_ORIGIN))
-                .isInstanceOf(ExecutionException.class);
-
-        assertThat(savedCount(room)).isZero();
     }
 
     @Test

@@ -147,6 +147,9 @@ public class AudienceAnalysisService {
     private AudienceAnalysisLlmResponse analyzeWithRetry(long analysisId, List<AudienceAnalysisInputMessage> candidates) {
         int retryCount = 0;
         while (true) {
+            if (retryCount > 0 && !analyses.isProcessing(analysisId)) {
+                throw new IllegalStateException("분석이 더 이상 PROCESSING 상태가 아니므로 Gemini 재시도를 중단합니다.");
+            }
             int attemptNumber = retryCount + 1;
             long startedAtNanos = System.nanoTime();
             try {

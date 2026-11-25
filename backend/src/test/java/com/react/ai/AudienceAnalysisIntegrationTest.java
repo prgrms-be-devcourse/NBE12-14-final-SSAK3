@@ -10,6 +10,8 @@ import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.dto.AiTopicResult;
+import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
+import com.react.ai.exception.GeminiAudienceAnalysisException;
 import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AiLlmCallUsageRepository;
 import com.react.ai.repository.AudienceMessageRepository;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.client.ExpectedCount;
@@ -54,6 +57,7 @@ import org.springframework.http.MediaType;
 class AudienceAnalysisIntegrationTest {
     private static final String GEMINI_MODEL = "gemini-3.5-flash-lite";
     @Autowired JdbcClient jdbc;
+    @Autowired JdbcTemplate jdbcTemplate;
     @Autowired DataSource dataSource;
     @Autowired AiAnalysisRepository analyses;
     @Autowired AiLlmCallUsageRepository usages;
@@ -283,7 +287,7 @@ class AudienceAnalysisIntegrationTest {
                 .param(completed.analysis().id()).update();
 
         makeCreatedAtStale(stalePending.analysis().id());
-        makeCreatedAtStale(staleProcessing.analysis().id());
+        makeProcessingStartedAtStale(staleProcessing.analysis().id());
         makeCreatedAtStale(completed.analysis().id());
 
         assertThat(analyses.abortStaleInFlight(Duration.ofMinutes(2))).isGreaterThanOrEqualTo(2);
@@ -300,11 +304,24 @@ class AudienceAnalysisIntegrationTest {
     }
 
     @Test
+    void createdAt이_오래됐어도_최근에_PROCESSING을_시작한_분석은_stale_복구하지_않는다() {
+        var acquired = analyses.acquire(roomId, start, end);
+        makeCreatedAtStale(acquired.analysis().id());
+
+        assertThat(analyses.markProcessing(acquired.analysis().id())).isTrue();
+        assertThat(analyses.abortStaleInFlight(Duration.ofMinutes(2))).isZero();
+
+        assertAnalysis(acquired.analysis().id(), "PROCESSING", null, false);
+        assertThat(jdbc.sql("SELECT processing_started_at FROM ai_analyses WHERE id = ?")
+                .param(acquired.analysis().id()).query(LocalDateTime.class).single()).isNotNull();
+    }
+
+    @Test
     void stale_복구_후_늦게_도착한_Gemini_결과는_FAILED를_덮어쓰지_않고_그룹_저장은_롤백된다() {
         long messageId = insertAudienceMessage("늦게 도착한 Gemini 응답", start);
         var acquired = analyses.acquire(roomId, start, end);
         assertThat(analyses.markProcessing(acquired.analysis().id())).isTrue();
-        makeCreatedAtStale(acquired.analysis().id());
+        makeProcessingStartedAtStale(acquired.analysis().id());
 
         assertThat(analyses.abortStaleInFlight(Duration.ofMinutes(2))).isGreaterThanOrEqualTo(1);
         AiAnalysisResult result = new AiAnalysisResult(java.util.List.of(
@@ -320,11 +337,157 @@ class AudienceAnalysisIntegrationTest {
     }
 
     @Test
+    void PROCESSING_시작_후_threshold를_초과하면_정상_Gemini_결과도_저장되지_않고_FAILED로_종결된다() throws Exception {
+        long messageId = insertAudienceMessage("오래 걸리는 정상 Gemini 분석", start);
+        AtomicInteger calls = new AtomicInteger();
+        CountDownLatch llmStarted = new CountDownLatch(1);
+        CountDownLatch allowResponse = new CountDownLatch(1);
+        AudienceAnalysisService slowService = service(inputs -> {
+            calls.incrementAndGet();
+            llmStarted.countDown();
+            awaitLatch(allowResponse, "정상 Gemini 응답 허용");
+            return response("""
+                    {"topics":[{"topic":"정상 응답","summary":"정상적으로 완료될 응답입니다.",
+                    "category":"QUESTION","sourceMessageIds":[%d]}]}
+                    """.formatted(messageId));
+        });
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> processing = executor.submit(() -> slowService.process(roomId, start, end));
+
+            assertThat(llmStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            long analysisId = analyses.find(roomId, start, end).orElseThrow().id();
+            makeProcessingStartedAtStale(analysisId);
+            assertThat(analyses.abortStaleInFlight(Duration.ofMinutes(2))).isEqualTo(1);
+
+            allowResponse.countDown();
+            assertThatThrownBy(() -> processing.get(5, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("분석 실패 상태로 변경할 수 없습니다.");
+
+            assertThat(calls).hasValue(1);
+            assertAnalysis(analysisId, "FAILED", "STALE_ANALYSIS_ABORTED", true);
+            assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?")
+                    .param(analysisId).query(Long.class).single()).isZero();
+            assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_group_messages m "
+                            + "JOIN ai_topic_groups g ON g.id = m.topic_group_id WHERE g.analysis_id = ?")
+                    .param(analysisId).query(Long.class).single()).isZero();
+        } finally {
+            allowResponse.countDown();
+            shutdown(executor);
+        }
+    }
+
+    @Test
+    void stale_복구가_Gemini_재시도_대기_중에_실행되면_두번째_호출을_중단한다() throws Exception {
+        long messageId = insertAudienceMessage("재시도와 stale 복구 경쟁", start);
+        AtomicInteger calls = new AtomicInteger();
+        CountDownLatch firstAttemptStarted = new CountDownLatch(1);
+        CountDownLatch allowFirstFailure = new CountDownLatch(1);
+        CountDownLatch firstFailureThrown = new CountDownLatch(1);
+        CountDownLatch secondAttemptStarted = new CountDownLatch(1);
+        AudienceAnalysisService retryingService = new AudienceAnalysisService(
+                analyses, messages, inputs -> {
+            int attempt = calls.incrementAndGet();
+            if (attempt == 1) {
+                firstAttemptStarted.countDown();
+                awaitLatch(allowFirstFailure, "첫 Gemini 호출 실패 허용");
+                firstFailureThrown.countDown();
+                throw new GeminiAudienceAnalysisException(GeminiAudienceAnalysisErrorCode.RATE_LIMIT,
+                        true, null, "테스트 요청 제한");
+            }
+            secondAttemptStarted.countDown();
+            return response("""
+                    {"topics":[{"topic":"재시도 응답","summary":"두 번째 Gemini 호출 응답입니다.",
+                    "category":"QUESTION","sourceMessageIds":[%d]}]}
+                    """.formatted(messageId));
+        }, new AiAnalysisJsonParser(new ObjectMapper()),
+                new AudienceAnalysisRetryProperties(1, Duration.ofSeconds(2), Duration.ofSeconds(5)));
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> processing = executor.submit(() -> retryingService.process(roomId, start, end));
+
+            assertThat(firstAttemptStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            long analysisId = analyses.find(roomId, start, end).orElseThrow().id();
+            makeProcessingStartedAtStale(analysisId);
+            allowFirstFailure.countDown();
+            assertThat(firstFailureThrown.await(5, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(analyses.abortStaleInFlight(Duration.ofMinutes(2))).isEqualTo(1);
+            assertThatThrownBy(() -> processing.get(5, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("분석 실패 상태로 변경할 수 없습니다.");
+
+            assertThat(secondAttemptStarted.getCount()).isOne();
+            assertThat(calls).hasValue(1);
+            assertAnalysis(analysisId, "FAILED", "STALE_ANALYSIS_ABORTED", true);
+            assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?")
+                    .param(analysisId).query(Long.class).single()).isZero();
+            assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_group_messages m "
+                            + "JOIN ai_topic_groups g ON g.id = m.topic_group_id WHERE g.analysis_id = ?")
+                    .param(analysisId).query(Long.class).single()).isZero();
+        } finally {
+            allowFirstFailure.countDown();
+            shutdown(executor);
+        }
+    }
+
+    @Test
+    void 재시도_상태_확인_직후_stale_복구가_실행돼도_결과는_FAILED를_덮어쓰지_않는다() throws Exception {
+        long messageId = insertAudienceMessage("상태 확인 직후 stale 복구", start);
+        AtomicInteger calls = new AtomicInteger();
+        CountDownLatch retryStatusChecked = new CountDownLatch(1);
+        CountDownLatch allowRetry = new CountDownLatch(1);
+        AiAnalysisRepository retryGuardRepository = repositoryThatPausesAfterRetryStatusCheck(
+                retryStatusChecked, allowRetry);
+        AudienceAnalysisService retryingService = new AudienceAnalysisService(
+                retryGuardRepository, messages, inputs -> {
+            int attempt = calls.incrementAndGet();
+            if (attempt == 1) {
+                throw new GeminiAudienceAnalysisException(GeminiAudienceAnalysisErrorCode.RATE_LIMIT,
+                        true, Duration.ZERO, "테스트 요청 제한");
+            }
+            return response("""
+                    {"topics":[{"topic":"재시도 응답","summary":"상태 확인 이후 응답입니다.",
+                    "category":"QUESTION","sourceMessageIds":[%d]}]}
+                    """.formatted(messageId));
+        }, new AiAnalysisJsonParser(new ObjectMapper()),
+                new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)));
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> processing = executor.submit(() -> retryingService.process(roomId, start, end));
+
+            assertThat(retryStatusChecked.await(5, TimeUnit.SECONDS)).isTrue();
+            long analysisId = analyses.find(roomId, start, end).orElseThrow().id();
+            makeProcessingStartedAtStale(analysisId);
+            assertThat(analyses.abortStaleInFlight(Duration.ofMinutes(2))).isEqualTo(1);
+            allowRetry.countDown();
+
+            assertThatThrownBy(() -> processing.get(5, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("분석 실패 상태로 변경할 수 없습니다.");
+
+            assertThat(calls).hasValue(2);
+            assertAnalysis(analysisId, "FAILED", "STALE_ANALYSIS_ABORTED", true);
+            assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?")
+                    .param(analysisId).query(Long.class).single()).isZero();
+            assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_group_messages m "
+                            + "JOIN ai_topic_groups g ON g.id = m.topic_group_id WHERE g.analysis_id = ?")
+                    .param(analysisId).query(Long.class).single()).isZero();
+        } finally {
+            allowRetry.countDown();
+            shutdown(executor);
+        }
+    }
+
+    @Test
     void 완료_저장이_먼저_커밋되면_동시_stale_복구는_COMPLETED_분석을_변경하지_않는다() throws Exception {
         long messageId = insertAudienceMessage("완료 저장 우선 메시지", start);
         var acquired = analyses.acquire(roomId, start, end);
         assertThat(analyses.markProcessing(acquired.analysis().id())).isTrue();
-        makeCreatedAtStale(acquired.analysis().id());
+        makeProcessingStartedAtStale(acquired.analysis().id());
         AiAnalysisResult result = resultFor(messageId, "완료 저장 우선");
 
         CountDownLatch completedUpdateApplied = new CountDownLatch(1);
@@ -366,7 +529,7 @@ class AudienceAnalysisIntegrationTest {
         long messageId = insertAudienceMessage("복구 우선 메시지", start);
         var acquired = analyses.acquire(roomId, start, end);
         assertThat(analyses.markProcessing(acquired.analysis().id())).isTrue();
-        makeCreatedAtStale(acquired.analysis().id());
+        makeProcessingStartedAtStale(acquired.analysis().id());
         AiAnalysisResult result = resultFor(messageId, "복구 저장 우선");
 
         CountDownLatch recoveryUpdateApplied = new CountDownLatch(1);
@@ -410,7 +573,7 @@ class AudienceAnalysisIntegrationTest {
     void 두_stale_복구가_동시에_실행되어도_분석은_한번만_FAILED로_변경된다() throws Exception {
         var acquired = analyses.acquire(roomId, start, end);
         assertThat(analyses.markProcessing(acquired.analysis().id())).isTrue();
-        makeCreatedAtStale(acquired.analysis().id());
+        makeProcessingStartedAtStale(acquired.analysis().id());
 
         CountDownLatch startTogether = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -623,6 +786,52 @@ class AudienceAnalysisIntegrationTest {
     }
 
     @Test
+    void 기본_100개_대표_메시지_상한을_넘으면_FAILED이고_같은_구간은_자동_재분석되지_않는다() {
+        for (int index = 0; index < 101; index++) {
+            insertAudienceMessage("서로 다른 청중 질문 " + index, start.plusSeconds(index % 30));
+        }
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(ExpectedCount.never(), requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"));
+        var service = service(geminiClient(builder.build()));
+
+        var failed = service.process(roomId, start, end);
+        var repeated = service.process(roomId, start, end);
+
+        assertThat(failed.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        assertThat(jdbc.sql("SELECT error_message FROM ai_analyses WHERE id = ?").param(failed.analysisId())
+                .query(String.class).single()).isEqualTo("INPUT_LIMIT_EXCEEDED");
+        assertThat(repeated).extracting(result -> result.analysisId(), result -> result.status(), result -> result.created())
+                .containsExactly(failed.analysisId(), AiAnalysisStatus.FAILED, false);
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_analyses WHERE lecture_room_id = ? AND window_start_at = ?")
+                .params(roomId, start).query(Long.class).single()).isEqualTo(1L);
+        server.verify();
+    }
+
+    @Test
+    void 기본_32000자_상한을_넘으면_100개_미만이어도_FAILED이고_같은_구간은_자동_재분석되지_않는다() {
+        for (int index = 0; index < 33; index++) {
+            insertAudienceMessage("가".repeat(995) + index, start.plusSeconds(index % 30));
+        }
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(ExpectedCount.never(), requestTo("https://gemini.test/v1beta/models/" + GEMINI_MODEL + ":generateContent"));
+        var service = service(geminiClient(builder.build()));
+
+        var failed = service.process(roomId, start, end);
+        var repeated = service.process(roomId, start, end);
+
+        assertThat(failed.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        assertThat(jdbc.sql("SELECT error_message FROM ai_analyses WHERE id = ?").param(failed.analysisId())
+                .query(String.class).single()).isEqualTo("INPUT_LIMIT_EXCEEDED");
+        assertThat(repeated).extracting(result -> result.analysisId(), result -> result.status(), result -> result.created())
+                .containsExactly(failed.analysisId(), AiAnalysisStatus.FAILED, false);
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_analyses WHERE lecture_room_id = ? AND window_start_at = ?")
+                .params(roomId, start).query(Long.class).single()).isEqualTo(1L);
+        server.verify();
+    }
+
+    @Test
     void 동일_메시지_병합후_대표_메시지_수가_상한_이하면_Gemini를_호출한다() {
         long representativeId = insertAudienceMessage(" Redis API ", start);
         insertAudienceMessage("redis   api", start.plusSeconds(1));
@@ -670,6 +879,44 @@ class AudienceAnalysisIntegrationTest {
         return new AudienceAnalysisService(analyses, messages, llm, new AiAnalysisJsonParser(new ObjectMapper()),
                 new AudienceAnalysisRetryProperties(1, Duration.ZERO, Duration.ofSeconds(5)), usages,
                 new AudienceAnalysisCostProperties("0.25", "1.50"));
+    }
+
+    private AiAnalysisRepository repositoryThatPausesAfterRetryStatusCheck(CountDownLatch retryStatusChecked,
+                                                                             CountDownLatch allowRetry) {
+        return new AiAnalysisRepository(jdbc, jdbcTemplate) {
+            @Override
+            public AcquiredAnalysis acquire(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {
+                return AudienceAnalysisIntegrationTest.this.analyses.acquire(roomId, windowStartAt, windowEndAt);
+            }
+
+            @Override
+            public boolean markProcessing(long analysisId) {
+                return AudienceAnalysisIntegrationTest.this.analyses.markProcessing(analysisId);
+            }
+
+            @Override
+            public boolean isProcessing(long analysisId) {
+                boolean processing = AudienceAnalysisIntegrationTest.this.analyses.isProcessing(analysisId);
+                retryStatusChecked.countDown();
+                AudienceAnalysisIntegrationTest.this.awaitLatch(allowRetry, "재시도 호출 허용");
+                return processing;
+            }
+
+            @Override
+            public boolean completeEmpty(long analysisId) {
+                return AudienceAnalysisIntegrationTest.this.analyses.completeEmpty(analysisId);
+            }
+
+            @Override
+            public void saveCompleted(long analysisId, AiAnalysisResult result, String modelName) {
+                AudienceAnalysisIntegrationTest.this.analyses.saveCompleted(analysisId, result, modelName);
+            }
+
+            @Override
+            public boolean markFailed(long analysisId, String errorMessage) {
+                return AudienceAnalysisIntegrationTest.this.analyses.markFailed(analysisId, errorMessage);
+            }
+        };
     }
 
     private void assertRejectedAnalysis(long analysisId) {
@@ -797,6 +1044,14 @@ class AudienceAnalysisIntegrationTest {
     private void makeCreatedAtStale(long analysisId) {
         jdbc.sql("UPDATE ai_analyses SET created_at = DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 121 SECOND) WHERE id = ?")
                 .param(analysisId).update();
+    }
+
+    private void makeProcessingStartedAtStale(long analysisId) {
+        jdbc.sql("""
+                UPDATE ai_analyses
+                SET processing_started_at = DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 121 SECOND)
+                WHERE id = ?
+                """).param(analysisId).update();
     }
 
     private void assertAnalysis(long analysisId, String expectedStatus, String expectedErrorMessage,

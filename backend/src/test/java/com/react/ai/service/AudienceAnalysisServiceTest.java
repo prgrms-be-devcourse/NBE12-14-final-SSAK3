@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
@@ -174,6 +175,23 @@ class AudienceAnalysisServiceTest {
     }
 
     @Test
+    void 재시도_직전에_PROCESSING이_아니면_추가_Gemini_호출을_중단하고_기존_상태를_덮어쓰지_않는다() {
+        acquireCreated(1L);
+        when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
+        when(llm.analyze(any())).thenThrow(retryable(GeminiAudienceAnalysisErrorCode.RATE_LIMIT));
+        when(analyses.isProcessing(1L)).thenReturn(false);
+        when(analyses.markFailed(1L, "AI_ANALYSIS_PROCESSING_FAILED")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.process(10L, start, end))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("분석 실패 상태로 변경할 수 없습니다.");
+
+        verify(llm, times(1)).analyze(any());
+        verify(analyses).isProcessing(1L);
+        verify(analyses).markFailed(1L, "AI_ANALYSIS_PROCESSING_FAILED");
+    }
+
+    @Test
     void 인증_오류는_재시도하지_않고_AUTH로_기록한다() {
         acquireCreated(1L);
         when(messages.findAudienceMessages(10L, start, end)).thenReturn(List.of(message()));
@@ -293,6 +311,7 @@ class AudienceAnalysisServiceTest {
         var analysis = new AiAnalysisRepository.Analysis(analysisId, 10L, start, end, AiAnalysisStatus.PENDING);
         when(analyses.acquire(10L, start, end)).thenReturn(new AiAnalysisRepository.AcquiredAnalysis(analysis, true));
         when(analyses.markProcessing(analysisId)).thenReturn(true);
+        when(analyses.isProcessing(analysisId)).thenReturn(true);
         when(analyses.completeEmpty(analysisId)).thenReturn(true);
         when(analyses.markFailed(anyLong(), any())).thenReturn(true);
     }
