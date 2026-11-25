@@ -3,7 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { request } from '../stt/api.js'
 import { returnPath } from '../room/state.js'
 import { validateAuth } from './validation.js'
-import './auth.css'
+import { StudioLayout } from './StudioLayout.jsx'
+import { Icon } from '../ui/Icon.jsx'
+
+const placeholders = { email: 'name@example.com', name: '강연자 이름', password: '비밀번호 입력', confirm: '비밀번호 다시 입력' }
 
 export function AuthPage() {
   const location = useLocation()
@@ -26,6 +29,7 @@ function AuthForm({ signup, location }) {
   const [error, setError] = useState('')
   const [duplicate, setDuplicate] = useState(false)
   const [uncertain, setUncertain] = useState(false)
+  const [visiblePasswords, setVisiblePasswords] = useState({})
   const lock = useRef(false)
   const fields = useRef({})
   useEffect(() => {
@@ -77,35 +81,42 @@ function AuthForm({ signup, location }) {
   }
   function input(name, label, type, autoComplete, maxLength) {
     const message = name === 'email' && duplicate ? '이미 가입된 이메일입니다.' : touched[name] ? validation[name] : ''
+    const password = type === 'password'
+    const visible = password && visiblePasswords[name]
     return <div className="auth-field"><label htmlFor={`auth-${name}`}>{label}</label>
-      <input id={`auth-${name}`} name={name} ref={element => { fields.current[name] = element }} type={type} autoComplete={autoComplete}
-        value={values[name]} maxLength={maxLength} disabled={busy} required aria-invalid={!!message} aria-describedby={`auth-${name}-error`}
-        onBlur={() => setTouched(current => ({ ...current, [name]: true }))} onChange={e => change(name, e.target.value)} />
-      <p id={`auth-${name}-error`} className="auth-field-error" aria-live="polite">{message || '\u00a0'}</p>
+      <div className="auth-input">
+        <Icon name={password ? 'lock' : name === 'email' ? 'mail' : 'users'} size={18} />
+        <input id={`auth-${name}`} name={name} ref={element => { fields.current[name] = element }} type={visible ? 'text' : type} autoComplete={autoComplete}
+          value={values[name]} placeholder={placeholders[name]} maxLength={maxLength} disabled={busy} required aria-invalid={!!message}
+          aria-describedby={name === 'password' && signup ? 'auth-password-error auth-password-hint' : `auth-${name}-error`}
+          onBlur={() => setTouched(current => ({ ...current, [name]: true }))} onChange={e => change(name, e.target.value)} />
+        {password && <button type="button" className="auth-reveal" aria-label={name === 'confirm' ? '재입력한 암호 표시' : '입력한 암호 표시'} aria-pressed={!!visible} disabled={busy}
+          onClick={() => setVisiblePasswords(previous => ({ ...previous, [name]: !previous[name] }))}>
+          <Icon name={visible ? 'eye-off' : 'eye'} size={18} />
+        </button>}
+      </div>
+      <p id={`auth-${name}-error`} className="auth-field-error" aria-live="polite">{message}</p>
+      {name === 'password' && signup && <p id="auth-password-hint" className="auth-password-hint">8자 이상, 72바이트 이하 · 한글은 글자 수와 바이트 수가 다릅니다.</p>}
     </div>
   }
-  return <div className="room-app auth-app">
-    <header className="room-top"><a href="/login">RE:ACT<span>강연자 공간</span></a></header>
-    <main className="auth-main"><div className="room-heading"><span className="room-kicker">청중과 함께 만드는 강연</span>
-      <h1>{signup ? '강연자로 시작하기' : '다시 만나 반가워요'}</h1><p>{signup ? '계정을 만들고 첫 강연을 준비하세요.' : '로그인하고 강연을 이어가세요.'}</p></div>
-      <section className="room-card">
-        {checking ? <p role="status">로그인 상태를 확인하고 있습니다.</p> : checkError ? <>
-          <p role="alert">로그인 상태를 확인하지 못했습니다. 서버 연결을 확인해 주세요.</p>
-          <button onClick={() => { setCheckError(false); setChecking(true); setRevision(v => v + 1) }}>다시 확인</button>
-        </> : <form noValidate onSubmit={submit}>
-          {!signup && location.state?.signupSuccess && <p className="room-note" role="status">가입이 완료되었습니다. 로그인해 주세요.</p>}
-          {signup && input('name', '이름', 'text', 'name', 100)}
-          {input('email', '이메일', 'email', 'username', 255)}
-          {input('password', '비밀번호', 'password', signup ? 'new-password' : 'current-password')}
-          {signup && <><p className="auth-password-hint">8자 이상, 72바이트 이하 · 한글 등은 글자 수와 다를 수 있습니다.</p>{input('confirm', '비밀번호 확인', 'password', 'new-password')}</>}
-          {error && <p role="alert" className="auth-field-error">{error}</p>}
-          {duplicate && <button type="button" className="auth-text-button" onClick={() => loginLink()}>이 이메일로 로그인</button>}
-          {uncertain && <div className="room-warning" role="alert"><strong>가입 여부를 확인하지 못했습니다.</strong><p>이미 계정이 만들어졌을 수 있습니다. 로그인으로 확인하거나 가입을 다시 시도해 주세요.</p><button type="button" className="room-secondary" disabled={busy} onClick={() => loginLink()}>로그인으로 확인</button></div>}
-          <button className="auth-submit" disabled={busy}>{busy ? '처리 중…' : signup ? '회원가입' : '로그인'}</button>
-          <p className="auth-switch">{signup ? '이미 계정이 있나요?' : '아직 계정이 없나요?'}{' '}
-            <button type="button" className="auth-text-button" disabled={busy} onClick={() => signup ? loginLink() : navigate(`/signup${suffix}`)}>{signup ? '로그인' : '회원가입'}</button></p>
-        </form>}
-      </section>
-    </main><footer className="room-footer">RE:ACT · 청중의 생각이 강연의 일부가 되도록</footer>
-  </div>
+  return <StudioLayout>
+    <div className="auth-heading"><h1>{signup ? '강연자 회원가입' : '강연자 로그인'}</h1>
+      <p>{signup ? '계정을 만들고 첫 강연을 준비하세요.' : '로그인하고 나의 강연을 시작하세요.'}</p></div>
+    {checking ? <p className="auth-session-note" role="status">로그인 상태를 확인하고 있습니다.</p> : checkError ? <div className="auth-session-note">
+      <p role="alert">로그인 상태를 확인하지 못했습니다. 서버 연결을 확인해 주세요.</p>
+      <button className="auth-text-button" onClick={() => { setCheckError(false); setChecking(true); setRevision(v => v + 1) }}>다시 확인</button>
+    </div> : <form className="studio-form" noValidate onSubmit={submit}>
+      {!signup && location.state?.signupSuccess && <p className="room-note" role="status">가입이 완료되었습니다. 로그인해 주세요.</p>}
+      {signup && input('name', '이름', 'text', 'name', 100)}
+      {input('email', '이메일', 'email', 'username', 255)}
+      {input('password', '비밀번호', 'password', signup ? 'new-password' : 'current-password')}
+      {signup && input('confirm', '비밀번호 확인', 'password', 'new-password')}
+      {error && <p role="alert" className="auth-field-error">{error}</p>}
+      {duplicate && <button type="button" className="auth-text-button" onClick={() => loginLink()}>이 이메일로 로그인</button>}
+      {uncertain && <div className="room-warning" role="alert"><strong>가입 여부를 확인하지 못했습니다.</strong><p>이미 계정이 만들어졌을 수 있습니다. 로그인으로 확인하거나 가입을 다시 시도해 주세요.</p><button type="button" className="room-secondary" disabled={busy} onClick={() => loginLink()}>로그인으로 확인</button></div>}
+      <button className="auth-submit" disabled={busy}>{busy ? '처리 중…' : signup ? '회원가입' : '로그인'}<Icon name="arrow-right" size={18} /></button>
+      <p className="auth-switch">{signup ? '이미 계정이 있나요?' : '아직 계정이 없나요?'}{' '}
+        <button type="button" className="auth-text-button" disabled={busy} onClick={() => signup ? loginLink() : navigate(`/signup${suffix}`)}>{signup ? '로그인' : '회원가입'}</button></p>
+    </form>}
+  </StudioLayout>
 }

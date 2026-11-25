@@ -109,6 +109,20 @@ test('incorrect credentials retain form, successful retry uses default destinati
   await expect(page).toHaveURL(/\/host\/rooms\/new$/)
 })
 
+test('password visibility toggle preserves input without submitting the form', async ({ page }) => {
+  const state = await setup(page)
+  await page.goto('/login')
+  const input = page.getByLabel('비밀번호', { exact: true })
+  const toggle = page.getByRole('button', { name: '입력한 암호 표시' })
+  await input.fill('password123')
+  await toggle.click()
+  await expect(input).toHaveAttribute('type', 'text')
+  await toggle.click()
+  await expect(input).toHaveAttribute('type', 'password')
+  await expect(input).toHaveValue('password123')
+  expect(state.posts).toHaveLength(0)
+})
+
 test('session check connection failure is not treated as signed-out; retry can redirect signed-in user', async ({ page }) => {
   const state = await setup(page); state.meError = 500
   await page.goto('/login?returnTo=https://example.com')

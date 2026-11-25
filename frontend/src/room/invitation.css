@@ -3,17 +3,17 @@
   z-index: 20;
   inset: auto;
   top: clamp(12px, var(--invite-anchor-y, 76px), max(12px, calc(100dvh - 360px)));
-  left: 98px;
-  width: min(352px, calc(100vw - 114px));
+  left: calc(var(--host-rail-size) + 10px);
+  width: min(352px, calc(100vw - var(--host-rail-size) - 24px));
   max-height: calc(100dvh - 24px);
   margin: 0;
   padding: 22px;
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid #d8dfe4;
+  border: 1px solid var(--host-line);
   border-radius: 16px;
   background: white;
-  color: #20292e;
+  color: var(--host-ink);
   box-shadow: 0 8px 30px rgb(26 47 60 / 14%);
 }
 .invite-panel::backdrop { background: rgb(21 35 44 / 38%); }
@@ -32,13 +32,13 @@
   font-weight: 400;
   line-height: 1;
 }
-.invite-code { padding: 16px 18px; border: 1px solid #d2e6e5; border-radius: 12px; background: #f0f8f7; }
+.invite-code { padding: 16px 18px; border: 1px solid var(--host-line); border-radius: 12px; background: #f0f5e7; }
 .invite-code span, .room-app .invite-panel label { display: block; font-size: 13px; font-weight: 600; color: #526168; }
-.invite-code strong { display: block; margin-top: 4px; color: #006d69; font-size: 26px; letter-spacing: .12em; line-height: 1.2; overflow-wrap: anywhere; }
+.invite-code strong { display: block; margin-top: 4px; color: var(--host-green); font-size: 26px; letter-spacing: .12em; line-height: 1.2; overflow-wrap: anywhere; }
 .room-app .invite-panel label { margin: 18px 0 6px; }
 .invite-copy { display: flex; align-items: stretch; gap: 8px; }
 .room-app .invite-copy input { min-width: 0; padding: 9px 10px; color: #34424c; border-color: #d9dfe4; border-radius: 8px; font-size: 13px; }
-.room-app .invite-copy button { flex: none; padding: 9px 13px; border: 0; border-radius: 8px; background: #007e78; color: white; font-size: 14px; }
+.room-app .invite-copy button { flex: none; padding: 9px 13px; border: 0; border-radius: 8px; background: var(--host-green); color: white; font-size: 14px; }
 .room-app .invite-panel .invite-qr-button {
   width: 100%; margin-top: 16px; border: 1px solid #d4dce1; border-radius: 8px;
   background: white; color: #36434a; font-size: 14px;

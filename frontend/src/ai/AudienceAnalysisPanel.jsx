@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Icon } from '../ui/Icon.jsx'
 
 const categoryNames = { QUESTION: '질문', OPINION: '의견', REQUEST: '요청·제안', CONFUSION: '이해 부족 표현', MIXED: '혼합' }
 const formatTime = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour12: false,
@@ -22,9 +23,9 @@ export function AudienceAnalysisPanel({ state, actions }) {
   const pending = state.candidate && state.candidate.analysisId !== state.current?.analysisId
   const history = state.visibleAnalyses.filter(a => a.analysisId !== state.current?.analysisId)
   return <section className="ai-panel" aria-label="AI 질문·의견 분석">
-    <div className="ai-panel-heading"><div><h2>AI 질문·의견 분석</h2>
+    <div className="ai-panel-heading"><div><h2><span className="ai-heading-icon"><Icon name="activity" size={18} /></span>AI 질문·의견 분석</h2>
       <p>AI가 정리한 내용입니다. 판단하기 전에 실제 원문을 확인해 주세요.</p></div>
-      <span className="ai-live-label">{state.error ? '자동 갱신 중단' : '5초마다 결과 확인'}</span></div>
+      <span className={`ai-live-label${state.error ? ' ai-stopped' : ''}`}>{state.error ? '자동 갱신 중단' : '5초마다 결과 확인'}</span></div>
     <div className="ai-meta">모든 시각은 한국 시간(KST) 기준입니다.
       {state.checkedAt && <span>마지막 조회 · {timestamp(state.checkedAt)}</span>}</div>
     {state.error && <div className="room-warning" role="alert">
@@ -75,8 +76,8 @@ function AnalysisGroup({ analysis, state, actions, label }) {
 function TopicCard({ topic, state, actions }) {
   const id = topic.topicGroupId, open = state.openIds.includes(id), source = state.sources[id]
   return <article className="ai-topic" aria-label={topic.topic}>
-    <div className="ai-topic-heading"><h4>{topic.topic}</h4><span>관련 원문 {topic.messageCount}건</span></div>
-    <span className="ai-category">{categoryNames[topic.category] || '분류 확인 필요'}</span>
+    <div className="ai-topic-meta"><span className="ai-category">{categoryNames[topic.category] || '분류 확인 필요'}</span><span>관련 원문 {topic.messageCount}건</span></div>
+    <h4>{topic.topic}</h4>
     <p className="ai-summary"><strong>AI 요약</strong>{topic.summary}</p>
     <button className="room-secondary" aria-expanded={open} aria-controls={`ai-source-${id}`}
       onClick={() => actions.toggleSource(id)}>{open ? '원문 접기' : '원문 보기'}</button>

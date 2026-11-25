@@ -7,6 +7,7 @@ import { RoomApp } from './room/RoomApp.jsx'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthPage } from './auth/AuthPage.jsx'
 import { EntryPage } from './auth/EntryPage.jsx'
+import { JoinCodePage } from './auth/JoinCodeForm.jsx'
 import { AudienceAnalysisPage } from './ai/AudienceAnalysisPage.jsx'
 import { AudienceEntryPage, ParticipationEndedPage } from './audience/AudienceEntryPage.jsx'
 
@@ -17,6 +18,7 @@ createRoot(document.getElementById('root')).render(
       <Route path="/" element={<EntryPage />} />
       <Route path="/login" element={<AuthPage />} />
       <Route path="/signup" element={<AuthPage />} />
+      <Route path="/join" element={<JoinCodePage />} />
       <Route path="/host/rooms/history" element={<RoomApp historyPage />} />
       <Route path="/host/rooms/:roomId" element={<RoomApp />} />
       <Route path="/host/rooms/:roomId/report" element={<HostReportPage />} />
