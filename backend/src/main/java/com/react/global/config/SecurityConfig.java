@@ -91,6 +91,13 @@ public class SecurityConfig {
                                 "/actuator/info"
                         ).permitAll()
 
+                        // SCRUM-91: Prometheus 모니터링 지표 수집
+                        // 운영 환경에서는 외부 인터넷에 노출하지 않는다.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/actuator/prometheus"
+                        ).permitAll()
+
                         // API 문서: 로컬 프로파일에서만 켜지며(springdoc.*.enabled), 꺼져 있으면 404 가 된다.
                         .requestMatchers(
                                 HttpMethod.GET,

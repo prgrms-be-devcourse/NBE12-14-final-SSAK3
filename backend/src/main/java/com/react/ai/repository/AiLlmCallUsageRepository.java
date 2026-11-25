@@ -1,6 +1,7 @@
 package com.react.ai.repository;
 
 import com.react.ai.dto.AiLlmCallUsage;
+import com.react.global.monitoring.LlmUsageMetrics;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Repository;
 @RequiredArgsConstructor
 public class AiLlmCallUsageRepository {
     private final JdbcClient jdbc;
+    private final LlmUsageMetrics metrics;
 
     public void save(AiLlmCallUsage usage) {
         jdbc.sql("""
@@ -24,5 +26,8 @@ public class AiLlmCallUsageRepository {
                 usage.durationMs(), usage.inputUsdPerMillionTokens(), usage.outputUsdPerMillionTokens(),
                 usage.estimatedCostMicrousd()
         ).update();
+
+        // SCRUM-91: 저장된 LLM 호출 이력 및 토큰 사용량을 기록한다.
+        metrics.record(usage);
     }
 }
