@@ -156,13 +156,14 @@ test('no analyses and empty completed intervals are distinguished without claimi
   await expect(page.getByText('아직 분석 기록이 없습니다.')).toBeVisible()
   await expect(page.getByText('최근 조회 범위에 표시할 요약이 없습니다.')).toBeVisible()
   state.analyses = [analysis(2, [])]; await tick(page)
-  await expect(page.getByText('이 구간에는 표시할 새 요약이 없습니다.').first()).toBeVisible()
+  await expect(page.getByText('마지막 분석 결과 이후 새로운 질문이나 의견이 없습니다.')).toHaveCount(1)
+  await expect(page.getByText('최근 조회 범위에 표시할 요약이 없습니다.')).toHaveCount(0)
   await expect(page.getByText('아직 분석 기록이 없습니다.')).toHaveCount(0)
 })
 
 test('new empty, pending, processing and failed intervals preserve last summary and its time', async ({ page }) => {
   const state = await setup(page); await open(page)
-  const statuses = [['COMPLETED', '이 구간에는 표시할 새 요약이 없습니다.'],
+  const statuses = [['COMPLETED', '마지막 분석 결과 이후 새로운 질문이나 의견이 없습니다.'],
     ['PENDING', '새 청중 의견 분석을 기다리고 있습니다.'], ['PROCESSING', '새 청중 의견을 분석하고 있습니다.'],
     ['FAILED', '이 구간의 의견을 요약하지 못했습니다.']]
   for (const [status, message] of statuses) {
