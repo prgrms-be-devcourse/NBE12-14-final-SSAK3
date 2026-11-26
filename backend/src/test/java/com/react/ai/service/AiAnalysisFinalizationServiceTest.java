@@ -11,6 +11,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -34,6 +35,7 @@ class AiAnalysisFinalizationServiceTest {
         when(finalizations.claim(eq(room), any(), eq(Duration.ofSeconds(90)))).thenReturn(true);
         when(finalizations.renewLease(eq(10L), any(), eq(Duration.ofSeconds(90)))).thenReturn(true);
         when(finalizations.complete(eq(10L), any(), anyInt())).thenReturn(true);
+        when(analyses.findResumableBatchWindowStarts(anyLong(), any(), any())).thenReturn(Set.of());
     }
 
     @Test
@@ -49,9 +51,9 @@ class AiAnalysisFinalizationServiceTest {
         service.processRoom(room, 3, Duration.ofSeconds(90));
 
         var order = inOrder(audience);
-        order.verify(audience).process(10L, startedAt, startedAt.plusSeconds(30));
-        order.verify(audience).process(10L, startedAt.plusSeconds(30), startedAt.plusSeconds(60));
-        order.verify(audience).process(10L, startedAt.plusSeconds(60), endedAt);
+        order.verify(audience).process(eq(10L), eq(startedAt), eq(startedAt.plusSeconds(30)), any());
+        order.verify(audience).process(eq(10L), eq(startedAt.plusSeconds(30)), eq(startedAt.plusSeconds(60)), any());
+        order.verify(audience).process(eq(10L), eq(startedAt.plusSeconds(60)), eq(endedAt), any());
         verify(finalizations).complete(eq(10L), any(), eq(0));
         verify(events).publishEvent(new AiAnalysisFinalized(10L));
     }
@@ -141,7 +143,7 @@ class AiAnalysisFinalizationServiceTest {
 
         service.processRoom(room, 3, Duration.ofSeconds(90));
 
-        verify(audience).process(10L, startedAt, startedAt.plusSeconds(30));
+        verify(audience).process(eq(10L), eq(startedAt), eq(startedAt.plusSeconds(30)), any());
         verify(finalizations, never()).complete(anyLong(), any(), anyInt());
         verify(finalizations, never()).release(anyLong(), any());
     }

@@ -68,9 +68,13 @@ public class AiAnalysisFinalizationService {
             List<AiAnalysisWindowCalculator.AnalysisWindow> expected =
                     calculator.finalizationWindows(room.startedAt(), room.endedAt());
             Map<WindowKey, AiAnalysisStatus> statuses = statuses(room, expected);
+            var resumable = analyses.findResumableBatchWindowStarts(room.roomId(), room.startedAt(), room.endedAt());
             int processed = 0;
             for (AiAnalysisWindowCalculator.AnalysisWindow window : expected) {
-                if (statuses.containsKey(WindowKey.of(window))) {
+                AiAnalysisStatus existing = statuses.get(WindowKey.of(window));
+                if (existing != null && !((existing == AiAnalysisStatus.PENDING
+                        || existing == AiAnalysisStatus.PROCESSING)
+                        && resumable.contains(window.startAt()))) {
                     continue;
                 }
                 if (processed >= maxWindowsPerRoom) {
@@ -79,7 +83,8 @@ public class AiAnalysisFinalizationService {
                 if (!finalizations.renewLease(room.roomId(), claimToken, leaseDuration)) {
                     return FinalizationRoomResult.skipped();
                 }
-                audienceAnalysisService.process(room.roomId(), window.startAt(), window.endAt());
+                audienceAnalysisService.process(room.roomId(), window.startAt(), window.endAt(),
+                        () -> finalizations.renewLease(room.roomId(), claimToken, leaseDuration));
                 processed++;
                 if (!finalizations.renewLease(room.roomId(), claimToken, leaseDuration)) {
                     return FinalizationRoomResult.skipped();

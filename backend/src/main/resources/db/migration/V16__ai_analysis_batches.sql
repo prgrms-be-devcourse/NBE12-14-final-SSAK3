@@ -1,0 +1,23 @@
+CREATE TABLE ai_analysis_batches (
+    id                    BIGINT       NOT NULL AUTO_INCREMENT,
+    analysis_id           BIGINT       NOT NULL,
+    batch_index           INT          NOT NULL,
+    status                VARCHAR(20)  NOT NULL COMMENT 'PENDING, PROCESSING, COMPLETED, FAILED',
+    input_manifest        JSON         NOT NULL COMMENT '대표 ID, 원본 ID, 발생 횟수, 내용 길이 및 SHA-256. 채팅 원문은 저장하지 않음',
+    input_message_count   INT          NOT NULL,
+    input_character_count INT          NOT NULL,
+    result_json           JSON         NULL COMMENT '서버 검증에 성공한 배치 결과만 저장',
+    model_name            VARCHAR(100) NULL,
+    claim_token           VARCHAR(36)  NULL,
+    lease_until           DATETIME     NULL,
+    error_code            VARCHAR(50)  NULL,
+    created_at            DATETIME     NOT NULL,
+    updated_at            DATETIME     NOT NULL,
+    completed_at          DATETIME     NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_analysis_batches_analysis_index (analysis_id, batch_index),
+    KEY idx_ai_analysis_batches_status_lease (status, lease_until),
+    CONSTRAINT fk_ai_analysis_batches_analysis FOREIGN KEY (analysis_id) REFERENCES ai_analyses (id),
+    CONSTRAINT chk_ai_analysis_batches_status CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')),
+    CONSTRAINT chk_ai_analysis_batches_input CHECK (batch_index >= 0 AND input_message_count > 0 AND input_character_count > 0)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
