@@ -200,7 +200,12 @@ Table ai_topic_groups {
   category varchar(30) [not null, note: 'QUESTION, OPINION, REQUEST, CONFUSION, MIXED']
   summary text [not null]
   created_at datetime [not null]
-  indexes { analysis_id [name: 'idx_ai_topic_groups_analysis'] }
+  answered_at datetime
+  answered_by_user_id bigint [ref: > users.id]
+  indexes {
+    analysis_id [name: 'idx_ai_topic_groups_analysis']
+    answered_at [name: 'idx_ai_topic_groups_answered_at']
+  }
   Note: '주제별 청중 의견 요약. 대표 질문 아님. 혼합된 의견이면 MIXED로 분류하고 상반된 의견을 요약에 보존'
 }
 
