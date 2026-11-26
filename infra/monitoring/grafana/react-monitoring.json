@@ -558,6 +558,196 @@
           }
         }
       ]
+    },
+    {
+      "id": 30,
+      "title": "MySQL - 데이터베이스 지표",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {"x": 0, "y": 67, "w": 24, "h": 1},
+      "panels": []
+    },
+    {
+      "id": 31,
+      "title": "MySQL Connections",
+      "description": "현재 연결 수, 실행 중인 스레드, 최대 연결 수",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 68, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "mysql_global_status_threads_connected{job=\"re-act-mysql\"}",
+          "legendFormat": "Connected"
+        },
+        {
+          "refId": "B",
+          "expr": "mysql_global_status_threads_running{job=\"re-act-mysql\"}",
+          "legendFormat": "Running"
+        },
+        {
+          "refId": "C",
+          "expr": "mysql_global_variables_max_connections{job=\"re-act-mysql\"}",
+          "legendFormat": "Max Connections"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 32,
+      "title": "MySQL Queries per Second",
+      "description": "초당 쿼리 수와 문장 종류별 처리량",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 68, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(mysql_global_status_queries{job=\"re-act-mysql\"}[1m])",
+          "legendFormat": "Queries"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(mysql_global_status_commands_total{job=\"re-act-mysql\",command=\"insert\"}[1m])",
+          "legendFormat": "INSERT"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(mysql_global_status_commands_total{job=\"re-act-mysql\",command=\"select\"}[1m])",
+          "legendFormat": "SELECT"
+        },
+        {
+          "refId": "D",
+          "expr": "rate(mysql_global_status_commands_total{job=\"re-act-mysql\",command=\"update\"}[1m])",
+          "legendFormat": "UPDATE"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 33,
+      "title": "InnoDB Row Lock Waits",
+      "description": "행 잠금을 기다린 횟수(초당)와 현재 대기 중인 수",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 76, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(mysql_global_status_innodb_row_lock_waits{job=\"re-act-mysql\"}[1m])",
+          "legendFormat": "Waits/s"
+        },
+        {
+          "refId": "B",
+          "expr": "mysql_global_status_innodb_row_lock_current_waits{job=\"re-act-mysql\"}",
+          "legendFormat": "Current Waits"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 34,
+      "title": "InnoDB Row Lock Time",
+      "description": "잠금 대기에 쓴 시간(초당 ms)과 평균 대기 시간",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 76, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(mysql_global_status_innodb_row_lock_time{job=\"re-act-mysql\"}[1m])",
+          "legendFormat": "Lock Time ms/s"
+        },
+        {
+          "refId": "B",
+          "expr": "mysql_global_status_innodb_row_lock_time_avg{job=\"re-act-mysql\"}",
+          "legendFormat": "Avg Wait ms"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 35,
+      "title": "InnoDB Buffer Pool",
+      "description": "디스크에서 읽은 횟수(초당)와 메모리 요청 수. 읽기가 늘면 메모리가 부족하다는 뜻",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 84, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(mysql_global_status_innodb_buffer_pool_reads{job=\"re-act-mysql\"}[1m])",
+          "legendFormat": "Disk Reads/s"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(mysql_global_status_innodb_buffer_pool_read_requests{job=\"re-act-mysql\"}[1m])",
+          "legendFormat": "Read Requests/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 36,
+      "title": "MySQL Slow Queries and Aborts",
+      "description": "느린 쿼리, 비정상 종료한 연결, 거절된 연결(초당)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 84, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "react-prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(mysql_global_status_slow_queries{job=\"re-act-mysql\"}[1m])",
+          "legendFormat": "Slow Queries"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(mysql_global_status_aborted_connects{job=\"re-act-mysql\"}[1m])",
+          "legendFormat": "Aborted Connects"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(mysql_global_status_aborted_clients{job=\"re-act-mysql\"}[1m])",
+          "legendFormat": "Aborted Clients"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      }
     }
   ]
 }

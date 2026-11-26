@@ -1,0 +1,9 @@
+# mysqld-exporter 접속 정보 예시. 복사해서 mysqld-exporter.my.cnf 로 쓰고, 이 파일은 커밋하지 않는다.
+# 계정 생성(로컬 MySQL 관리자 연결):
+#   CREATE USER 'exporter'@'%' IDENTIFIED BY '<비밀번호>' WITH MAX_USER_CONNECTIONS 3;
+#   GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'%';
+[client]
+user=exporter
+password=<비밀번호>
+host=host.docker.internal
+port=3306
