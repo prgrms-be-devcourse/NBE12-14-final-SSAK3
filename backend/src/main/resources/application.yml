@@ -52,6 +52,10 @@ app:
     report:
       api-key: ${OPENAI_API_KEY:}
       model: ${OPENAI_REPORT_MODEL:gpt-6-luna}
+      background-enabled: ${OPENAI_REPORT_BACKGROUND_ENABLED:false}
+      webhook-secret: ${OPENAI_REPORT_WEBHOOK_SECRET:}
+      alert:
+        webhook-url: ${REPORT_ALERT_WEBHOOK_URL:}
     audience:
       scheduler:
         fixed-delay: ${AI_ANALYSIS_SCHEDULER_DELAY:5000}

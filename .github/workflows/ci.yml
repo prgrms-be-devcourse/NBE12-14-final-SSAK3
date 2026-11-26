@@ -68,6 +68,8 @@ jobs:
         run: docker exec -i -e MYSQL_PWD=ci-root-only ${{ job.services.mysql.id }} mysql -uroot < ../docs/db/init-test-databases.sql
 
       - name: Build and Test
+        env:
+          RUN_REPORT_RESTART_TEST: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
         run: ./gradlew build --no-daemon
 
   frontend:

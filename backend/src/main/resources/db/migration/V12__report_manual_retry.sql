@@ -1,0 +1,2 @@
+ALTER TABLE lecture_reports
+    ADD COLUMN retry_used BOOLEAN NOT NULL DEFAULT FALSE;
