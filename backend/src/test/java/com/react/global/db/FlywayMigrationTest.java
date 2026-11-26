@@ -33,7 +33,7 @@ class FlywayMigrationTest {
             "polls", "poll_options", "poll_responses",
             "stt_sessions", "stt_segments", "stt_gaps",
             "ai_analyses", "ai_topic_groups", "ai_topic_group_messages",
-            "ai_analysis_finalizations",
+            "ai_analysis_finalizations", "ai_analysis_batches",
             "ai_llm_call_usages",
             "lecture_reports", "report_alert_outbox", "report_generation_attempts", "report_generation_slots",
             "report_webhook_inbox");
@@ -66,7 +66,11 @@ class FlywayMigrationTest {
     }
 
     @Test
+<<<<<<< Updated upstream
     void ERD의_테이블이_모두_생성된다() {
+=======
+    void Flyway의_17개_테이블이_생성된다() {
+>>>>>>> Stashed changes
         List<String> tables = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables "
                         + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'",

@@ -69,9 +69,11 @@ public class AudienceAnalysisScheduler {
                 return run;
             }
             Set<LocalDateTime> recorded = analyses.findRecordedWindowStarts(room.roomId(), room.startedAt(), now);
+            Set<LocalDateTime> resumable = analyses.findResumableBatchWindowStarts(room.roomId(), room.startedAt(), now);
             int processedCount = 0;
             for (AiAnalysisWindowCalculator.AnalysisWindow window : windows) {
-                if (recorded.contains(window.startAt())) {
+                boolean resuming = resumable.contains(window.startAt());
+                if (recorded.contains(window.startAt()) && !resuming) {
                     continue;
                 }
                 if (processedCount >= properties.maxWindowsPerRun()) {
@@ -79,10 +81,12 @@ public class AudienceAnalysisScheduler {
                 }
                 AiAnalysisProcessResult result = processWindow(room.roomId(), window);
                 processedCount++;
-                if (result == null || !result.created()) {
-                    if (result == null) {
-                        run.errors++;
-                    }
+                if (result == null) {
+                    run.errors++;
+                    continue;
+                }
+                if (!result.created() && (!resuming
+                        || result.status() == com.react.ai.domain.AiAnalysisStatus.PROCESSING)) {
                     continue;
                 }
                 run.processedWindows++;
