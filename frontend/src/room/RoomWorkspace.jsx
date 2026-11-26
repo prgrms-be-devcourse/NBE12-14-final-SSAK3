@@ -7,6 +7,7 @@ import { PollCreatePanel } from '../poll/PollCreatePanel.jsx'
 import { UnderstandingRounds } from '../poll/UnderstandingRounds.jsx'
 import { UnderstandingSummary } from '../poll/UnderstandingSummary.jsx'
 import { PollResults } from '../poll/PollResults.jsx'
+import { LiveRoomWorkspace } from './live/LiveRoomWorkspace.jsx'
 
 const compactLayout = '(max-width: 960px)'
 const tabs = [{ id: 'ai', label: 'AI 요약' }, { id: 'chat', label: '채팅' }]
@@ -21,7 +22,15 @@ function isCompact() {
   return window.matchMedia(compactLayout).matches
 }
 
-export function RoomWorkspace({ room, userId, onRecorder, ending, onAccessError }) {
+export function RoomWorkspace(props) {
+  if (props.room.status === 'LIVE') {
+    return <LiveRoomWorkspace {...props} />
+  }
+
+  return <LegacyRoomWorkspace {...props} />
+}
+
+function LegacyRoomWorkspace({ room, userId, onRecorder, ending, onAccessError }) {
   const compact = useSyncExternalStore(watchLayout, isCompact)
   const [activeTab, setActiveTab] = useState('ai')
   const rememberChatPosition = useRef(null)

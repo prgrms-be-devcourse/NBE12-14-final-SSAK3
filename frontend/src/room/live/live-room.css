@@ -1,0 +1,1304 @@
+/* RE:ACT — 강연자 LIVE 화면 전용 */
+
+/* 기존 공통 레이아웃은 LIVE 화면에서만 조정한다. */
+
+.room-app.host-shell:has(.react-live-room) {
+    --host-ink: #15212f;
+    --host-muted: #64748b;
+    --host-line: #e5eaee;
+    --host-surface: #fff;
+    --host-green: #008780;
+    --host-lime: #def3ee;
+    --host-rail-size: 112px;
+    background: #fff;
+}
+
+.host-shell:has(.react-live-room) .host-body > main {
+    max-width: none;
+    width: 100%;
+    padding: 24px clamp(24px, 3vw, 48px) 36px;
+    margin: 0;
+}
+
+.host-shell:has(.react-live-room) .host-rail {
+    background: #f8fafb;
+}
+
+.host-shell:has(.react-live-room) .host-rail .host-menu {
+    padding: 18px 8px;
+    gap: 8px;
+}
+
+.host-shell:has(.react-live-room) .host-rail .host-menu-item {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap;
+    gap: 7px;
+    min-height: 62px;
+    padding: 10px 4px;
+    border-radius: 10px;
+    font-size: 12px;
+}
+
+.host-shell:has(.react-live-room) .host-rail .host-menu-item svg {
+    width: 23px;
+    height: 23px;
+}
+
+.host-shell:has(.react-live-room) .host-rail .host-menu-item:hover {
+    background: #e5f3f0;
+    color: #00766c;
+}
+
+.host-shell:has(.react-live-room) .host-room-heading-row {
+    padding-bottom: 18px;
+    margin-bottom: 24px;
+    border-color: #e5eaee;
+}
+
+.host-shell:has(.react-live-room) .host-room-heading-row h1 {
+    font-size: clamp(22px, 1.8vw, 28px);
+    letter-spacing: -.035em;
+    line-height: 1.4;
+}
+
+/* 기존 투표 바로가기 대신 새로운 하단 도구를 사용한다. */
+
+.host-shell:has(.react-live-room) .host-room-jump {
+    display: none;
+}
+
+.host-shell:has(.react-live-room) .host-room-heading-row .room-end {
+    border: 1px solid #d6454e;
+    color: #c52d38;
+    background: #fff;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.host-shell:has(.react-live-room) .host-room-heading-row .room-end:hover {
+    background: #fff1f2;
+}
+
+/* ==================================================
+   기본 레이아웃
+   ================================================== */
+
+.react-live-room {
+    --rl-accent: #008780;
+    --rl-soft: #e9f6f3;
+    --rl-line: #e5eaee;
+    --rl-ink: #15212f;
+    --rl-muted: #64748b;
+
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(310px, 34%);
+    align-items: start;
+    gap: clamp(24px, 2.6vw, 42px);
+
+    color: var(--rl-ink);
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.react-live-room [hidden] {
+    display: none !important;
+}
+
+.react-live-room .rl-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.react-live-room .rl-analysis {
+    min-width: 0;
+    flex: 1;
+}
+
+.react-live-room button.rl-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    min-height: 40px;
+    border: 1px solid #dce3e8;
+    border-radius: 9px;
+    background: #fff;
+    color: #344452;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.react-live-room button.rl-button:enabled:hover {
+    border-color: #93c7bd;
+    color: #00766c;
+    background: #f0f9f7;
+}
+
+/* ==================================================
+   강연 상태
+   ================================================== */
+
+.react-live-room .rl-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-bottom: 24px;
+    color: #64748b;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.react-live-room .rl-status > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.react-live-room .rl-status i {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #a1aab3;
+}
+
+.react-live-room .rl-status .rl-live-label {
+    padding: 5px 10px;
+    border-radius: 20px;
+    background: var(--rl-soft);
+    color: #00766c;
+    font-weight: 600;
+}
+
+.react-live-room .rl-live-label i {
+    background: var(--rl-accent);
+}
+
+.react-live-room .rl-status .rl-recording {
+    color: #c52d38;
+    font-weight: 600;
+}
+
+.react-live-room .rl-recording i {
+    background: #c52d38;
+}
+
+/* ==================================================
+   AI 분석 헤더
+   ================================================== */
+
+.react-live-room .rl-analysis-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 26px;
+}
+
+.react-live-room .rl-analysis-head h2 {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 0;
+    color: var(--rl-ink);
+    font-size: clamp(25px, 2.1vw, 33px);
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: -.045em;
+}
+
+.react-live-room .rl-analysis-head h2 svg {
+    flex: none;
+    color: var(--rl-accent);
+}
+
+.react-live-room .rl-analysis-head p {
+    margin: 7px 0 0 46px;
+    color: var(--rl-muted);
+    font-size: 14px;
+}
+
+.react-live-room button.rl-new-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    border: 0;
+    border-radius: 40px;
+    padding: 13px 18px;
+    background: #e5f4f0;
+    color: #006d65;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.react-live-room button.rl-new-button:enabled:hover {
+    background: #d5eee7;
+}
+
+/* ==================================================
+   이해도 체크 통계
+   ================================================== */
+
+.react-live-room .rl-understanding {
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    border: 1px solid var(--rl-line);
+    border-radius: 12px;
+    background: #fff;
+}
+
+.react-live-room .rl-understanding-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.react-live-room .rl-understanding-head h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.react-live-room .rl-understanding-head span {
+    color: var(--rl-muted);
+    font-size: 12px;
+}
+
+.react-live-room .rl-understanding p {
+    margin: 7px 0 0;
+    color: var(--rl-muted);
+    font-size: 13px;
+}
+
+.react-live-room .rl-understanding-values {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.react-live-room .rl-understanding-values > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 3px 10px;
+}
+
+.react-live-room .rl-understanding-values strong {
+    font-size: clamp(22px, 2vw, 30px);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.04em;
+}
+
+.react-live-room .rl-understanding-values span {
+    color: var(--rl-muted);
+    font-size: 13px;
+}
+
+.react-live-room .rl-tone-good strong {
+    color: #008780;
+}
+
+.react-live-room .rl-tone-mixed strong {
+    color: #986715;
+}
+
+.react-live-room .rl-tone-low strong {
+    color: #b73941;
+}
+
+.react-live-room .rl-understanding-bar {
+    display: flex;
+    height: 7px;
+    gap: 2px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #edf1f3;
+}
+
+.react-live-room .rl-understanding-bar .rl-tone-good {
+    background: #008780;
+}
+
+.react-live-room .rl-understanding-bar .rl-tone-mixed {
+    background: #dfb455;
+}
+
+.react-live-room .rl-understanding-bar .rl-tone-low {
+    background: #d67177;
+}
+
+.react-live-room .rl-understanding-bar .rl-tone-neutral {
+    background: #94a3b8;
+}
+
+/* ==================================================
+   확인 필요 / 완료 탭
+   ================================================== */
+
+.react-live-room .rl-tabs {
+    display: flex;
+    gap: 24px;
+    border-bottom: 1px solid var(--rl-line);
+    margin-bottom: 22px;
+}
+
+.room-app .react-live-room .rl-tabs button.rl-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 14px 15px;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: #71808e;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.room-app .react-live-room .rl-tabs button.rl-tab[aria-pressed="true"] {
+    color: #00766c;
+    border-bottom-color: #008780;
+    background: transparent;
+}
+
+.room-app .react-live-room .rl-tabs button.rl-tab:hover {
+    color: #008780;
+    background: transparent;
+}
+
+.react-live-room .rl-tab span {
+    display: inline-grid;
+    place-items: center;
+    min-width: 26px;
+    height: 25px;
+    padding: 0 7px;
+    border-radius: 20px;
+    background: #eef1f4;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.react-live-room .rl-tab[aria-pressed="true"] span {
+    background: #d9efea;
+    color: #00766c;
+}
+
+/* ==================================================
+   주요 청중 반응
+   ================================================== */
+
+.react-live-room .rl-summary {
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 21px 24px;
+    border-radius: 12px;
+    background: #eaf6f3;
+    margin-bottom: 8px;
+}
+
+.react-live-room .rl-summary > svg {
+    flex: none;
+    margin-top: 3px;
+    color: #008780;
+}
+
+.react-live-room .rl-summary > div {
+    min-width: 0;
+    flex: 1;
+}
+
+.react-live-room .rl-summary strong {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    color: #00766c;
+}
+
+.react-live-room .rl-keywords {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.react-live-room .rl-keywords span {
+    padding: 5px 10px;
+    border: 1px solid #cde6df;
+    border-radius: 6px;
+    background: #fff;
+    color: #32645d;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.react-live-room .rl-summary p {
+    margin: 9px 0 0;
+    color: #526f69;
+    font-size: 13px;
+}
+
+/* ==================================================
+   질문 목록
+   ================================================== */
+
+.react-live-room .rl-topic {
+    padding: 22px 3px 19px;
+    border-bottom: 1px solid var(--rl-line);
+}
+
+.react-live-room .rl-topic-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+}
+
+.react-live-room .rl-topic-dot {
+    flex: none;
+    display: block;
+    width: 9px;
+    height: 9px;
+    margin-top: 11px;
+    border-radius: 50%;
+    background: #008780;
+}
+
+.react-live-room .rl-topic-done .rl-topic-dot {
+    background: #a8b4bf;
+}
+
+.react-live-room .rl-topic-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.react-live-room .rl-topic h3 {
+    margin: 0 0 8px;
+    font-size: clamp(18px, 1.6vw, 23px);
+    line-height: 1.45;
+    letter-spacing: -.025em;
+    color: #15212f;
+    overflow-wrap: anywhere;
+}
+
+.react-live-room .rl-topic-done h3 {
+    color: #71808e;
+}
+
+.react-live-room .rl-topic-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: #71808e;
+    font-size: 13px;
+}
+
+.react-live-room .rl-category {
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: #edf1f3;
+    color: #526170;
+    font-size: 12px;
+}
+
+.react-live-room .rl-new-tag {
+    padding: 3px 6px;
+    background: #e3f4ef;
+    color: #00766c;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.react-live-room button.rl-complete-button {
+    flex: none;
+    white-space: nowrap;
+    font-size: 13px;
+    margin-top: 3px;
+}
+
+.react-live-room .rl-topic-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px 18px;
+    margin: 10px 0 0 24px;
+    font-size: 13px;
+}
+
+.react-live-room .rl-topic-tools details {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.react-live-room .rl-topic-tools details[open] {
+    width: 100%;
+}
+
+.react-live-room .rl-topic-tools summary {
+    cursor: pointer;
+    padding: 5px 0;
+    color: #64748b;
+}
+
+.react-live-room .rl-topic-tools details p {
+    color: #526170;
+    margin: 8px 0;
+    line-height: 1.75;
+}
+
+.room-app .react-live-room button.rl-source-button {
+    min-height: 28px;
+    padding: 5px 0;
+    border: 0;
+    border-radius: 0;
+    color: #008780;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.room-app .react-live-room button.rl-source-button:hover {
+    text-decoration: underline;
+    background: transparent;
+}
+
+/* ==================================================
+   근거 원문
+   ================================================== */
+
+.react-live-room .rl-sources {
+    margin: 12px 0 0 24px;
+    padding: 16px;
+    border: 1px solid var(--rl-line);
+    border-radius: 10px;
+    background: #f8fafb;
+    font-size: 14px;
+}
+
+.react-live-room .rl-sources ul {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+}
+
+.react-live-room .rl-sources li {
+    padding: 10px 0;
+    border-top: 1px solid var(--rl-line);
+}
+
+.react-live-room .rl-sources li > div {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.react-live-room .rl-sources time {
+    color: var(--rl-muted);
+    font-size: 12px;
+}
+
+.react-live-room .rl-sources p {
+    margin: 6px 0 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* ==================================================
+   데이터가 없는 경우 및 이전 분석
+   ================================================== */
+
+.react-live-room .rl-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 160px;
+    padding: 22px 16px;
+    text-align: center;
+    color: #64748b;
+}
+
+.react-live-room .rl-empty > svg {
+    color: #79a8a1;
+}
+
+.react-live-room .rl-empty strong {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.react-live-room .rl-empty p {
+    margin: 0;
+    font-size: 13px;
+}
+
+.react-live-room .rl-analysis-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 0;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.react-live-room .rl-analysis-footer button {
+    font-size: 12px;
+    min-height: 32px;
+    padding: 6px 10px;
+}
+
+.react-live-room .rl-history {
+    margin-bottom: 15px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.react-live-room .rl-history summary {
+    cursor: pointer;
+    padding: 5px 0;
+}
+
+.react-live-room .rl-history-row {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--rl-line);
+}
+
+/* ==================================================
+   질문 알림 토스트
+   ================================================== */
+
+.react-live-room .rl-toast {
+    position: fixed;
+    z-index: 12;
+    top: calc(var(--host-bar-size) + 14px);
+    right: 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 13px;
+    width: min(400px, calc(100vw - 32px));
+    padding: 17px 18px;
+    border: 1px solid #dfe7eb;
+    border-left: 3px solid #008780;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 8px 30px rgb(21 33 47 / 12%);
+}
+
+.react-live-room .rl-toast > svg {
+    flex: none;
+    color: #008780;
+}
+
+.react-live-room .rl-toast > div {
+    min-width: 0;
+    flex: 1;
+}
+
+.react-live-room .rl-toast strong {
+    color: var(--rl-ink);
+    font-size: 15px;
+}
+
+.react-live-room .rl-toast p {
+    margin: 5px 0;
+    color: #526170;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.react-live-room button.rl-toast-close {
+    display: grid;
+    place-items: center;
+    flex: none;
+    padding: 2px;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+}
+
+/* ==================================================
+   오류 및 투표 진행 상태
+   ================================================== */
+
+.react-live-room .rl-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    margin: 8px 0;
+    border-radius: 9px;
+    background: #edf7f5;
+    color: #176b64;
+    font-size: 13px;
+}
+
+.react-live-room .rl-notice p {
+    margin: 4px 0 0;
+}
+
+.react-live-room .rl-notice button {
+    flex: none;
+    font-size: 12px;
+    min-height: 32px;
+    padding: 6px 10px;
+}
+
+.react-live-room .rl-warning {
+    background: #fff4e1;
+    color: #805719;
+}
+
+/* ==================================================
+   하단 강연 진행 도구
+   ================================================== */
+
+.react-live-room .rl-toolbar {
+    position: sticky;
+    z-index: 2;
+    bottom: 16px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+    padding: 12px;
+    border: 1px solid var(--rl-line);
+    border-radius: 14px;
+    background: #f8fafb;
+    box-shadow: 0 4px 16px rgb(24 35 46 / 4%);
+}
+
+.react-live-room .rl-toolbar button {
+    min-height: 49px;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.react-live-room .rl-toolbar button svg {
+    flex: none;
+    color: #008780;
+}
+
+.room-app .react-live-room .rl-toolbar button.rl-primary {
+    background: #008780;
+    border-color: #008780;
+    color: #fff;
+}
+
+.room-app .react-live-room .rl-toolbar button.rl-primary:hover {
+    background: #006d67;
+}
+
+.react-live-room .rl-toolbar button.rl-primary svg {
+    color: #fff;
+}
+
+.react-live-room .rl-rec-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #fcebed;
+    color: #c52d38;
+    padding: 3px 6px;
+    border-radius: 15px;
+    font-size: 10px;
+}
+
+.react-live-room .rl-rec-tag::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #c52d38;
+}
+
+/* ==================================================
+   우측 실시간 채팅
+   ================================================== */
+
+.react-live-room .rl-chat {
+    position: sticky;
+    top: calc(var(--host-bar-size) + 16px);
+    padding-left: 26px;
+    border-left: 1px solid var(--rl-line);
+    min-width: 0;
+}
+
+.react-live-room .rl-chat .rl-chat-panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+}
+
+.react-live-room .rl-chat-panel .chat-panel-heading {
+    padding: 6px 0 18px;
+    border-bottom: 1px solid var(--rl-line);
+}
+
+.react-live-room .rl-chat-panel .chat-panel-heading h2 {
+    color: var(--rl-ink);
+    font-size: 23px;
+    font-weight: 700;
+    letter-spacing: -.035em;
+}
+
+.react-live-room .rl-chat-panel .chat-stream {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.react-live-room .rl-chat-panel .chat-log {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+    padding: 20px 4px 16px 0;
+    overflow-y: auto;
+}
+
+.react-live-room .rl-chat-panel .chat-log ol {
+    gap: 21px;
+}
+
+.react-live-room .rl-chat-panel .chat-log li {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 11px;
+    row-gap: 5px;
+    align-items: start;
+}
+
+.react-live-room .rl-chat-avatar {
+    display: grid;
+    place-items: center;
+    grid-column: 1;
+    grid-row: 1 / 3;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.react-live-room .rl-chat-panel .chat-meta {
+    grid-column: 2;
+    grid-row: 1;
+    color: #24323e;
+    font-size: 14px;
+}
+
+.react-live-room .rl-chat-panel .chat-meta time {
+    font-size: 12px;
+    color: #71808e;
+}
+
+.react-live-room .rl-chat-panel .chat-log li p {
+    grid-column: 2;
+    grid-row: 2;
+    width: fit-content;
+    max-width: 100%;
+    padding: 9px 12px;
+    border-radius: 4px 12px 12px 12px;
+    background: #f1f3f5;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #344452;
+}
+
+.react-live-room .rl-chat-panel .chat-log li.chat-own {
+    grid-template-columns: minmax(0, 1fr) 38px;
+}
+
+.react-live-room .rl-chat-panel .chat-own .rl-chat-avatar {
+    grid-column: 2;
+    grid-row: 1 / 3;
+}
+
+.react-live-room .rl-chat-panel .chat-own .chat-meta,
+.react-live-room .rl-chat-panel .chat-own p {
+    grid-column: 1;
+}
+
+.react-live-room .rl-chat-panel .chat-log .chat-own p {
+    background: #e3f4ef;
+    color: #176b64;
+    border-radius: 12px 4px 12px 12px;
+}
+
+/* 채팅 입력창 */
+
+.react-live-room .rl-chat-panel .chat-composer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 9px;
+    padding: 14px 0 0;
+    margin: 0;
+    border-top: 1px solid var(--rl-line);
+}
+
+.react-live-room .rl-chat-panel .chat-composer label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+.react-live-room .rl-chat-panel .chat-composer textarea {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+    width: 100%;
+    min-height: 50px;
+    max-height: 140px;
+    padding: 12px;
+    border: 1px solid #dce3e8;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.react-live-room .rl-chat-panel .chat-actions {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.react-live-room .rl-chat-panel .chat-actions button {
+    display: grid;
+    place-items: center;
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 10px;
+    background: #008780;
+    color: #fff;
+}
+
+.react-live-room .rl-chat-panel .chat-actions button:disabled {
+    background: #e5ebed;
+    color: #64748b;
+}
+
+.react-live-room .rl-chat-panel .chat-composer p {
+    grid-column: 1 / -1;
+}
+
+.react-live-room .rl-chat-panel .rl-chat-retry textarea {
+    grid-column: 1 / -1;
+}
+
+.react-live-room .rl-chat-panel .rl-chat-retry .chat-actions {
+    grid-column: 1 / -1;
+    grid-row: auto;
+}
+
+.react-live-room .rl-chat-panel .chat-actions .chat-discard {
+    background: #edf1f3;
+    color: #526170;
+}
+
+/* ==================================================
+   투표 및 발언 기록 모달
+   ================================================== */
+
+.react-live-room .rl-dialog {
+    position: fixed;
+    inset: 0;
+    width: min(760px, calc(100vw - 32px));
+    max-height: calc(100dvh - 40px);
+    margin: auto;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid var(--rl-line);
+    border-radius: 17px;
+    background: #fff;
+    color: var(--rl-ink);
+    box-shadow: 0 20px 70px rgb(21 33 47 / 16%);
+}
+
+.react-live-room .rl-dialog::backdrop {
+    background: rgb(21 33 47 / 28%);
+}
+
+.react-live-room .rl-dialog-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--rl-line);
+    background: #fff;
+}
+
+.react-live-room .rl-dialog-head h2 {
+    margin: 0;
+    font-size: 21px;
+}
+
+.react-live-room .rl-dialog-head button {
+    min-height: 36px;
+    padding: 6px;
+}
+
+.react-live-room .rl-dialog-body {
+    padding: 24px;
+}
+
+.react-live-room .rl-dialog .room-card,
+.react-live-room .rl-dialog .stt-panel {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+}
+
+.react-live-room .rl-dialog .room-poll:has(> form) {
+    display: block;
+}
+
+.react-live-room .rl-dialog .room-poll .room-poll-understanding {
+    margin-top: 24px;
+    padding: 18px;
+    border: 1px solid var(--rl-line);
+    border-radius: 10px;
+    background: #f5faf8;
+}
+
+.react-live-room .rl-dialog .understanding-summary,
+.react-live-room .rl-dialog .understanding-rounds {
+    margin-top: 24px;
+}
+
+/* ==================================================
+   반응형
+   ================================================== */
+
+@media (max-width: 1200px) {
+    .react-live-room {
+        grid-template-columns: minmax(0, 1fr) minmax(270px, 33%);
+        gap: 24px;
+    }
+
+    .react-live-room .rl-chat {
+        padding-left: 18px;
+    }
+
+    .react-live-room .rl-toolbar {
+        gap: 6px;
+        padding: 8px;
+    }
+
+    .react-live-room .rl-toolbar button {
+        padding: 9px 8px;
+        font-size: 12px;
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 960px) {
+    .react-live-room {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .react-live-room .rl-main {
+        min-height: auto;
+    }
+
+    .react-live-room .rl-toolbar {
+        position: static;
+    }
+
+    .react-live-room .rl-chat {
+        position: static;
+        padding: 20px 0 0;
+        border-left: 0;
+        border-top: 1px solid var(--rl-line);
+    }
+
+    .react-live-room .rl-chat .rl-chat-panel {
+        height: 520px;
+    }
+}
+
+@media (max-width: 760px) {
+    .room-app.host-shell:has(.react-live-room) {
+        --host-rail-size: 0px;
+    }
+
+    .host-shell:has(.react-live-room) .host-body > main {
+        padding: 20px 16px 36px;
+    }
+
+    .react-live-room .rl-analysis-head h2 {
+        font-size: 25px;
+        gap: 10px;
+    }
+
+    .react-live-room .rl-analysis-head p {
+        margin-left: 42px;
+    }
+
+    .react-live-room .rl-understanding {
+        padding: 14px;
+    }
+
+    .react-live-room .rl-summary {
+        padding: 16px;
+        gap: 12px;
+    }
+
+    .react-live-room .rl-topic-row {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .react-live-room .rl-topic-content {
+        flex: 1 1 80%;
+    }
+
+    .react-live-room button.rl-complete-button {
+        margin-left: 19px;
+    }
+
+    .react-live-room .rl-toast {
+        right: 16px;
+    }
+
+    .react-live-room .rl-dialog-head,
+    .react-live-room .rl-dialog-body {
+        padding: 16px;
+    }
+}
+.react-live-room .rl-chat-panel .chat-log li.chat-own > p {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: end;
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.react-live-room .rl-chat-panel .chat-log li.chat-own > .chat-meta {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: end;
+}
+.react-live-room .rl-chat-panel .chat-composer {
+    flex-shrink: 0;
+}
+
+.react-live-room .rl-chat-panel .chat-log {
+    min-height: 0;
+    overflow-y: auto;
+    max-height: 60dvh;
+}
+/* 데스크톱 강연 화면 높이 및 스크롤 수정 */
+@media (min-width: 961px) {
+
+    .host-shell:has(.react-live-room) .host-body > main {
+        display: flex;
+        flex-direction: column;
+        height: calc(100dvh - var(--host-bar-size));
+        box-sizing: border-box;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .host-shell:has(.react-live-room)
+    .host-body > main > :not(.react-live-room) {
+        flex-shrink: 0;
+    }
+
+    .react-live-room {
+        flex: 1;
+        min-height: 0;
+        align-items: stretch;
+    }
+
+    .react-live-room .rl-main {
+        min-height: 0;
+    }
+
+    .react-live-room .rl-analysis {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .react-live-room .rl-toolbar {
+        position: static;
+        flex-shrink: 0;
+    }
+
+    .react-live-room .rl-chat {
+        position: static;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .react-live-room .rl-chat .rl-chat-panel {
+        flex: 1;
+        min-height: 0;
+        height: auto;
+    }
+
+    .react-live-room .rl-chat-panel .chat-stream {
+        flex: 1;
+        min-height: 0;
+    }
+
+    .react-live-room .rl-chat-panel .chat-log {
+        flex: 1;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+    }
+
+    .react-live-room .rl-chat-panel .chat-composer {
+        flex-shrink: 0;
+    }
+
+    .react-live-room .rl-chat-panel .chat-composer textarea {
+        box-sizing: border-box;
+        min-width: 0;
+    }
+}

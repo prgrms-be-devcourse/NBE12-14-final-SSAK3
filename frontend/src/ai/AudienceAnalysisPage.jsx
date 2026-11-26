@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Brand } from '../ui/Brand.jsx'
@@ -26,7 +27,7 @@ function AudienceRoom({ roomId }) {
   </div>
 }
 
-export function AudienceRoomPanel({ roomId, standalone = false, onAccessError }) {
+export function AudienceRoomPanel({ roomId, standalone = false, onAccessError, renderPanel }) {
   const [state, setState] = useState(initialFeed)
   const feed = useRef(null)
   const access = useRef(onAccessError)
@@ -48,14 +49,17 @@ export function AudienceRoomPanel({ roomId, standalone = false, onAccessError })
     toggleSource: id => feed.current?.toggleSource(id), retrySource: id => feed.current?.retrySource(id),
     showLatest: () => feed.current?.showLatest(),
     closeSources: ids => feed.current?.closeSources(ids),
+    refresh: () => feed.current?.visibilityChanged(),
   }
   if (state.fatal) return <section className="room-card" role="alert">
     <h2>{state.fatal === 401 ? '로그인이 필요합니다' : state.fatal === 403
-      ? '이 강연방을 조회할 권한이 없습니다' : '강연방을 찾을 수 없습니다'}</h2>
+        ? '이 강연방을 조회할 권한이 없습니다' : '강연방을 찾을 수 없습니다'}</h2>
     <Link to="/host/rooms/new">새 강연방 만들기</Link>
   </section>
   return <>{standalone && <div className="room-heading"><h1>{state.room?.title || '청중 질문·의견 요약'}</h1>
     <p>청중이 남긴 의견을 살펴보고, 근거 원문을 함께 확인하세요.</p></div>}
-    <AudienceAnalysisPanel state={state} actions={actions} />
+    {renderPanel
+        ? renderPanel({ state, actions })
+        : <AudienceAnalysisPanel state={state} actions={actions} />}
   </>
 }
