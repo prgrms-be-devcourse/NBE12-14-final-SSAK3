@@ -58,10 +58,12 @@ export function openRoomChat({ roomId, live, role, since, onMessages, onConnecti
     if (!active) return
     let event
     try { event = JSON.parse(frame.body) } catch { return }
-    const message = event?.data
-    if (event?.type !== 'CHAT_CREATED' || message?.roomId !== Number(roomId) || !included(message)) return
-    onMessages([message])
-    onAck(frame.headers['X-Chat-Attempt'], message)
+    if (event?.type !== 'CHAT_BATCH' || event.data?.roomId !== Number(roomId) || !Array.isArray(event.data.messages)) return
+    // 서버가 짧은 간격의 채팅을 한 프레임에 묶어 보낸다. 항목마다 발신자가 보낸 X-Chat-Attempt 값이 attempt 로 실려 온다.
+    const messages = event.data.messages.filter(message => message?.roomId === Number(roomId) && included(message))
+    if (!messages.length) return
+    onMessages(messages)
+    for (const message of messages) onAck(message.attempt, message)
   }
 
   function handleError(frame) {

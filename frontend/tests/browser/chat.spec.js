@@ -54,8 +54,8 @@ async function openChat(page, initial = []) {
         state.chat = {
           close: () => socket.close({ code: 4001, reason: '연결 끊김 테스트' }),
           broadcast: (item, attempt) => {
-            const sentHeader = attempt ? `X-Chat-Attempt:${attempt}\n` : ''
-            socket.send(`MESSAGE\ndestination:${topic}\nsubscription:${subscriptions.get(topic)}\nmessage-id:${item.messageId}\n${sentHeader}\n${JSON.stringify({ type: 'CHAT_CREATED', data: item })}\0`)
+            const body = JSON.stringify({ type: 'CHAT_BATCH', data: { roomId: item.roomId, messages: [{ ...item, attempt }] } })
+            socket.send(`MESSAGE\ndestination:${topic}\nsubscription:${subscriptions.get(topic)}\nmessage-id:${item.messageId}\n\n${body}\0`)
           },
         }
       }
