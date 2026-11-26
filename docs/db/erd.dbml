@@ -1,4 +1,4 @@
-// RE:ACT MVP ERD v1.2 (16개 테이블)
+// RE:ACT MVP ERD v1.2 (17개 테이블)
 // dbdiagram.io 에서 열 수 있는 DBML 원본이다. 실제 스키마의 기준은 Flyway 마이그레이션
 // (backend/src/main/resources/db/migration)이며, 이 파일과 어긋나면 새 V 파일로 맞추고 이 파일도 함께 갱신한다.
 // 링크: https://dbdiagram.io/e/6af3e06d063ad9ee168b99b8/6af3f73504c7e97b1d2c23f0
@@ -21,9 +21,11 @@ Table lecture_rooms {
   created_at datetime [not null]
   started_at datetime
   ended_at datetime
+  report_receipt_due boolean [not null, default: false, note: '강연 종료 후 보고서 접수를 기다리는 동안 참']
   indexes {
     host_user_id
     (host_user_id, status, ended_at, id) [name: 'idx_lecture_rooms_host_status_ended_id']
+    (report_receipt_due, id) [name: 'idx_rooms_report_receipt_due']
   }
 }
 
@@ -223,7 +225,27 @@ Table lecture_reports {
   status varchar(20) [not null, note: 'PENDING, PROCESSING, COMPLETED, FAILED']
   content json
   error_message varchar(500)
+  retry_used boolean [not null, default: false, note: '강연자의 일시 장애 재시도 사용 여부']
   created_at datetime [not null]
   generated_at datetime
   updated_at datetime
+  indexes {
+    (status, id) [name: 'idx_reports_status_id']
+  }
 }
+
+Table report_alert_outbox {
+  report_id bigint [not null]
+  retry_used boolean [not null]
+  diagnostic_code varchar(64) [not null]
+  created_at datetime(6) [not null, note: '실패 시각 UTC']
+  next_attempt_at datetime(6) [not null, note: '다시 전송할 수 있는 시각 UTC']
+  lease_token char(36)
+  indexes {
+    (report_id, retry_used) [pk]
+    (next_attempt_at, report_id, retry_used) [name: 'idx_report_alert_due']
+    lease_token [name: 'idx_report_alert_lease']
+  }
+}
+
+Ref: report_alert_outbox.report_id > lecture_reports.id [delete: cascade]

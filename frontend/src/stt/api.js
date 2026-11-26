@@ -89,12 +89,17 @@ export function sttApi(roomId) {
     me: () => request('/auth/me'),
     records: () => request(`${base}/segments`),
     start: startKey => request(`${base}/sessions`, { method: 'POST', body: { startKey } }),
-    send: (sessionId, item) => {
+    send: async (sessionId, item) => {
       const session = `${base}/sessions/${sessionId}`
       const path = item.kind === 'segment' ? `${session}/segments`
           : item.kind === 'gapOpen' ? `${session}/gaps`
               : `${session}/gaps/${item.gapId}/close`
-      return request(path, { method: item.kind === 'gapClose' ? 'PATCH' : 'POST', body: item.body })
+      const result = await request(path, { method: item.kind === 'gapClose' ? 'PATCH' : 'POST', body: item.body })
+      if (item.kind === 'segment' && !(result?.segmentId > 0 && result.sttSessionId === sessionId
+          && result.segmentKey === item.body.segmentKey)) {
+        throw new Error('STT_SEGMENT_ACK_MISSING')
+      }
+      return result
     },
     stop: (sessionId, reason) => request(`${base}/sessions/${sessionId}/stop`, {
       method: 'POST', body: { reason },

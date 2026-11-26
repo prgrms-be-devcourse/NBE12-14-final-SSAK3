@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -56,6 +57,10 @@ public class LectureRoom {
     @Column(name = "ended_at")
     private LocalDateTime endedAt;
 
+    @ColumnDefault("false")
+    @Column(name = "report_receipt_due", nullable = false)
+    private boolean reportReceiptDue;
+
     public LectureRoom(
             User host,
             String title,
@@ -90,7 +95,12 @@ public class LectureRoom {
         }
 
         status = LectureRoomStatus.ENDED;
+        reportReceiptDue = true;
         endedAt = LocalDateTime.now(SEOUL)
                 .truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    public void markReportReceived() {
+        reportReceiptDue = false;
     }
 }

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { setup } from './stt-fixture.js'
+import { readFile } from 'node:fs/promises'
 
 async function connect(page) {
   await page.goto('/dev/stt')
@@ -47,6 +48,7 @@ test('IndexedDB survives refresh and retry preserves UUID without automatically 
   await page.evaluate(() => window.testSpeech.emit('복구할 발언'))
   await expect.poll(() => state.sends.length).toBeGreaterThan(0)
   const first = state.sends[0]
+  await expect.poll(() => page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true)
   state.serverTime = () => '2026-11-25T03:15:00.000Z'
   state.offline = false
   page.on('dialog', dialog => dialog.accept())
@@ -57,6 +59,47 @@ test('IndexedDB survives refresh and retry preserves UUID without automatically 
   await expect.poll(() => state.sends.length).toBeGreaterThan(1)
   expect(state.sends[1]).toEqual(first)
   expect(await page.evaluate(() => !!window.testSpeech)).toBe(false)
+})
+
+test('memory-only finals remain downloadable and block unload until the server acknowledges their keys', async ({ page, context }) => {
+  await setup(context)
+  await page.addInitScript(() => {
+    const put = IDBObjectStore.prototype.put
+    IDBObjectStore.prototype.put = function (...args) {
+      if (window.failSttWrites && this.name === 'recordings') throw new DOMException('Full', 'QuotaExceededError')
+      return put.apply(this, args)
+    }
+  })
+  let validAck = false
+  await page.route('**/stt/sessions/7/segments', route => {
+    const { segmentKey } = route.request().postDataJSON()
+    return route.fulfill({ json: { data: { sttSessionId: 7, segmentId: 8, segmentKey: validAck ? segmentKey : 'other-key' } } })
+  })
+  await connect(page)
+  await page.getByRole('button', { name: '녹음 시작', exact: true }).click()
+  await expect(page.locator('.stt-live')).toBeVisible()
+  const canUnload = () => page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))
+  expect(await canUnload()).toBe(true)
+  await page.evaluate(() => {
+    window.failSttWrites = true
+    window.testSpeech.emit('보관할 발언')
+    window.testSpeech.emit('마지막 발언')
+  })
+  await expect(page.getByText('서버와 브라우저 모두 저장이 확인되지 않은 발언 2건')).toBeVisible()
+  await expect(page.getByText('서버 저장 완료', { exact: true })).toHaveCount(0)
+  expect(await canUnload()).toBe(false)
+  const downloading = page.waitForEvent('download')
+  await page.getByRole('button', { name: '미저장 기록 다운로드' }).click()
+  const download = await downloading
+  const backup = JSON.parse(await readFile(await download.path(), 'utf8'))
+  expect(backup.records.filter(item => item.kind === 'segment').map(item => item.body.transcript))
+    .toEqual(['보관할 발언', '마지막 발언'])
+  expect(await canUnload()).toBe(false)
+  validAck = true
+  await page.getByRole('button', { name: '저장 재시도', exact: true }).click()
+  await expect(page.getByRole('button', { name: '미저장 기록 다운로드' })).toHaveCount(0)
+  await expect(page.getByText('서버 저장 완료', { exact: true })).toBeVisible()
+  expect(await canUnload()).toBe(true)
 })
 
 test('Web Locks prevent second tab recording and allow acquisition after first tab closes', async ({ page, context }) => {
