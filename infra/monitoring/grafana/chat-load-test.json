@@ -1,0 +1,1064 @@
+{
+  "uid": "react-chat-load",
+  "title": "RE:ACT 채팅 부하 테스트",
+  "description": "채팅 일제 전송 부하 테스트용. 위 6개 숫자로 상태를 보고, 색이 변한 단계(수신, 저장, 브로드캐스트, 자원)의 그래프를 본다.",
+  "tags": [
+    "react",
+    "load-test"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "stat",
+      "title": "연결 수",
+      "description": "현재 WebSocket 연결 수. 청중 수만큼 올라가야 한다.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "react_websocket_sessions_active{job=\"re-act-backend\"}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 101,
+      "type": "stat",
+      "title": "초당 채팅 저장",
+      "description": "초당 저장된 채팅 수.",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(react_chat_messages_saved_total{job=\"re-act-backend\"}[30s]))"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 102,
+      "type": "stat",
+      "title": "수신 큐",
+      "description": "서버가 아직 처리하지 못한 수신 메시지. 계속 쌓이면 수신이 밀린다.",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "executor_queued_tasks{job=\"re-act-backend\",name=\"clientInboundChannelExecutor\"}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 103,
+      "type": "stat",
+      "title": "DB 커넥션 대기",
+      "description": "DB 커넥션을 못 받고 기다리는 요청 수. 0이어야 정상.",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_pending{job=\"re-act-backend\"}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 104,
+      "type": "stat",
+      "title": "Outbound 큐",
+      "description": "클라이언트로 아직 못 보낸 프레임 수. 크면 지연이 길고 메모리를 먹는다.",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "executor_queued_tasks{job=\"re-act-backend\",name=\"clientOutboundChannelExecutor\"}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10000
+              },
+              {
+                "color": "red",
+                "value": 100000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 105,
+      "type": "stat",
+      "title": "힙 사용률",
+      "description": "JVM 힙 사용량 / 최대. 85%를 넘으면 OOM·GC 위험.",
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(jvm_memory_used_bytes{job=\"re-act-backend\",area=\"heap\"}) / sum(jvm_memory_max_bytes{job=\"re-act-backend\",area=\"heap\"} > 0)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 106,
+      "type": "row",
+      "title": "1. 수신 - 채팅이 서버에 들어오는 구간",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 107,
+      "type": "timeseries",
+      "title": "수신 큐 (Inbound Queued)",
+      "description": "0 근처가 정상. 전송 직후 올랐다가 내려오면 일시적 폭주, 계속 쌓이면 처리 용량 부족.",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "executor_queued_tasks{job=\"re-act-backend\",name=\"clientInboundChannelExecutor\"}",
+          "legendFormat": "대기 중"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 108,
+      "type": "timeseries",
+      "title": "수신 스레드 (Inbound Active)",
+      "description": "채팅을 저장하는 스레드 수. 풀 크기에 붙으면 스레드가 한계이고, DB 풀(10)보다 많으면 DB 대기가 생긴다.",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "executor_active_threads{job=\"re-act-backend\",name=\"clientInboundChannelExecutor\"}",
+          "legendFormat": "활성"
+        },
+        {
+          "refId": "B",
+          "expr": "executor_pool_size_threads{job=\"re-act-backend\",name=\"clientInboundChannelExecutor\"}",
+          "legendFormat": "풀 크기"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 109,
+      "type": "row",
+      "title": "2. 저장 - DB에 쓰는 구간",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 110,
+      "type": "timeseries",
+      "title": "DB 커넥션 풀 (Hikari)",
+      "description": "active 가 max 에 붙어 있으면 풀이 꽉 찬 것. 이때 pending 이 오른다.",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{job=\"re-act-backend\"}",
+          "legendFormat": "사용 중"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_max{job=\"re-act-backend\"}",
+          "legendFormat": "최대"
+        },
+        {
+          "refId": "C",
+          "expr": "hikaricp_connections_pending{job=\"re-act-backend\"}",
+          "legendFormat": "대기"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 111,
+      "type": "timeseries",
+      "title": "커넥션 획득 시간 (최대)",
+      "description": "풀에서 커넥션을 받기까지 걸린 시간. 오르면 저장 응답이 느려진다.",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_acquire_seconds_max{job=\"re-act-backend\"}",
+          "legendFormat": "획득 최대"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_usage_seconds_max{job=\"re-act-backend\"}",
+          "legendFormat": "사용 최대"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 112,
+      "type": "timeseries",
+      "title": "MySQL 연결 / 실행 중",
+      "description": "Running 이 높으면 DB 자체가 바쁜 것. 풀은 막혔는데 Running 이 낮으면 앱 쪽 풀이 좁은 것.",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "mysql_global_status_threads_connected{job=\"re-act-mysql\"}",
+          "legendFormat": "연결"
+        },
+        {
+          "refId": "B",
+          "expr": "mysql_global_status_threads_running{job=\"re-act-mysql\"}",
+          "legendFormat": "실행 중"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 113,
+      "type": "timeseries",
+      "title": "InnoDB 행 잠금 대기",
+      "description": "0 이 정상. 올라가면 같은 행을 두고 경합(예: 강연 종료와 채팅 저장).",
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(mysql_global_status_innodb_row_lock_waits{job=\"re-act-mysql\"}[30s])",
+          "legendFormat": "대기 횟수/s"
+        },
+        {
+          "refId": "B",
+          "expr": "mysql_global_status_innodb_row_lock_current_waits{job=\"re-act-mysql\"}",
+          "legendFormat": "현재 대기 수"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 114,
+      "type": "row",
+      "title": "3. 브로드캐스트 - 저장된 채팅을 청중에게 보내는 구간 (이번 테스트의 병목)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 115,
+      "type": "timeseries",
+      "title": "Outbound 큐 (대기 프레임)",
+      "description": "보낼 프레임이 쌓인 수. 전송이 끝난 뒤 0 으로 돌아오는지 본다. 클수록 지연이 길고 힙이 찬다.",
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "executor_queued_tasks{job=\"re-act-backend\",name=\"clientOutboundChannelExecutor\"}",
+          "legendFormat": "대기"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 116,
+      "type": "timeseries",
+      "title": "Outbound 스레드 (활성 / 풀 크기)",
+      "description": "큐는 쌓이는데 활성 스레드가 풀 크기보다 훨씬 작으면, 스레드 수가 아니라 CPU·소켓 쓰기가 한계.",
+      "gridPos": {
+        "x": 12,
+        "y": 31,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "executor_active_threads{job=\"re-act-backend\",name=\"clientOutboundChannelExecutor\"}",
+          "legendFormat": "활성"
+        },
+        {
+          "refId": "B",
+          "expr": "executor_pool_size_threads{job=\"re-act-backend\",name=\"clientOutboundChannelExecutor\"}",
+          "legendFormat": "풀 크기"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 117,
+      "type": "timeseries",
+      "title": "초당 채팅 저장 / 브로드캐스트 실패",
+      "description": "저장 속도와 브로드캐스트 예외. 실패가 0 이 아니면 브로드캐스트 중 예외가 난 것.",
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(react_chat_messages_saved_total{job=\"re-act-backend\"}[30s]))",
+          "legendFormat": "저장/s"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(react_chat_broadcast_failures_total{job=\"re-act-backend\"}[30s]))",
+          "legendFormat": "브로드캐스트 실패/s"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 118,
+      "type": "timeseries",
+      "title": "연결 수",
+      "description": "청중 수만큼 연결이 유지되는지. 중간에 떨어지면 서버가 연결을 끊은 것.",
+      "gridPos": {
+        "x": 12,
+        "y": 39,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "react_websocket_sessions_active{job=\"re-act-backend\"}",
+          "legendFormat": "활성 연결"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 119,
+      "type": "row",
+      "title": "4. 자원 - 위 현상의 원인 확인",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 47,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 120,
+      "type": "timeseries",
+      "title": "힙 메모리",
+      "description": "최대에 붙으면 위험. Outbound 큐가 쌓일 때 같이 오르는지 본다.",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(jvm_memory_used_bytes{job=\"re-act-backend\",area=\"heap\"})",
+          "legendFormat": "사용"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(jvm_memory_max_bytes{job=\"re-act-backend\",area=\"heap\"} > 0)",
+          "legendFormat": "최대"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 121,
+      "type": "timeseries",
+      "title": "CPU 사용률",
+      "description": "System 이 100% 면 PC(서버) 자체가 포화. 로컬에서는 k6 도 같은 CPU 를 쓴다.",
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_cpu_usage{job=\"re-act-backend\"} * 100",
+          "legendFormat": "백엔드"
+        },
+        {
+          "refId": "B",
+          "expr": "system_cpu_usage{job=\"re-act-backend\"} * 100",
+          "legendFormat": "시스템 전체"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 122,
+      "type": "timeseries",
+      "title": "GC 정지 시간 (최대)",
+      "description": "길어지면 그 순간 서비스가 멈춘다. 0.1초 안쪽이 정상.",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(jvm_gc_pause_seconds_max{job=\"re-act-backend\"})",
+          "legendFormat": "GC 최대 정지"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 123,
+      "type": "timeseries",
+      "title": "JVM 스레드",
+      "description": "급격히 늘면 스레드 폭증.",
+      "gridPos": {
+        "x": 12,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "jvm_threads_live_threads{job=\"re-act-backend\"}",
+          "legendFormat": "전체"
+        },
+        {
+          "refId": "B",
+          "expr": "jvm_threads_daemon_threads{job=\"re-act-backend\"}",
+          "legendFormat": "데몬"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

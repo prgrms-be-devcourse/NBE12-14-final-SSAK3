@@ -7,7 +7,15 @@ global:
 scrape_configs:
   # 로컬 Spring Boot 애플리케이션 지표 수집
   - job_name: re-act-backend
+    scrape_interval: 5s
     metrics_path: /actuator/prometheus
     static_configs:
       - targets:
           - host.docker.internal:8080
+
+  # MySQL 지표 수집 (mysqld-exporter)
+  - job_name: re-act-mysql
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+          - mysqld-exporter:9104
