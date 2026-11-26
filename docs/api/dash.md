@@ -12,8 +12,23 @@
 | DASH-03 | 투표 현황 | GET `/rooms/{roomId}/polls` 및 결과 조회 | POLL_CREATED / POLL_RESULTS_UPDATED / POLL_CLOSED |
 | DASH-04 | AI 주제별 의견 요약 | GET `/rooms/{roomId}/ai/analyses` | AI_ANALYSIS_COMPLETED |
 | DASH-05 | 관련 채팅 원문 | GET `/rooms/{roomId}/ai/topic-groups/{topicGroupId}/messages` | 별도 이벤트 불필요 |
+| DASH-09 | 질문 답변 완료 관리 | GET `/rooms/{roomId}/ai/question-groups`, PUT `/rooms/{roomId}/ai/topic-groups/{topicGroupId}/answer-status` | 별도 이벤트 없음 |
 
 표의 REST 경로는 공통 Base URL `/api/v1` 을 생략했다.
+
+### 9-1-1. DASH-09 질문 답변 완료
+
+소유 강연자(`ROLE_HOST`)만 이용한다. 강연 종료 후에도 변경할 수 있다. 답변 완료는 강연자의 수동 표시이며 실제 발언의 답변 근거나 청중의 이해를 검증한 결과가 아니다. `QUESTION` 주제 그룹만 대상이다. `MIXED`, `OPINION`, `REQUEST`, `CONFUSION`은 완료 처리를 거부한다.
+
+**GET** `/api/v1/rooms/{roomId}/ai/question-groups?answerStatus=UNANSWERED&limit=20&cursor={topicGroupId}`
+
+`answerStatus`는 `UNANSWERED`(기본값) 또는 `ANSWERED`, `limit`은 기본 20·최대 50이다. 목록은 분석 구간 종료 시각, 그룹 ID 오름차순이다. `nextCursor`가 있으면 다음 요청의 `cursor`로 사용한다. 답변 상태를 변경하는 동안 목록의 구성이 바뀌면 페이지 간 중복·누락 가능성이 있으므로 재조회로 동기화한다. 기존 분석 조회 API의 응답은 변경하지 않는다.
+
+```json
+{"data":{"roomId":10,"questionGroups":[{"topicGroupId":401,"analysisId":301,"topic":"캐시 만료","summary":"캐시 데이터가 오래되면 어떻게 처리하는지 질문했습니다.","messageCount":2,"windowEndAt":"2026-11-17T01:02:00Z","answerStatus":"UNANSWERED","answeredAt":null}],"nextCursor":null}}
+```
+
+**PUT** `/api/v1/rooms/{roomId}/ai/topic-groups/{topicGroupId}/answer-status` — 본문 `{"answered":true}` 또는 `{"answered":false}`. 응답 `data`는 위 목록의 단일 질문 그룹 객체와 같다. 중복 요청은 현재 상태를 반환한다. 미인증 401, 다른 강연방 소유자 403, 없는 강연방·그룹 404, 질문 외 그룹 409, 잘못된 필터·limit·cursor·본문 400. 상태 변경에는 기존 세션 CSRF 보호가 적용된다. AI 분석 완료 이벤트의 형식은 변경하지 않는다.
 
 ### 9-2. 투표 생성 이벤트 — SUBSCRIBE `/topic/rooms/{roomId}/polls`
 
