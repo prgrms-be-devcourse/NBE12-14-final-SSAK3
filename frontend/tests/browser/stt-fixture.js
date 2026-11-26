@@ -70,7 +70,7 @@ export async function setup(context) {
     if (path.endsWith('/segments')) {
       state.sends.push(body)
       if (state.offline) return route.abort()
-      return ok({ segmentId: state.sends.length })
+      return ok({ segmentId: state.sends.length, sttSessionId: 7, segmentKey: body.segmentKey })
     }
     if (path.endsWith('/gaps')) {
       state.gaps = [{ gapId: 9, sessionId: 7, startedAt: body.startedAt, endedAt: null }]

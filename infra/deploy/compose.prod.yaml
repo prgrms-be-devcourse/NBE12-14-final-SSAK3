@@ -90,6 +90,7 @@ services:
       # 기타 LLM API
       LLM_API_KEY: ${LLM_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      REPORT_ALERT_WEBHOOK_URL: ${REPORT_ALERT_WEBHOOK_URL:-}
 
       TZ: Asia/Seoul
 

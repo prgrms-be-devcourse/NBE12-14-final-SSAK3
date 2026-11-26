@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,27 +19,39 @@ public class ReportGenerationRepository {
 
     public record Candidate(long reportId, String email, boolean invalidTime, boolean ready) {}
 
+    private static final String CANDIDATES = """
+            SELECT report.id AS report_id, r.id AS room_id, host.email,
+                   (r.started_at IS NULL OR r.ended_at IS NULL OR r.ended_at < r.started_at
+                    OR COALESCE(f.status = 'FAILED', FALSE)) AS invalid_time,
+                   (COALESCE(f.status = 'COMPLETED', FALSE) AND NOT EXISTS (
+                       SELECT 1 FROM polls p WHERE p.lecture_room_id = r.id
+                       AND (p.status <> 'CLOSED' OR p.closed_at IS NULL OR p.closed_total_participants IS NULL)
+                   )) AS ready
+            FROM lecture_reports report
+            JOIN lecture_rooms r ON r.id = report.lecture_room_id
+            JOIN users host ON host.id = r.host_user_id
+            LEFT JOIN ai_analysis_finalizations f ON f.lecture_room_id = r.id
+            WHERE r.status = 'ENDED' AND report.status = 'PENDING'
+            """;
+
     public Optional<Candidate> pending(long roomId) {
         return jdbc.sql("""
-                SELECT report.id AS report_id, host.email,
-                       (r.started_at IS NULL OR r.ended_at IS NULL OR r.ended_at < r.started_at
-                        OR COALESCE(f.status = 'FAILED', FALSE)) AS invalid_time,
-                       (COALESCE(f.status = 'COMPLETED', FALSE) AND NOT EXISTS (
-                           SELECT 1 FROM polls p WHERE p.lecture_room_id = r.id
-                           AND (p.status <> 'CLOSED' OR p.closed_at IS NULL OR p.closed_total_participants IS NULL)
-                       )) AS ready
-                FROM lecture_reports report
-                JOIN lecture_rooms r ON r.id = report.lecture_room_id
-                JOIN users host ON host.id = r.host_user_id
-                LEFT JOIN ai_analysis_finalizations f ON f.lecture_room_id = r.id
-                WHERE r.id = ? AND r.status = 'ENDED' AND report.status = 'PENDING'
-                """).param(roomId).query(Candidate.class).optional();
+                SELECT report_id, email, invalid_time, ready FROM (%s) candidates WHERE room_id = ?
+                """.formatted(CANDIDATES)).param(roomId).query(Candidate.class).optional();
     }
 
-    public List<Long> pendingRoomIds() {
+    public List<Long> readyRoomIds(int limit) {
         return jdbc.sql("""
-                SELECT lecture_room_id FROM lecture_reports WHERE status = 'PENDING' ORDER BY id
-                """).query(Long.class).list();
+                SELECT room_id FROM (%s) candidates
+                WHERE invalid_time OR ready ORDER BY report_id LIMIT ?
+                """.formatted(CANDIDATES)).param(limit).query(Long.class).list();
+    }
+
+    public List<Long> roomsAwaitingReceipt(int limit) {
+        return jdbc.sql("""
+                SELECT id FROM lecture_rooms WHERE report_receipt_due = TRUE AND status = 'ENDED'
+                ORDER BY id LIMIT ?
+                """).param(limit).query(Long.class).list();
     }
 
     public void failInvalidTime(long reportId) {
@@ -75,12 +88,12 @@ public class ReportGenerationRepository {
         });
     }
 
-    public void failAbandonedJobs() {
+    public void failAbandonedJobs(int limit) {
         jdbc.sql("""
                 UPDATE lecture_reports SET status = 'FAILED', error_message = 'GENERATION_INTERRUPTED',
                        updated_at = UTC_TIMESTAMP() + INTERVAL 9 HOUR
-                WHERE status = 'PROCESSING' AND IS_FREE_LOCK(%s) = 1
-                """.formatted(LOCK_NAME.formatted("id"))).update();
+                WHERE status = 'PROCESSING' AND IS_FREE_LOCK(%s) = 1 ORDER BY id LIMIT ?
+                """.formatted(LOCK_NAME.formatted("id"))).param(limit).update();
     }
 
     public void complete(long reportId, String content) {
@@ -91,8 +104,18 @@ public class ReportGenerationRepository {
                 """).params(content, reportId).update();
     }
 
-    public void failGeneration(long reportId, String reason) {
+    @Transactional
+    public boolean failAiGeneration(long reportId, String reason, String diagnosticCode) {
+        if (failGeneration(reportId, reason) == 0) return false;
         jdbc.sql("""
+                INSERT INTO report_alert_outbox(report_id, retry_used, diagnostic_code, created_at, next_attempt_at)
+                SELECT id, retry_used, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6) FROM lecture_reports WHERE id = ?
+                """).params(diagnosticCode, reportId).update();
+        return true;
+    }
+
+    public int failGeneration(long reportId, String reason) {
+        return jdbc.sql("""
                 UPDATE lecture_reports SET status = 'FAILED', error_message = ?, updated_at = UTC_TIMESTAMP() + INTERVAL 9 HOUR
                 WHERE id = ? AND status = 'PROCESSING'
                 """).params(reason, reportId).update();

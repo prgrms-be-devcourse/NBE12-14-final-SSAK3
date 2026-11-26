@@ -105,4 +105,48 @@ class ReportRequestApiTest {
     private MockHttpServletRequestBuilder request(long roomId) {
         return post("/api/v1/rooms/{id}/reports", roomId).with(csrf());
     }
+
+    @Test
+    void retryRequiresRoomOwnershipAndAnExistingReport() throws Exception {
+        String path = "/api/v1/rooms/{id}/reports/retry";
+        mvc.perform(post(path, room).with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(post(path, room).with(csrf()).with(user(owner).roles("PARTICIPANT")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path, room).with(csrf()).with(user("other@example.com").roles("HOST")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path, room).with(user(owner).roles("HOST"))).andExpect(status().isForbidden());
+        mvc.perform(post(path, room).with(csrf()).with(user(owner).roles("HOST")))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("REPORT_NOT_FOUND"));
+    }
+
+    @Test
+    void retryRejectsALiveRoomBeforeLookingUpItsReport() throws Exception {
+        jdbc.sql("UPDATE lecture_rooms SET status='LIVE', ended_at=NULL WHERE id=?").param(room).update();
+        mvc.perform(post("/api/v1/rooms/{id}/reports/retry", room).with(csrf()).with(user(owner).roles("HOST")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ROOM_NOT_ENDED"));
+    }
+
+    @Test
+    void retryOnlyRequeuesAnEligibleFailureOnce() throws Exception {
+        String path = "/api/v1/rooms/{id}/reports/retry";
+        jdbc.sql("INSERT INTO lecture_reports(lecture_room_id,status,created_at) VALUES (?,'FAILED',NOW())")
+                .param(room).update();
+        long id = jdbc.sql("SELECT id FROM lecture_reports WHERE lecture_room_id=?").param(room).query(Long.class).single();
+        for (String reason : new String[]{"LLM_REQUEST_FAILED", "GENERATION_INTERRUPTED", "INVALID_REPORT_EVIDENCE", "REPORT_STORAGE_FAILED"}) {
+            jdbc.sql("UPDATE lecture_reports SET error_message=? WHERE id=?").params(reason, id).update();
+            mvc.perform(post(path, room).with(csrf()).with(user(owner).roles("HOST")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("FAILED"));
+        }
+        jdbc.sql("UPDATE lecture_reports SET error_message='LLM_TEMPORARY_FAILURE' WHERE id=?").param(id).update();
+        mvc.perform(post(path, room).with(csrf()).with(user(owner).roles("HOST")))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.data.reportId").value(id))
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+        assertThat(jdbc.sql("SELECT retry_used AND error_message IS NULL FROM lecture_reports WHERE id=?")
+                .param(id).query(Boolean.class).single()).isTrue();
+        jdbc.sql("UPDATE lecture_reports SET status='FAILED', error_message='LLM_TEMPORARY_FAILURE' WHERE id=?")
+                .param(id).update();
+        mvc.perform(post(path, room).with(csrf()).with(user(owner).roles("HOST")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.reportId").value(id))
+                .andExpect(jsonPath("$.data.status").value("FAILED"));
+    }
 }

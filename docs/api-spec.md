@@ -50,7 +50,7 @@
 | AI-CHAT-06 | GET `/rooms/{roomId}/ai/analyses` |
 | AI-CHAT-07, DASH-05 | GET 주제 그룹 관련 원문 조회 |
 | DASH-01~04 | 기존 조회 API + WebSocket 이벤트 |
-| REPORT-01 | POST `/rooms/{roomId}/reports` |
+| REPORT-01 | 최초 접수 POST `/rooms/{roomId}/reports`, 일시적 생성 실패 후 소유자 재시도 POST `/rooms/{roomId}/reports/retry` |
 | REPORT-02~05, 07 | 내부 데이터 수집·시간대 연결·LLM 초안 |
 | REPORT-06 | 상태 조회 GET `/rooms/{roomId}/reports/status`, 본문 조회 GET `/rooms/{roomId}/reports` |
 | REPORT-08·09 | 기존 보고서 본문의 `followUp`에 답변 확인이 필요한 질문과 검토용 보충 설명 초안·준비 방향 제공 |

@@ -24,14 +24,14 @@ async function setup(context, status, roomStatus = 'ENDED') {
   const { room, recording } = await setupHostRoom(context, roomStatus)
   const report = {
     status, serverNow: Date.parse(room.endedAt) + 60000, calls: [],
-    bodyOffline: false, losePostResponse: false,
+    bodyOffline: false, losePostResponse: false, retryAvailable: false, delayed: false, failureCategory: null,
   }
-  await context.route(url => url.pathname === reportApi || url.pathname === reportApi + '/status', async route => {
+  await context.route(url => [reportApi, reportApi + '/status', reportApi + '/retry'].includes(url.pathname), async route => {
     const request = route.request()
     const path = new URL(request.url()).pathname
     const isStatus = path.endsWith('/status')
     const method = request.method()
-    report.calls.push(method + (isStatus ? ' status' : ' report'))
+    report.calls.push(method + (isStatus ? ' status' : path.endsWith('/retry') ? ' retry' : ' report'))
     const error = (httpStatus, code) => route.fulfill({
       status: httpStatus,
       json: { code, message: code, details: null, timestamp: new Date(report.serverNow).toISOString() },
@@ -39,6 +39,10 @@ async function setup(context, status, roomStatus = 'ENDED') {
     if (room.status !== 'ENDED') return error(409, 'ROOM_NOT_ENDED')
     if (method === 'POST') {
       expect(request.headers()['x-csrf-token']).toBe(recording.csrfToken)
+      if (path.endsWith('/retry')) {
+        expect(report.retryAvailable).toBe(true)
+        report.retryAvailable = false
+      }
       report.status = 'PENDING'
       if (report.losePostResponse) return route.abort('connectionreset')
       return route.fulfill({ status: 202, json: { data: { roomId: 10, reportId: 601, status: report.status } } })
@@ -46,7 +50,9 @@ async function setup(context, status, roomStatus = 'ENDED') {
     if (!isStatus && report.bodyOffline) return route.abort('connectionreset')
     if (report.status === 'REPORT_NOT_FOUND' || report.status === 'ROOM_NOT_FOUND') return error(404, report.status)
     if (report.status === 'FORBIDDEN') return error(403, 'FORBIDDEN')
-    if (isStatus) return route.fulfill({ json: { data: { status: report.status } } })
+    if (isStatus) return route.fulfill({ json: { data: {
+      status: report.status, retryAvailable: report.retryAvailable, delayed: report.delayed, failureCategory: report.failureCategory,
+    } } })
     return route.fulfill({ json: { data: {
       roomId: 10, reportId: 601, status: report.status, createdAt: room.endedAt,
       generatedAt: report.status === 'COMPLETED' ? new Date(report.serverNow).toISOString() : null,
@@ -137,6 +143,7 @@ for (const [status, notice] of [
 ]) {
   test('직접 접속한 보고서가 ' + status + '이면 같은 강연의 종료 화면에서 안내한다', async ({ page, context }) => {
     const { report } = await setup(context, status)
+    if (status === 'FAILED') report.failureCategory = 'AI_OUTPUT'
     await page.goto(reportUrl)
     await expect(page).toHaveURL(roomUrl)
     if (notice) {
@@ -148,6 +155,11 @@ for (const [status, notice] of [
     expect(report.calls).toContain('GET report')
     expect(report.calls).toContain('GET status')
     expect(report.calls).not.toContain('POST report')
+    if (status === 'FAILED') {
+      await expect(page.getByText(/요약의 형식이나 근거를 확인할 수 없어/)).toBeVisible()
+      await expect(page.getByText(/이 보고서는 생성을 다시 요청할 수 없어요/)).toBeVisible()
+      await expect(page.getByRole('button', { name: '보고서 생성 다시 시도' })).toHaveCount(0)
+    }
   })
 }
 
@@ -221,6 +233,74 @@ test('생성 중인 종료 화면은 숨겨지면 조회를 멈추고 다시 보
   await setVisible(true)
   await expect(openReport(page)).toBeVisible()
   expect(report.calls.slice(beforeHidden.length)).toEqual(['GET status'])
+})
+
+test('일시 실패만 한 번 직접 재시도하고 응답이 유실되면 상태만 조회한다', async ({ page, context }) => {
+  const { report } = await setup(context, 'FAILED')
+  report.failureCategory = 'AI_SERVICE'
+  const retry = page.getByRole('button', { name: '보고서 생성 다시 시도' })
+  await page.goto(roomUrl)
+  await expect(page.getByText('보고서 생성에 실패했습니다.', { exact: true })).toBeVisible()
+  await expect(page.getByText(/AI 요약을 요청하는 과정에서 문제가 생겨/)).toBeVisible()
+  await expect(page.getByText(/이 강연방에 저장된 발언과 채팅, 투표 결과/)).toBeVisible()
+  await expect(page.getByText(/이 보고서는 생성을 다시 요청할 수 없어요/)).toBeVisible()
+  await expect(retry).toHaveCount(0)
+  report.retryAvailable = true
+  await page.reload()
+  await expect(retry).toBeVisible()
+  await expect(page.getByText(/보고서 생성을 한 번 더 요청할 수 있어요/)).toBeVisible()
+  expect(report.calls.every(call => call === 'GET status')).toBe(true)
+  report.losePostResponse = true
+  await retry.click()
+  await expect(page.getByText(/AI 요약을 요청하는 과정에서 문제가 생겨/)).toHaveCount(0)
+  await page.getByRole('button', { name: '다시 불러오기', exact: true }).click()
+  await expect(page.getByText('강연 기록을 정리하고 있어요.', { exact: true })).toBeVisible()
+  expect(report.calls.filter(call => call === 'POST retry')).toHaveLength(1)
+  expect(report.calls.at(-1)).toBe('GET status')
+})
+
+test('세부 원인이 없으면 AI 장애를 단정하지 않고 저장된 강연 기록으로 안내한다', async ({ page, context }) => {
+  const { report } = await setup(context, 'FAILED')
+  const panel = page.getByRole('region', { name: '회고 보고서' })
+  for (const category of [null, 'REPORT']) {
+    report.failureCategory = category
+    await page.goto(roomUrl)
+    await expect(panel.getByText(/자세한 실패 원인은 확인되지 않았어요/)).toBeVisible()
+    await expect(panel.getByText(/이 강연방에 저장된 발언과 채팅, 투표 결과/)).toBeVisible()
+    await expect(panel.getByText(/다시 요청할 수 없어요/)).toBeVisible()
+    await expect(panel.getByRole('button')).toHaveCount(0)
+  }
+  expect(report.calls.every(call => call === 'GET status')).toBe(true)
+})
+
+test('상태 조회에 실패하면 생성 실패로 표시하거나 재요청하지 않는다', async ({ page, context }) => {
+  const { report } = await setup(context, 'FAILED')
+  report.failureCategory = 'AI_SERVICE'
+  report.retryAvailable = true
+  await context.route('**/reports/status', route => route.fulfill({ status: 503 }), { times: 1 })
+  await page.goto(roomUrl)
+  const panel = page.getByRole('region', { name: '회고 보고서' })
+  await expect(panel.getByRole('alert')).toContainText('보고서 상태를 조회하지 못했습니다.')
+  await expect(panel.getByText(/AI 서비스/)).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: '보고서 생성 다시 시도' })).toHaveCount(0)
+  await panel.getByRole('button', { name: '다시 불러오기' }).click()
+  await expect(panel.getByRole('button', { name: '보고서 생성 다시 시도' })).toBeVisible()
+  expect(report.calls).toEqual(['GET status'])
+})
+
+test('접수 복구와 장시간 지연을 상태 조회만으로 반영한다', async ({ page, context }) => {
+  const { report } = await setup(context, 'REPORT_NOT_FOUND')
+  await page.clock.install()
+  await page.goto(roomUrl)
+  await expect(createReport(page)).toBeVisible()
+  report.status = 'PENDING'
+  report.delayed = true
+  await page.clock.fastForward(30100)
+  await expect(page.getByText(/보고서 대기가 2분을 넘었어요/)).toBeVisible()
+  report.status = 'PROCESSING'
+  await page.clock.fastForward(reportPoll + 100)
+  await expect(page.getByText(/보고서 생성을 시작한 지 2분이 지났어요/)).toBeVisible()
+  expect(report.calls.every(call => call === 'GET status')).toBe(true)
 })
 
 for (const [code, notice] of [

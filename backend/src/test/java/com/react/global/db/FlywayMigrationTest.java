@@ -35,7 +35,7 @@ class FlywayMigrationTest {
             "ai_analyses", "ai_topic_groups", "ai_topic_group_messages",
             "ai_analysis_finalizations",
             "ai_llm_call_usages",
-            "lecture_reports");
+            "lecture_reports", "report_alert_outbox");
 
     @Autowired
     private DataSource dataSource;
@@ -65,7 +65,7 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void ERD의_16개_테이블이_생성된다() {
+    void ERD의_17개_테이블이_생성된다() {
         List<String> tables = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables "
                         + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'",
@@ -125,6 +125,8 @@ class FlywayMigrationTest {
         long roomId = insertRoom(hostId, "CODE01");
 
         jdbc.update("INSERT INTO lecture_reports(lecture_room_id, status, created_at) VALUES (?, 'PENDING', NOW())", roomId);
+        assertThat(jdbc.queryForObject("SELECT retry_used FROM lecture_reports WHERE lecture_room_id=?",
+                Boolean.class, roomId)).isFalse();
         assertThatThrownBy(() -> jdbc.update("INSERT INTO lecture_reports(lecture_room_id, status, created_at) "
                 + "VALUES (?, 'PENDING', NOW())", roomId))
                 .isInstanceOf(DataIntegrityViolationException.class);
