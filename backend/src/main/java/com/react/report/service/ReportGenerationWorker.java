@@ -26,28 +26,14 @@ public class ReportGenerationWorker {
         });
     }
 
-    public void recover() {
-        reports.failAbandonedJobs();
-        for (long roomId : reports.pendingRoomIds()) {
-            try {
-                check(roomId);
-            } catch (RuntimeException error) {
-                log.error("보고서 복구 처리 중 오류가 발생했습니다. roomId={}, type={}", roomId, error.getClass().getSimpleName());
-            }
-        }
-    }
-
     private void generate(long roomId, ReportGenerationRepository.Candidate report) {
         String content;
         try {
             content = mapper.writeValueAsString(overview.generate(roomId, report.email()));
         } catch (ReportGenerationException error) {
-            reports.failGeneration(report.reportId(), error.reason().name());
+            failAiGeneration(report.reportId(), error);
             return;
-        } catch (JsonProcessingException error) {
-            reports.failGeneration(report.reportId(), ReportGenerationException.Reason.INVALID_REPORT_FORMAT.name());
-            return;
-        } catch (RuntimeException error) {
+        } catch (JsonProcessingException | RuntimeException error) {
             log.error("보고서 본문을 생성하지 못했습니다. reportId={}, type={}", report.reportId(), error.getClass().getSimpleName());
             reports.failGeneration(report.reportId(), "REPORT_GENERATION_FAILED");
             return;
@@ -57,6 +43,12 @@ public class ReportGenerationWorker {
         } catch (DataAccessException error) {
             // 완료 UPDATE의 응답만 유실된 경우에도 저장된 COMPLETED는 유지한다.
             reports.failGeneration(report.reportId(), "REPORT_STORAGE_FAILED");
+        }
+    }
+
+    private void failAiGeneration(long reportId, ReportGenerationException error) {
+        if (reports.failAiGeneration(reportId, error.reason().name(), error.diagnosticCode())) {
+            log.warn("보고서 AI 생성 실패. reportId={}, reason={}, diagnosticCode={}", reportId, error.reason(), error.diagnosticCode());
         }
     }
 }

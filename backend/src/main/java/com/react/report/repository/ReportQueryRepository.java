@@ -15,8 +15,19 @@ public class ReportQueryRepository {
     private final JdbcClient jdbc;
 
     public Optional<ReportStatusView> findStatus(long roomId) {
-        return jdbc.sql("SELECT status FROM lecture_reports WHERE lecture_room_id = ?")
-                .param(roomId).query(ReportStatusView.class).optional();
+        return jdbc.sql("""
+                SELECT status, COALESCE((%s), FALSE) AS retry_available,
+                       (status IN ('PENDING', 'PROCESSING') AND COALESCE(updated_at, created_at)
+                         <= UTC_TIMESTAMP() + INTERVAL 9 HOUR - INTERVAL 120 SECOND) AS `delayed`,
+                       CASE
+                           WHEN status <> 'FAILED' THEN NULL
+                           WHEN error_message IN ('LLM_REQUEST_FAILED', 'LLM_TEMPORARY_FAILURE') THEN 'AI_SERVICE'
+                           WHEN error_message IN ('INVALID_REPORT_FORMAT', 'INVALID_REPORT_EVIDENCE') THEN 'AI_OUTPUT'
+                           ELSE 'REPORT'
+                       END AS failure_category
+                FROM lecture_reports WHERE lecture_room_id = ?
+                """.formatted(ReportRequestRepository.RETRY_AVAILABLE)).param(roomId)
+                .query(ReportStatusView.class).optional();
     }
 
     public Optional<Detail> findDetail(long roomId) {

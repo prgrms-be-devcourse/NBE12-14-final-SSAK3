@@ -9,7 +9,8 @@ import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AudienceMessageRepository;
 import com.react.report.dto.ReportReceipt;
 import com.react.report.service.ReportGenerationException;
-import com.react.report.service.ReportGenerationWorker;
+import com.react.report.repository.ReportGenerationRepository;
+import com.react.report.service.ReportRecoveryService;
 import com.react.report.service.ReportOverviewClient;
 import com.react.report.service.ReportQueryService;
 import com.react.report.service.ReportRequestService;
@@ -38,11 +39,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -63,7 +66,8 @@ class ReportGenerationOrderIntegrationTest {
     @Autowired AudienceMessageRepository messages;
     @Autowired AiAnalysisJsonParser parser;
     @Autowired ReportRequestService requests;
-    @Autowired ReportGenerationWorker worker;
+    @Autowired ReportRecoveryService recovery;
+    @Autowired ReportGenerationRepository generation;
     @Autowired ReportQueryService query;
     @MockitoBean ReportOverviewClient overviewClient;
     @MockitoBean(name = "reportGenerationExecutor") Executor reportExecutor;
@@ -212,7 +216,7 @@ class ReportGenerationOrderIntegrationTest {
             var second = pool.submit(together(workers, Executors.callable(checks.remove())));
             try {
                 assertThat(generating.await(10, TimeUnit.SECONDS)).isTrue();
-                worker.recover(); // another instance starts while the original worker is awaiting the model
+                recovery.recover(); // another instance starts while the original worker is awaiting the model
                 assertThat(status(accepted.reportId())).isEqualTo("PROCESSING");
             } finally {
                 continueGeneration.countDown();
@@ -231,12 +235,46 @@ class ReportGenerationOrderIntegrationTest {
         finalizeAnalysis(room, "{\"topics\":[]}");
         checks.clear(); // queued work is lost across a process restart
 
-        worker.recover();
+        recovery.recover();
+        checks.remove().run();
 
         assertGenerated(pending);
         assertThat(status(abandoned.reportId())).isEqualTo("FAILED");
         assertThat(requests.request(abandoned.roomId(), EMAIL).reportId()).isEqualTo(abandoned.reportId());
         assertThat(checks).isEmpty();
+    }
+
+    @Test
+    void 오래된_대기_건이_배치를_막지_않고_작업_풀_포화가_풀리면_한_번만_생성한다() throws Exception {
+        var waiting = requests.request(room.roomId(), EMAIL);
+        var next = endedRoom();
+        var ready = requests.request(next.roomId(), EMAIL);
+        finalizeAnalysis(next, "{\"topics\":[]}");
+        checks.clear();
+        assertThat(generation.readyRoomIds(1)).containsExactly(next.roomId());
+
+        doAnswer(invocation -> { throw new RejectedExecutionException(); })
+                .doAnswer(invocation -> checks.add(invocation.getArgument(0, Runnable.class)))
+                .when(reportExecutor).execute(any());
+        recovery.recover();
+        assertThat(checks).isEmpty();
+        assertThat(status(ready.reportId())).isEqualTo("PENDING");
+
+        recovery.recover();
+        recovery.recover();
+        assertThat(checks).hasSize(1);
+        checks.remove().run();
+        assertGenerated(ready);
+        assertThat(status(waiting.reportId())).isEqualTo("PENDING");
+    }
+
+    @Test
+    void 이전_버전에서_종료되어_자동_접수_표시가_없는_방은_소유자가_요청할_수_있다() {
+        recovery.recover();
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM lecture_reports WHERE lecture_room_id = ?")
+                .param(room.roomId()).query(Integer.class).single()).isZero();
+        assertThat(requests.request(room.roomId(), EMAIL).status()).isEqualTo(ReportReceipt.Status.PENDING);
+        verifyNoInteractions(overviewClient);
     }
 
     @Test
@@ -261,17 +299,46 @@ class ReportGenerationOrderIntegrationTest {
         assertThat(saved.reportId()).isEqualTo(receipt.reportId());
         assertThat(saved.status().name()).isEqualTo("FAILED");
         assertThat(checks).isEmpty();
-        worker.recover();
+        recovery.recover();
         verify(overviewClient).generate(any());
+    }
+
+    @Test
+    void 일시적_실패를_여러_탭에서_재시도해도_추가_호출은_한번으로_제한한다() throws Exception {
+        when(overviewClient.generate(any())).thenThrow(ReportGenerationException.temporaryFailure());
+        var original = requests.request(room.roomId(), EMAIL);
+        checks.remove().run();
+        finalizeAnalysis(room, "{\"topics\":[]}");
+        checks.remove().run();
+        assertThat(query.status(room.roomId(), EMAIL).retryAvailable()).isTrue();
+        assertThat(requests.requestEndedRoom(room.roomId()).status()).isEqualTo(ReportReceipt.Status.FAILED);
+        recovery.recover();
+        verify(overviewClient).generate(any());
+
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var start = new CyclicBarrier(2);
+            var first = pool.submit(together(start, () -> requests.retry(room.roomId(), EMAIL)));
+            var otherTab = pool.submit(together(start, () -> requests.retry(room.roomId(), EMAIL)));
+            assertThat(first.get(10, TimeUnit.SECONDS)).isEqualTo(original);
+            assertThat(otherTab.get(10, TimeUnit.SECONDS)).isEqualTo(original);
+        }
+        assertThat(checks).hasSize(1);
+        checks.remove().run();
+        assertThat(query.status(room.roomId(), EMAIL).retryAvailable()).isFalse();
+        assertThat(requests.retry(room.roomId(), EMAIL).status()).isEqualTo(ReportReceipt.Status.FAILED);
+        assertThat(checks).isEmpty();
+        verify(overviewClient, times(2)).generate(any());
+        assertThat(jdbc.sql("SELECT retry_used FROM report_alert_outbox WHERE report_id = ? ORDER BY retry_used")
+                .param(original.reportId()).query(Boolean.class).list()).containsExactly(false, true);
     }
 
     private JsonNode assertGenerated(ReportReceipt receipt) throws Exception {
         assertThat(receipt.status().name()).isEqualTo("PENDING");
-        var existing = requests.request(room.roomId(), EMAIL);
+        var existing = requests.request(receipt.roomId(), EMAIL);
         assertThat(existing.reportId()).isEqualTo(receipt.reportId());
         assertThat(existing.status().name()).isEqualTo("COMPLETED");
         assertThat(jdbc.sql("SELECT id FROM lecture_reports WHERE lecture_room_id = ?")
-                .param(room.roomId()).query(Long.class).list()).containsExactly(receipt.reportId());
+                .param(receipt.roomId()).query(Long.class).list()).containsExactly(receipt.reportId());
         assertThat(checks).isEmpty();
         verify(overviewClient).generate(any());
         return mapper.readTree(jdbc.sql("SELECT content FROM lecture_reports WHERE id = ?")

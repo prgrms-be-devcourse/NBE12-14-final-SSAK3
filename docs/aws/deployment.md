@@ -146,6 +146,7 @@ SESSION_COOKIE_SECURE=true
 GEMINI_API_KEY=<Gemini API 키>
 GEMINI_MODEL=<실제로 사용 가능한 모델명>
 OPENAI_API_KEY=<OpenAI API 키>
+REPORT_ALERT_WEBHOOK_URL=
 ```
 
 - `ROOM_JOIN_BASE_URL`은 강연방 QR 코드 및 청중 참여 링크의 기준 주소로 사용한다.
@@ -156,6 +157,23 @@ OPENAI_API_KEY=<OpenAI API 키>
 - 실제 비밀번호·API 키·GHCR 토큰은 Git, 문서, Docker 이미지나 공개 로그에 포함하지 않는다.
 - CI 테스트용 값이나 `.env.example`의 예시 비밀값을 운영에서 재사용하지 않는다.
 - OpenAI 및 Gemini 외부 API 호출에는 별도의 사용량·요금·모델 지원 여부 확인이 필요하다.
+
+### 보고서 AI 오류 알림
+
+1. Discord의 **서버 설정 → 연동 → 웹훅**에서 웹훅을 만들고 개발자 알림을 받을 텍스트 채널을 선택한다. [Discord 웹훅 설정 안내](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks)
+2. 웹훅 URL을 복사해 운영 서버 `/opt/react/.env`의 `REPORT_ALERT_WEBHOOK_URL`에 설정한다. 주소에 비밀 토큰이 들어 있으므로 서버에만 보관한다.
+3. 아래 ‘Backend 전용 변수 수정’ 절차로 새 값을 적용한다.
+
+보고서의 AI 요청이나 결과 검증이 실패하면 보고서 상태와 알림을 MySQL에 함께 저장한다. 서버는 30초 간격으로 최대 20건을 묶어 보고서 ID, 최초 생성·재시도 구분, UTC 발생 시간 범위와 진단 코드를 Discord로 보낸다. 예를 들어 `OPENAI_HTTP_503`은 OpenAI 서버 오류, `OPENAI_HTTP_429_QUOTA`는 이용 한도, `INVALID_REPORT_EVIDENCE`는 보고서의 근거 검증 실패를 뜻한다.
+
+Discord가 생성한 메시지 ID를 회신하면 해당 알림을 대기 목록에서 지운다. 전송이 실패하거나 확인 응답을 받지 못하면 5분 뒤부터 다시 시도한다. 전송 도중 프로세스가 중단되면 다른 작업자가 2분 뒤부터 이어받으므로 같은 알림이 다시 도착할 수 있다.
+
+주소가 비어 있으면 알림은 DB에서 대기한다. 설정 전에 쌓인 새 알림도 주소를 연결하면 전송한다. 현재 대기 건수와 가장 오래된 오류 시각은 다음 쿼리로 확인한다.
+
+```sql
+SELECT COUNT(*) AS pending_alerts, MIN(created_at) AS oldest_failure_utc
+FROM report_alert_outbox;
+```
 
 ### 도메인 및 HTTPS 설정 (SCRUM-87)
 
