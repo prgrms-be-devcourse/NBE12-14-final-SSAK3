@@ -39,8 +39,8 @@ export function setup() {
 
     const room = response.json('data');
 
-    if (room.status !== 'READY' || !room.canJoin) {
-        throw new Error('입장 가능한 READY 상태의 테스트 방이 필요합니다.');
+    if (!room.canJoin || !['READY', 'LIVE'].includes(room.status)) {
+        throw new Error('입장 가능한 테스트 방이 필요합니다.');
     }
 
     console.log(`테스트 대상 강연방 ID: ${room.roomId}`);
