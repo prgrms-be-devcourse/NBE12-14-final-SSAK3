@@ -115,7 +115,8 @@ public class AiAnalysisRepository {
                        AND created_at <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND))
                    OR (status = 'PROCESSING'
                        AND COALESCE(processing_started_at, created_at)
-                           <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND))
+                           <= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? SECOND)
+                       AND NOT EXISTS (SELECT 1 FROM ai_analysis_batches b WHERE b.analysis_id = ai_analyses.id))
                 """).params(staleThreshold.toSeconds(), staleThreshold.toSeconds()).update();
     }
 
@@ -125,6 +126,13 @@ public class AiAnalysisRepository {
                 FROM ai_analyses
                 WHERE lecture_room_id = ? AND window_start_at = ? AND window_end_at = ?
                 """).params(roomId, windowStartAt, windowEndAt).query(Analysis.class).optional();
+    }
+
+    public Optional<Analysis> findById(long analysisId) {
+        return jdbc.sql("""
+                SELECT id, lecture_room_id AS room_id, window_start_at, window_end_at, status
+                FROM ai_analyses WHERE id = ?
+                """).param(analysisId).query(Analysis.class).optional();
     }
 
     public List<Analysis> findWithin(long roomId, LocalDateTime fromInclusive, LocalDateTime toInclusive) {
@@ -146,6 +154,19 @@ public class AiAnalysisRepository {
                 WHERE lecture_room_id = ?
                   AND window_start_at >= ?
                   AND window_start_at < ?
+                """).params(roomId, fromInclusive, toExclusive).query(LocalDateTime.class).list());
+    }
+
+    /**
+     * 이미 생성됐지만 완료되지 않은 구간이다. PENDING은 batch 초기화 트랜잭션이 롤백된
+     * 경우일 수 있으므로 서비스가 다시 입력 상한을 판정한다. 단일 분석은 서비스에서 재호출하지 않는다.
+     */
+    public Set<LocalDateTime> findResumableBatchWindowStarts(long roomId, LocalDateTime fromInclusive,
+                                                              LocalDateTime toExclusive) {
+        return new HashSet<>(jdbc.sql("""
+                SELECT a.window_start_at FROM ai_analyses a
+                WHERE a.lecture_room_id = ? AND a.window_start_at >= ? AND a.window_start_at < ?
+                  AND a.status IN ('PENDING', 'PROCESSING')
                 """).params(roomId, fromInclusive, toExclusive).query(LocalDateTime.class).list());
     }
 

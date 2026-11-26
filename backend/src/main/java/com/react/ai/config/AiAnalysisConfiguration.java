@@ -9,6 +9,7 @@ import com.react.ai.service.AiAnalysisCompletionService;
 import com.react.ai.service.AudienceAnalysisLlmClient;
 import com.react.ai.service.AudienceMessagePreprocessor;
 import com.react.ai.service.AudienceAnalysisService;
+import com.react.ai.service.AudienceAnalysisBatchCoordinator;
 import com.react.ai.service.GeminiAudienceAnalysisLlmClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -18,7 +19,7 @@ import org.springframework.web.client.RestClient;
 
 @Configuration
 @EnableConfigurationProperties({GeminiAudienceAnalysisProperties.class, AudienceAnalysisRetryProperties.class,
-        AudienceAnalysisCostProperties.class})
+        AudienceAnalysisCostProperties.class, AiAnalysisSchedulerProperties.class})
 public class AiAnalysisConfiguration {
 
     @Bean
@@ -48,8 +49,9 @@ public class AiAnalysisConfiguration {
                                                     AiLlmCallUsageRepository usages,
                                                     AudienceAnalysisCostProperties costProperties,
                                                     AiAnalysisCompletionService completions,
-                                                    AudienceMessagePreprocessor preprocessor) {
+                                                    AudienceMessagePreprocessor preprocessor,
+                                                    AudienceAnalysisBatchCoordinator batchCoordinator) {
         return new AudienceAnalysisService(analyses, messages, llmClient, jsonParser, retryProperties,
-                usages, costProperties, completions, preprocessor);
+                usages, costProperties, completions, preprocessor, batchCoordinator);
     }
 }

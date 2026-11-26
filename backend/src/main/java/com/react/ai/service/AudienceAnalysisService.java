@@ -6,7 +6,6 @@ import com.react.ai.domain.AiLlmCallStatus;
 import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.dto.AiAnalysisProcessResult;
 import com.react.ai.dto.AiAnalysisResult;
-import com.react.ai.dto.AiTopicResult;
 import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.dto.AudienceMessage;
@@ -27,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 
 /**
  * 스케줄러와 외부 LLM 제공자에 의존하지 않는 분석 처리 코어다.
@@ -43,6 +43,8 @@ public class AudienceAnalysisService {
     private final AiLlmCostCalculator costCalculator;
     private final AiAnalysisCompletionService completions;
     private final AudienceMessagePreprocessor preprocessor;
+    private final AudienceAnalysisBatchCoordinator batchCoordinator;
+    private final AiAnalysisSourceValidator sourceValidator = new AiAnalysisSourceValidator();
 
     public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
                                    AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser) {
@@ -86,6 +88,18 @@ public class AudienceAnalysisService {
                                    AudienceAnalysisCostProperties costProperties,
                                    AiAnalysisCompletionService completions,
                                    AudienceMessagePreprocessor preprocessor) {
+        this(analyses, messages, llmClient, jsonParser, retryProperties, usages, costProperties,
+                completions, preprocessor, null);
+    }
+
+    public AudienceAnalysisService(AiAnalysisRepository analyses, AudienceMessageRepository messages,
+                                   AudienceAnalysisLlmClient llmClient, AiAnalysisJsonParser jsonParser,
+                                   AudienceAnalysisRetryProperties retryProperties,
+                                   AiLlmCallUsageRepository usages,
+                                   AudienceAnalysisCostProperties costProperties,
+                                   AiAnalysisCompletionService completions,
+                                   AudienceMessagePreprocessor preprocessor,
+                                   AudienceAnalysisBatchCoordinator batchCoordinator) {
         this.analyses = analyses;
         this.messages = messages;
         this.llmClient = llmClient;
@@ -96,28 +110,55 @@ public class AudienceAnalysisService {
         this.costCalculator = new AiLlmCostCalculator();
         this.completions = completions;
         this.preprocessor = preprocessor;
+        this.batchCoordinator = batchCoordinator;
     }
 
     public AiAnalysisProcessResult process(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {
+        return process(roomId, windowStartAt, windowEndAt, () -> true);
+    }
+
+    public AiAnalysisProcessResult process(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt,
+                                           BooleanSupplier mayContinue) {
         validateWindow(roomId, windowStartAt, windowEndAt);
         var acquired = analyses.acquire(roomId, windowStartAt, windowEndAt);
         if (!acquired.created()) {
+            if (batchCoordinator != null && acquired.analysis().status() == AiAnalysisStatus.PENDING) {
+                return recoverPendingBatchInitialization(roomId, acquired.analysis().id(), windowStartAt, windowEndAt,
+                        mayContinue);
+            }
+            if (batchCoordinator != null && acquired.analysis().status() == AiAnalysisStatus.PROCESSING
+                    && batchCoordinator.hasBatches(acquired.analysis().id())) {
+                return batchCoordinator.resume(roomId, acquired.analysis().id(), false, mayContinue);
+            }
+            if (batchCoordinator != null && acquired.analysis().status() == AiAnalysisStatus.PROCESSING) {
+                return recoverMissingBatchManifest(roomId, acquired.analysis().id(), windowStartAt, windowEndAt,
+                        mayContinue);
+            }
             return new AiAnalysisProcessResult(acquired.analysis().id(), acquired.analysis().status(), false, 0);
+        }
+
+        List<AudienceMessage> candidates;
+        PreprocessedAudienceMessages preprocessed;
+        try {
+            candidates = messages.findAudienceMessages(roomId, windowStartAt, windowEndAt);
+            preprocessed = preprocessor.preprocess(candidates);
+        } catch (Exception e) {
+            return failCreatedAnalysis(acquired.analysis().id(), e);
+        }
+        if (batchCoordinator != null && batchCoordinator.needsBatch(preprocessed)) {
+            return batchCoordinator.start(roomId, acquired.analysis().id(), preprocessed, mayContinue);
         }
         if (!analyses.markProcessing(acquired.analysis().id())) {
             throw new IllegalStateException("분석 처리 상태로 변경할 수 없습니다.");
         }
 
         try {
-            List<AudienceMessage> candidates = messages.findAudienceMessages(roomId, windowStartAt, windowEndAt);
-            PreprocessedAudienceMessages preprocessed = preprocessor.preprocess(candidates);
             if (preprocessed.inputMessages().isEmpty()) {
                 if (!completions.completeEmpty(roomId, acquired.analysis().id())) {
                     throw new IllegalStateException("빈 분석 구간을 완료 상태로 변경할 수 없습니다.");
                 }
                 return new AiAnalysisProcessResult(acquired.analysis().id(), AiAnalysisStatus.COMPLETED, true, 0);
             }
-
             AudienceAnalysisLlmResponse response = analyzeWithRetry(acquired.analysis().id(), preprocessed.inputMessages());
             if (response == null || response.content() == null || response.modelName() == null
                     || response.modelName().isBlank() || response.modelName().length() > 100) {
@@ -136,6 +177,53 @@ public class AudienceAnalysisService {
             }
             return new AiAnalysisProcessResult(acquired.analysis().id(), AiAnalysisStatus.FAILED, true, 0);
         }
+    }
+
+    private AiAnalysisProcessResult failCreatedAnalysis(long analysisId, Exception e) {
+        if (!analyses.markProcessing(analysisId)) {
+            throw new IllegalStateException("분석 처리 상태로 변경할 수 없습니다.", e);
+        }
+        if (!analyses.markFailed(analysisId, safeErrorMessage(e))) {
+            throw new IllegalStateException("분석 실패 상태로 변경할 수 없습니다.", e);
+        }
+        return new AiAnalysisProcessResult(analysisId, AiAnalysisStatus.FAILED, true, 0);
+    }
+
+    /**
+     * markProcessing 직후 종료되어 manifest가 없는 경우에만 입력을 다시 읽는다.
+     * 상한 이내의 기존 단일 호출 분석은 기존 stale 정책을 그대로 따른다.
+     */
+    private AiAnalysisProcessResult recoverMissingBatchManifest(long roomId, long analysisId,
+                                                                 LocalDateTime windowStartAt,
+                                                                 LocalDateTime windowEndAt,
+                                                                 BooleanSupplier mayContinue) {
+        List<AudienceMessage> candidates = messages.findAudienceMessages(roomId, windowStartAt, windowEndAt);
+        PreprocessedAudienceMessages preprocessed = preprocessor.preprocess(candidates);
+        if (!batchCoordinator.needsBatch(preprocessed)) {
+            return new AiAnalysisProcessResult(analysisId, AiAnalysisStatus.PROCESSING, false, 0);
+        }
+        return batchCoordinator.recoverMissingManifest(roomId, analysisId, preprocessed, mayContinue);
+    }
+
+    /**
+     * batch 초기화 트랜잭션이 롤백되면 부모는 PENDING으로 남는다. batch 대상일 때만 다시
+     * 초기화하고, 상한 이내인 기존 단일 분석은 stale 정책이 종결할 때까지 재호출하지 않는다.
+     */
+    private AiAnalysisProcessResult recoverPendingBatchInitialization(long roomId, long analysisId,
+                                                                        LocalDateTime windowStartAt,
+                                                                        LocalDateTime windowEndAt,
+                                                                        BooleanSupplier mayContinue) {
+        List<AudienceMessage> candidates = messages.findAudienceMessages(roomId, windowStartAt, windowEndAt);
+        PreprocessedAudienceMessages preprocessed = preprocessor.preprocess(candidates);
+        if (!batchCoordinator.needsBatch(preprocessed)) {
+            return currentPending(analysisId);
+        }
+        return batchCoordinator.recoverMissingManifest(roomId, analysisId, preprocessed, mayContinue);
+    }
+
+    private AiAnalysisProcessResult currentPending(long analysisId) {
+        var analysis = analyses.findById(analysisId).orElseThrow();
+        return new AiAnalysisProcessResult(analysis.id(), analysis.status(), false, 0);
     }
 
     private void validateWindow(long roomId, LocalDateTime windowStartAt, LocalDateTime windowEndAt) {
@@ -266,17 +354,7 @@ public class AudienceAnalysisService {
     }
 
     private void validateSourceMessageIds(Set<Long> candidateIds, AiAnalysisResult result) {
-        Set<Long> assignedIds = new HashSet<>();
-        for (AiTopicResult topic : result.topics()) {
-            for (long sourceMessageId : topic.sourceMessageIds()) {
-                if (!candidateIds.contains(sourceMessageId)) {
-                    throw new InvalidAiAnalysisResultException("분석 대상이 아닌 메시지를 참조했습니다.");
-                }
-                if (!assignedIds.add(sourceMessageId)) {
-                    throw new InvalidAiAnalysisResultException("하나의 메시지는 하나의 주제 그룹에만 연결할 수 있습니다.");
-                }
-            }
-        }
+        sourceValidator.validate(candidateIds, result);
     }
 
     private String safeErrorMessage(Exception e) {

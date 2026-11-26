@@ -43,3 +43,5 @@ __pycache__/
 *.tfplan
 crash.log
 crash.*.log
+# SCRUM-91: mysqld-exporter 접속 정보(비밀번호 포함)
+infra/monitoring/mysqld-exporter.my.cnf

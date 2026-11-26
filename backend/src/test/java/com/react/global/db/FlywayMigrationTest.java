@@ -33,7 +33,7 @@ class FlywayMigrationTest {
             "polls", "poll_options", "poll_responses",
             "stt_sessions", "stt_segments", "stt_gaps",
             "ai_analyses", "ai_topic_groups", "ai_topic_group_messages",
-            "ai_analysis_finalizations",
+            "ai_analysis_finalizations", "ai_analysis_batches",
             "ai_llm_call_usages",
             "lecture_reports", "report_alert_outbox", "report_generation_attempts", "report_generation_slots",
             "report_webhook_inbox");
@@ -66,7 +66,7 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void ERD의_테이블이_모두_생성된다() {
+    void Flyway_V1부터_V17까지의_현재_테이블이_모두_생성된다() {
         List<String> tables = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables "
                         + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'",
@@ -213,6 +213,32 @@ class FlywayMigrationTest {
 
         assertThat(columns).contains("processing_started_at");
         assertThat(indexes).contains("idx_ai_analyses_status_processing_started");
+    }
+
+    @Test
+    void AI_배치는_배치별_상태와_전역_호출_시도_번호를_가진다() {
+        List<String> batchColumns = jdbc.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'ai_analysis_batches'
+                """, String.class);
+        List<String> batchIndexes = jdbc.queryForList("""
+                SELECT DISTINCT index_name
+                FROM information_schema.statistics
+                WHERE table_schema = DATABASE() AND table_name = 'ai_analysis_batches'
+                """, String.class);
+        List<String> analysisColumns = jdbc.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'ai_analyses'
+                """, String.class);
+
+        assertThat(batchColumns).containsExactlyInAnyOrder(
+                "id", "analysis_id", "batch_index", "status", "input_manifest",
+                "input_message_count", "input_character_count", "result_json", "model_name",
+                "claim_token", "lease_until", "error_code", "created_at", "updated_at", "completed_at");
+        assertThat(batchIndexes).contains("uk_ai_analysis_batches_analysis_index", "idx_ai_analysis_batches_status_lease");
+        assertThat(analysisColumns).contains("next_batch_attempt_number");
     }
 
     @Test
