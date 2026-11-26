@@ -26,7 +26,8 @@ export function useReport(source) {
         if (!alive) return
         status = value.status
         retryAvailable = value.retryAvailable === true
-        pollDelay = value.checkAfterMs ?? (pending(status) ? 5000 : null)
+        const awaitingResult = status === 'FAILED' && value.failureCategory === 'UNCONFIRMED'
+        pollDelay = value.checkAfterMs ?? (pending(status) || awaitingResult ? 5000 : null)
         halted = false
         setState({ ...value, error: null, busy: false })
       } catch (error) {

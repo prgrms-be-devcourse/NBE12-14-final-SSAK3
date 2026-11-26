@@ -41,7 +41,7 @@ class ReportAlertDispatcherTest {
         when(alerts.claim(any())).thenAnswer(call -> {
             lease.set(call.getArgument(0));
             return List.of(new Alert(42L, "OPENAI_HTTP_503", false, Instant.parse("2026-11-26T00:00:00Z")),
-                    new Alert(42L, "OPENAI_TIMEOUT", true, Instant.parse("2026-11-26T00:01:00Z")));
+                    new Alert(42L, "REPORT_DISPATCH_UNKNOWN", true, Instant.parse("2026-11-26T00:01:00Z")));
         });
     }
 
@@ -59,7 +59,7 @@ class ReportAlertDispatcherTest {
         var body = json.readTree(payload.get());
         assertThat(body.size()).isOne();
         assertThat(body.path("content").asText()).contains("2건", "2026-11-26T00:00:00Z",
-                "#42 최초 · OPENAI_HTTP_503", "#42 재시도 · OPENAI_TIMEOUT");
+                "#42 최초 · OPENAI_HTTP_503", "#42 재시도 · REPORT_DISPATCH_UNKNOWN (요청 전달 여부 미확정)");
         assertThat(query.get()).isEqualTo(expectedQuery);
         verify(alerts).acknowledge(lease.get());
         verify(alerts, never()).defer(any());

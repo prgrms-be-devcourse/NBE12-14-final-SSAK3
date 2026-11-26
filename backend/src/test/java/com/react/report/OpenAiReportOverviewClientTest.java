@@ -2,11 +2,13 @@ package com.react.report;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.react.report.service.BackgroundReportClient;
 import com.react.report.service.OpenAiReportOverviewClient;
 import com.react.report.service.ReportGenerationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -28,6 +30,8 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class OpenAiReportOverviewClientTest {
+    private static final String ATTEMPT = "e89f95e6-3806-4a2f-b0ed-481cd690ed35";
+    private static final String RESPONSES = "https://api.openai.com/v1/responses";
     private final ObjectMapper mapper = new ObjectMapper();
     private final RestClient.Builder builder = RestClient.builder();
     private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
@@ -37,6 +41,80 @@ class OpenAiReportOverviewClientTest {
     private OpenAiReportOverviewClient client(String key) {
         return new OpenAiReportOverviewClient(builder.build(), mapper, key, "gpt-6-luna", "요약 지침",
                 mapper.valueToTree(Map.of("type", "object")));
+    }
+
+    @Test
+    void background_접수에_로컬_시도키를_포함하고_조회와_삭제는_같은_ID에만_보낸다() {
+        var background = client.background();
+        server.expect(requestTo(RESPONSES)).andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.store").value(true)).andExpect(jsonPath("$.background").value(true))
+                .andExpect(jsonPath("$.metadata.report_attempt").value(ATTEMPT))
+                .andExpect(jsonPath("$.text.format.strict").value(true))
+                .andRespond(withSuccess("{\"id\":\"resp_abc\",\"status\":\"queued\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(RESPONSES + "/resp_abc")).andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer unit-test-key"))
+                .andRespond(withSuccess("""
+                        {"id":"resp_abc","status":"completed","output":[{"type":"message",
+                        "content":[{"type":"output_text","text":"{}"}]}]}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(RESPONSES + "/resp_abc")).andExpect(method(HttpMethod.DELETE))
+                .andRespond(withSuccess("{\"id\":\"resp_abc\",\"deleted\":true}", MediaType.APPLICATION_JSON));
+
+        assertThat(background.submit(input, ATTEMPT).path("id").asText()).isEqualTo("resp_abc");
+        assertThat(background.draft(background.retrieve("resp_abc"))).isEqualTo(mapper.createObjectNode());
+        background.delete("resp_abc");
+        server.verify();
+    }
+
+    @Test
+    void 접수_네트워크실패와_5xx_응답은_원문_없이_미확인으로_남긴다() {
+        server.expect(requestTo(RESPONSES)).andRespond(withException(new SocketTimeoutException("private error")));
+        server.expect(requestTo(RESPONSES)).andRespond(withStatus(HttpStatus.REQUEST_TIMEOUT).body("private error"));
+        server.expect(requestTo(RESPONSES)).andRespond(withStatus(HttpStatus.BAD_GATEWAY).body("private error"));
+        for (String diagnostic : new String[]{"OPENAI_TIMEOUT", "OPENAI_HTTP_408", "OPENAI_HTTP_502"}) {
+            assertThatThrownBy(() -> client.background().submit(input, ATTEMPT))
+                    .isInstanceOfSatisfying(BackgroundReportClient.SubmissionUnknown.class, error -> {
+                        assertThat(error.diagnosticCode()).isEqualTo(diagnostic);
+                        assertThat(error.getCause()).isNull();
+                        assertThat(error.getMessage()).doesNotContain("private", "unit-test-key");
+                    });
+        }
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "{}", "{\"id\":\"resp_a/b\"}", "{\"id\":\"resp_x\"} {}", "{broken"})
+    void 유효한_접수증이_없는_성공_응답은_미확인이다(String body) {
+        server.expect(requestTo(RESPONSES)).andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+        assertThatThrownBy(() -> client.background().submit(input, ATTEMPT))
+                .isInstanceOf(BackgroundReportClient.SubmissionUnknown.class);
+        server.verify();
+    }
+
+    @Test
+    void 접수_거절과_기존_응답의_404를_구분한다() {
+        server.expect(requestTo(RESPONSES)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, "30"));
+        server.expect(requestTo(RESPONSES + "/resp_abc")).andRespond(withResourceNotFound());
+        server.expect(requestTo(RESPONSES + "/resp_abc")).andRespond(withResourceNotFound());
+        var background = client.background();
+        assertThatThrownBy(() -> background.submit(input, ATTEMPT)).isInstanceOfSatisfying(ReportGenerationException.class,
+                failure -> assertThat(failure.diagnosticCode()).isEqualTo("OPENAI_HTTP_429_RATE_LIMIT"));
+        assertThatThrownBy(() -> background.retrieve("resp_abc")).isInstanceOf(BackgroundReportClient.NotFound.class);
+        assertThatThrownBy(() -> background.delete("resp_abc")).isInstanceOf(BackgroundReportClient.NotFound.class);
+        server.verify();
+    }
+
+    @Test
+    void 다른_응답_ID와_확인되지_않은_삭제는_거부한다() {
+        var background = client.background();
+        server.expect(requestTo(RESPONSES + "/resp_abc"))
+                .andRespond(withSuccess("{\"id\":\"resp_other\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(RESPONSES + "/resp_abc"))
+                .andRespond(withSuccess("{\"id\":\"resp_abc\",\"deleted\":\"true\"}", MediaType.APPLICATION_JSON));
+        assertThatThrownBy(() -> background.retrieve("resp_abc")).isInstanceOf(ReportGenerationException.class);
+        assertThatThrownBy(() -> background.delete("resp_abc")).isInstanceOf(ReportGenerationException.class);
+        server.verify();
     }
 
     @Test

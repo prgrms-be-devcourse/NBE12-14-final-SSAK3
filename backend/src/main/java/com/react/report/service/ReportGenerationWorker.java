@@ -15,13 +15,18 @@ public class ReportGenerationWorker {
     private final ReportGenerationRepository reports;
     private final ReportOverviewService overview;
     private final ObjectMapper mapper;
+    private final BackgroundReportGeneration background;
 
     public void check(long roomId) {
         reports.pending(roomId).ifPresent(report -> {
             if (report.invalidTime()) {
                 reports.failInvalidTime(report.reportId());
             } else if (report.ready()) {
-                reports.withClaim(report.reportId(), () -> generate(roomId, report));
+                if (background.handles(report.reportId())) {
+                    reports.withPendingLock(report.reportId(), () -> background.start(roomId, report));
+                } else {
+                    reports.withClaim(report.reportId(), () -> generate(roomId, report));
+                }
             }
         });
     }

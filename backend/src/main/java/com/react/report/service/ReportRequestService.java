@@ -30,7 +30,7 @@ public class ReportRequestService {
     public ReportReceipt retry(long roomId, String hostEmail) {
         var room = lockOwnedRoom(roomId, hostEmail);
         requireEnded(room);
-        if (reports.retryTemporaryFailure(roomId)) {
+        if (reports.retryEligibleReport(roomId)) {
             events.publishEvent(new ReportReadinessRequested(roomId));
         }
         return reports.findByRoom(roomId).orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));

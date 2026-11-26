@@ -27,7 +27,8 @@ async function setup(context, rooms) {
       const ids = url.searchParams.get('roomIds').split(',').map(Number)
       state.statusCalls.push(ids)
       if (state.statusError) return fail()
-      return ok({ rooms: state.rooms.filter(room => ids.includes(room.roomId)).map(({ roomId, reportStatus }) => ({ roomId, reportStatus })), serverTime })
+      return ok({ rooms: state.rooms.filter(room => ids.includes(room.roomId))
+        .map(({ roomId, reportStatus, reportUnconfirmed }) => ({ roomId, reportStatus, reportUnconfirmed })), serverTime })
     }
     const cursor = url.searchParams.get('cursor')
     state.pageCalls.push(cursor)
@@ -203,6 +204,21 @@ test('5초 갱신은 진행 중인 보고서만 조회하고, 실패 안내를 �
   expect(state.statusCalls.slice(requestsBeforeHide)).toEqual([[32]])
   await page.clock.fastForward(15000)
   expect(state.statusCalls).toHaveLength(requestsBeforeHide + 1)
+})
+
+test('내 강연 기록에서도 결과 확인 중인 보고서만 계속 조회한다', async ({ page, context }) => {
+  const uncertain = { ...historyRoom(33, 'FAILED'), reportUnconfirmed: true }
+  const state = await setup(context, [uncertain, historyRoom(32, 'FAILED')])
+  await page.clock.install()
+  await page.goto(historyUrl)
+  await expect(row(page, 33)).toContainText('보고서 결과 확인 중')
+  await expect(row(page, 32)).toContainText('보고서 생성 실패')
+  uncertain.reportStatus = 'COMPLETED'
+  delete uncertain.reportUnconfirmed
+  await page.clock.fastForward(5100)
+  await expect(row(page, 33).getByRole('link', { name: '회고 보고서 보기' })).toBeVisible()
+  await page.clock.fastForward(10000)
+  expect(state.statusCalls).toEqual([[33]])
 })
 
 test('미접수 재확인은 서버 종료 시각에서 남은 시간만 기다리고 해당 방만 한 번 조회한다', async ({ page, context }) => {

@@ -304,6 +304,27 @@ class ReportGenerationOrderIntegrationTest {
     }
 
     @Test
+    void 처리_결과_확인_중_두_탭이_재시도해도_새_접수는_한_번이다() throws Exception {
+        jdbc.sql("""
+                INSERT INTO lecture_reports(lecture_room_id, status, error_message, created_at)
+                VALUES (?, 'FAILED', 'REPORT_DISPATCH_UNKNOWN', NOW())
+                """).param(room.roomId()).update();
+        var existing = requests.request(room.roomId(), EMAIL);
+        assertThat(existing.message()).isEqualTo("보고서 생성 요청의 처리 결과를 확인하고 있습니다.");
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var start = new CyclicBarrier(2);
+            var first = pool.submit(together(start, () -> requests.retry(room.roomId(), EMAIL)));
+            var second = pool.submit(together(start, () -> requests.retry(room.roomId(), EMAIL)));
+            var accepted = first.get(10, TimeUnit.SECONDS);
+            assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo(accepted);
+            assertThat(accepted.reportId()).isEqualTo(existing.reportId());
+            assertThat(accepted.status()).isEqualTo(ReportReceipt.Status.PENDING);
+        }
+        assertThat(checks).hasSize(1);
+        assertThat(query.status(room.roomId(), EMAIL).retryAvailable()).isFalse();
+    }
+
+    @Test
     void 일시적_실패를_여러_탭에서_재시도해도_추가_호출은_한번으로_제한한다() throws Exception {
         when(overviewClient.generate(any())).thenThrow(ReportGenerationException.temporaryFailure());
         var original = requests.request(room.roomId(), EMAIL);
