@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.react.report.service.ReportGenerationException.ProviderFailure;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -17,9 +18,14 @@ import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public final class OpenAiReportOverviewClient implements ReportOverviewClient {
+    private static final String RESPONSES = "https://api.openai.com/v1/responses";
+    private static final Pattern ATTEMPT_KEY = Pattern.compile("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
+    private enum Operation { GENERATE, SUBMIT, RESOURCE }
     private final RestClient http;
     private final ObjectReader json;
     private final String apiKey;
@@ -40,25 +46,100 @@ public final class OpenAiReportOverviewClient implements ReportOverviewClient {
 
     @Override
     public JsonNode generate(JsonNode input) {
+        var body = requestBody(input, false);
+        return decodeDraft(parseObject(exchange(http.post().uri(RESPONSES).contentType(MediaType.APPLICATION_JSON)
+                .body(body), Operation.GENERATE)));
+    }
+
+    public BackgroundReportClient background() {
+        return new Background();
+    }
+
+    private Map<String, Object> requestBody(JsonNode input, boolean store) {
         if (apiKey.isBlank()) throw ReportGenerationException.providerFailure(ProviderFailure.OPENAI_API_KEY_MISSING);
         if (model.isBlank()) throw ReportGenerationException.providerFailure(ProviderFailure.OPENAI_MODEL_MISSING);
         var format = Map.of("type", "json_schema", "name", "lecture_report", "strict", true, "schema", schema);
-        var body = Map.of("model", model, "store", false, "reasoning", Map.of("effort", "low"),
+        return Map.of("model", model, "store", store, "reasoning", Map.of("effort", "low"),
                 "service_tier", "default", "instructions", instructions, "input", input.toString(),
                 "text", Map.of("format", format));
-        String raw;
-        try {
-            raw = http.post().uri("https://api.openai.com/v1/responses")
-                    .headers(headers -> headers.setBearerAuth(apiKey))
-                    .contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(String.class);
-        } catch (RestClientResponseException ex) {
-            if (ex.getStatusCode().value() == 429) throw ReportGenerationException.providerFailure(classifyRateLimit(ex));
-            throw ReportGenerationException.httpFailure(ex.getStatusCode().value());
-        } catch (RestClientException ex) {
-            // 공급자 응답 본문과 키를 저장하거나 로그로 전달하지 않는다.
-            throw ReportGenerationException.providerFailure(classifyTransport(ex));
+    }
+
+    private final class Background implements BackgroundReportClient {
+        @Override
+        public JsonNode submit(JsonNode input, String attemptKey) {
+            if (attemptKey == null || !ATTEMPT_KEY.matcher(attemptKey).matches()) {
+                throw new IllegalArgumentException("Invalid report attempt");
+            }
+            var body = new HashMap<>(requestBody(input, true));
+            body.put("background", true);
+            body.put("metadata", Map.of("report_attempt", attemptKey));
+            String raw = exchange(http.post().uri(RESPONSES).contentType(MediaType.APPLICATION_JSON).body(body), Operation.SUBMIT);
+            try {
+                JsonNode response = parseObject(raw);
+                if (!BackgroundReportClient.validResponseId(response.path("id").textValue())) {
+                    throw ReportGenerationException.invalidFormat();
+                }
+                return response;
+            } catch (ReportGenerationException failure) {
+                throw new SubmissionUnknown(failure);
+            }
         }
-        JsonNode response = parseObject(raw);
+
+        @Override
+        public JsonNode retrieve(String responseId) {
+            return resource(HttpMethod.GET, responseId);
+        }
+
+        @Override
+        public void delete(String responseId) {
+            JsonNode confirmation = resource(HttpMethod.DELETE, responseId);
+            if (!confirmation.path("deleted").isBoolean() || !confirmation.get("deleted").booleanValue()) {
+                throw ReportGenerationException.invalidFormat();
+            }
+        }
+
+        private JsonNode resource(HttpMethod method, String responseId) {
+            if (!BackgroundReportClient.validResponseId(responseId)) throw ReportGenerationException.invalidFormat();
+            if (apiKey.isBlank()) throw ReportGenerationException.providerFailure(ProviderFailure.OPENAI_API_KEY_MISSING);
+            String raw = exchange(http.method(method).uri(RESPONSES + "/{responseId}", responseId), Operation.RESOURCE);
+            JsonNode resource = parseObject(raw);
+            if (!responseId.equals(resource.path("id").textValue())) throw ReportGenerationException.invalidFormat();
+            return resource;
+        }
+
+        @Override
+        public JsonNode draft(JsonNode completedResponse) {
+            return decodeDraft(completedResponse);
+        }
+    }
+
+    private String exchange(RestClient.RequestHeadersSpec<?> request, Operation operation) {
+        try {
+            var result = request.headers(headers -> headers.setBearerAuth(apiKey)).retrieve().toEntity(String.class);
+            if (!result.getStatusCode().is2xxSuccessful()) {
+                var failure = ReportGenerationException.httpFailure(result.getStatusCode().value());
+                if (operation == Operation.SUBMIT) throw new BackgroundReportClient.SubmissionUnknown(failure);
+                throw failure;
+            }
+            return result.getBody();
+        } catch (RestClientResponseException ex) {
+            int status = ex.getStatusCode().value();
+            if (operation == Operation.RESOURCE && status == 404) throw new BackgroundReportClient.NotFound();
+            var failure = status == 429 ? ReportGenerationException.providerFailure(classifyRateLimit(ex))
+                    : ReportGenerationException.httpFailure(status);
+            if (operation == Operation.SUBMIT && (status == 408 || !ex.getStatusCode().is4xxClientError())) {
+                throw new BackgroundReportClient.SubmissionUnknown(failure);
+            }
+            throw failure;
+        } catch (RestClientException ex) {
+            var failure = ReportGenerationException.providerFailure(classifyTransport(ex));
+            if (operation == Operation.SUBMIT) throw new BackgroundReportClient.SubmissionUnknown(failure);
+            throw failure;
+        }
+    }
+
+    private JsonNode decodeDraft(JsonNode response) {
+        if (response == null || !response.isObject()) throw ReportGenerationException.invalidFormat();
         if (!"completed".equals(response.path("status").textValue())) {
             throw ReportGenerationException.providerFailure(ProviderFailure.OPENAI_INCOMPLETE_RESPONSE);
         }

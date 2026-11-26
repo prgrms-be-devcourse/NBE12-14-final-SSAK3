@@ -10,12 +10,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 @Repository
 @RequiredArgsConstructor
 public class ReportGenerationRepository {
     private final JdbcClient jdbc;
     private final JdbcTemplate template;
+    private final ReportAttemptRepository attempts;
 
     public record Candidate(long reportId, String email, boolean invalidTime, boolean ready) {}
 
@@ -64,9 +66,28 @@ public class ReportGenerationRepository {
 
     // MySQL releases this connection-scoped lock if the worker disconnects. A restarting
     // instance can distinguish an abandoned PROCESSING report from another live worker.
-    private static final String LOCK_NAME = "SHA2(CONCAT(DATABASE(), ':lecture_reports:', %s), 256)";
+    static final String LOCK_NAME = "SHA2(CONCAT(DATABASE(), ':lecture_reports:', %s), 256)";
 
     public void withClaim(long reportId, Runnable generate) {
+        withLock(reportId, owner -> {
+            int claimed = owner.sql("""
+                    UPDATE lecture_reports SET status='PROCESSING',updated_at=UTC_TIMESTAMP()+INTERVAL 9 HOUR
+                    WHERE id=? AND status='PENDING'
+                    AND NOT EXISTS (SELECT 1 FROM report_generation_attempts WHERE report_id=?)
+                    """).params(reportId, reportId).update();
+            if (claimed == 1) generate.run();
+        });
+    }
+
+    public void withPendingLock(long reportId, Runnable generate) {
+        withLock(reportId, owner -> {
+            boolean pending = owner.sql("SELECT EXISTS(SELECT 1 FROM lecture_reports WHERE id=? AND status='PENDING')")
+                    .param(reportId).query(Boolean.class).single();
+            if (pending) generate.run();
+        });
+    }
+
+    private void withLock(long reportId, Consumer<JdbcClient> action) {
         template.execute((ConnectionCallback<Void>) connection -> {
             var owner = JdbcClient.create(new SingleConnectionDataSource(connection, true));
             String name = LOCK_NAME.formatted("?");
@@ -74,13 +95,7 @@ public class ReportGenerationRepository {
                 return null;
             }
             try {
-                int claimed = owner.sql("""
-                        UPDATE lecture_reports SET status = 'PROCESSING', updated_at = UTC_TIMESTAMP() + INTERVAL 9 HOUR
-                        WHERE id = ? AND status = 'PENDING'
-                        """).param(reportId).update();
-                if (claimed == 1) {
-                    generate.run();
-                }
+                action.accept(owner);
             } finally {
                 owner.sql("SELECT RELEASE_LOCK(" + name + ")").param(reportId).query(Integer.class).single();
             }
@@ -89,11 +104,31 @@ public class ReportGenerationRepository {
     }
 
     public void failAbandonedJobs(int limit) {
+        attempts.expireUnknownSnapshots(limit);
+        attempts.recoverAbandonedSubmissions(limit);
         jdbc.sql("""
                 UPDATE lecture_reports SET status = 'FAILED', error_message = 'GENERATION_INTERRUPTED',
                        updated_at = UTC_TIMESTAMP() + INTERVAL 9 HOUR
-                WHERE status = 'PROCESSING' AND IS_FREE_LOCK(%s) = 1 ORDER BY id LIMIT ?
+                WHERE status = 'PROCESSING' AND IS_FREE_LOCK(%s) = 1
+                  AND NOT EXISTS (SELECT 1 FROM report_generation_attempts a
+                                   WHERE a.report_id=lecture_reports.id AND a.retry_used=lecture_reports.retry_used)
+                ORDER BY id LIMIT ?
                 """.formatted(LOCK_NAME.formatted("id"))).param(limit).update();
+    }
+
+    public void completePending(long reportId, String content) {
+        jdbc.sql("""
+                UPDATE lecture_reports SET status='COMPLETED',content=CAST(? AS JSON),error_message=NULL,
+                       generated_at=UTC_TIMESTAMP()+INTERVAL 9 HOUR,updated_at=UTC_TIMESTAMP()+INTERVAL 9 HOUR
+                WHERE id=? AND status='PENDING'
+                """).params(content, reportId).update();
+    }
+
+    public void failPending(long reportId, String reason) {
+        jdbc.sql("""
+                UPDATE lecture_reports SET status='FAILED',error_message=?,updated_at=UTC_TIMESTAMP()+INTERVAL 9 HOUR
+                WHERE id=? AND status='PENDING'
+                """).params(reason, reportId).update();
     }
 
     public void complete(long reportId, String content) {

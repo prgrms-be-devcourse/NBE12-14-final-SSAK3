@@ -160,6 +160,37 @@ class ReportReadApiTest {
     }
 
     @Test
+    void unknownDispatchOffersOneRetryAndWaitsForALateResultWithoutDeclaringFailure() throws Exception {
+        jdbc.sql("""
+                INSERT INTO lecture_reports(lecture_room_id,status,error_message,created_at)
+                VALUES (?,'FAILED','REPORT_DISPATCH_UNKNOWN',NOW())
+                """).param(roomId).update();
+        var unconfirmed = json.createObjectNode().put("status", "FAILED").put("retryAvailable", true)
+                .put("delayed", false).put("failureCategory", "UNCONFIRMED");
+        assertThat(read(STATUS, roomId)).isEqualTo(unconfirmed);
+        assertThat(read(REPORT, roomId).required("message").asText()).isEqualTo("보고서 생성 요청의 처리 결과를 확인하고 있습니다.");
+        jdbc.sql("UPDATE lecture_reports SET retry_used=TRUE WHERE lecture_room_id=?").param(roomId).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(unconfirmed.put("retryAvailable", false));
+        jdbc.sql("UPDATE lecture_reports SET status='COMPLETED',error_message=NULL WHERE lecture_room_id=?").param(roomId).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(json.createObjectNode().put("status", "COMPLETED")
+                .put("retryAvailable", false).put("delayed", false).putNull("failureCategory"));
+    }
+
+    @Test
+    void expiredDispatchClosesResultRecoveryAndPreservesOnlyAnUnspentRetry() throws Exception {
+        jdbc.sql("""
+                INSERT INTO lecture_reports(lecture_room_id,status,error_message,created_at)
+                VALUES (?,'FAILED','REPORT_DISPATCH_EXPIRED',NOW())
+                """).param(roomId).update();
+        var expired = json.createObjectNode().put("status", "FAILED").put("retryAvailable", true)
+                .put("delayed", false).put("failureCategory", "RECOVERY_EXPIRED");
+        assertThat(read(STATUS, roomId)).isEqualTo(expired);
+        assertThat(read(REPORT, roomId).required("message").asText()).isEqualTo("보고서 생성 요청의 결과를 확인할 수 있는 기간이 지났습니다.");
+        jdbc.sql("UPDATE lecture_reports SET retry_used=TRUE WHERE lecture_room_id=?").param(roomId).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(expired.put("retryAvailable", false));
+    }
+
+    @Test
     void onlyTheUnspentTransientFailureShowsTheRetryAction() throws Exception {
         jdbc.sql("""
                 INSERT INTO lecture_reports(lecture_room_id,status,error_message,created_at)

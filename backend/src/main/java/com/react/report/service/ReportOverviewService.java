@@ -20,15 +20,34 @@ public class ReportOverviewService {
     private final ReportOverviewValidator validator;
     private final ObjectMapper mapper;
 
+    record Snapshot(ReportInput input, ReportTimeline timeline, ReportEvidenceCatalog catalog) {}
+
     /** 입력 수집 트랜잭션이 끝난 뒤 동일한 스냅샷으로 생성·검증한다. 호출 실패는 작업자에게 그대로 반환한다. */
     public ReportContent generate(long roomId, String hostEmail) {
-        ReportInput input = inputs.collect(roomId, hostEmail);
+        var snapshot = prepare(roomId, hostEmail);
+        JsonNode draft = snapshot.catalog().hasAudience() ? client.generate(prompt(snapshot)) : null;
+        return assemble(snapshot, draft);
+    }
+
+    Snapshot prepare(long roomId, String hostEmail) {
+        return snapshot(inputs.collect(roomId, hostEmail));
+    }
+
+    Snapshot snapshot(ReportInput input) {
         ReportTimeline timeline = ReportTimelineAssembler.assemble(input);
-        var catalog = ReportEvidenceCatalog.from(timeline);
+        return new Snapshot(input, timeline, ReportEvidenceCatalog.from(timeline));
+    }
+
+    JsonNode prompt(Snapshot snapshot) {
+        return modelInput(snapshot.input(), snapshot.timeline(), snapshot.catalog());
+    }
+
+    ReportContent assemble(Snapshot snapshot, JsonNode draft) {
+        var timeline = snapshot.timeline();
+        var catalog = snapshot.catalog();
         JsonNode overview;
         ReportFollowUp followUp;
         if (catalog.hasAudience()) {
-            JsonNode draft = client.generate(modelInput(input, timeline, catalog));
             overview = validator.validate(draft, timeline, catalog);
             followUp = ReportFollowUpValidator.validate(draft.get("followUp"), catalog);
         } else {

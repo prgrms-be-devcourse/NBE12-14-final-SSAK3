@@ -1,6 +1,7 @@
 package com.react.report.config;
 
 import com.react.report.service.ReportRecoveryService;
+import com.react.report.service.ReportResponseRecovery;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -50,5 +51,26 @@ public class ReportGenerationConfiguration {
             @Value("${app.ai.report.recovery-interval:30s}") Duration interval) {
         // 첫 실행은 서버가 준비되는 즉시 시작한다. 모델 호출은 별도 생성 풀에서 실행한다.
         return event -> scheduler.scheduleWithFixedDelay(recovery::recover, interval);
+    }
+
+    @Bean
+    @Profile("!test")
+    ThreadPoolTaskScheduler reportResponseScheduler() {
+        var scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(3);
+        scheduler.setThreadNamePrefix("report-response-");
+        return scheduler;
+    }
+
+    @Bean
+    @Profile("!test")
+    ApplicationListener<ApplicationReadyEvent> startResponseRecovery(
+            ReportResponseRecovery recovery, @Qualifier("reportResponseScheduler") ThreadPoolTaskScheduler scheduler) {
+        return event -> {
+            var interval = Duration.ofSeconds(5);
+            scheduler.scheduleWithFixedDelay(recovery::receiveWebhooks, interval);
+            scheduler.scheduleWithFixedDelay(recovery::pollResponses, interval);
+            scheduler.scheduleWithFixedDelay(recovery::deleteResponses, interval);
+        };
     }
 }

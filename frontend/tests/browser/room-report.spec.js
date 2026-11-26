@@ -273,6 +273,65 @@ test('세부 원인이 없으면 AI 장애를 단정하지 않고 저장된 강�
   expect(report.calls.every(call => call === 'GET status')).toBe(true)
 })
 
+test('결과 확인 중인 요청은 실패로 표시하지 않고 한 번 즉시 재시도할 수 있다', async ({ page, context }) => {
+  const { report } = await setup(context, 'FAILED')
+  Object.assign(report, { failureCategory: 'UNCONFIRMED', retryAvailable: true })
+  await page.clock.install()
+  await page.goto(roomUrl)
+  const panel = page.getByRole('region', { name: '회고 보고서' })
+  await expect(panel.getByRole('status')).toHaveText('보고서 생성 요청의 처리 결과를 확인하고 있어요.')
+  await expect(panel.getByText(/이미 접수됐다면 AI가 같은 강연을 두 번/)).toBeVisible()
+  await expect(panel).not.toContainText('실패')
+  expect(report.calls).toEqual(['GET status'])
+  await panel.getByRole('button', { name: '보고서 생성 다시 시도' }).click()
+  await expect(panel.getByRole('status')).toHaveText('강연 기록을 정리하고 있어요.')
+  await expect(panel.getByRole('button')).toHaveCount(0)
+  expect(report.calls).toEqual(['GET status', 'POST retry'])
+})
+
+for (const retryAvailable of [true, false]) {
+  test('결과 확인 중에는 상태만 다시 조회해 뒤늦게 완료된 보고서를 표시한다 - 재시도 가능 ' + retryAvailable,
+    async ({ page, context }) => {
+      const { report } = await setup(context, 'FAILED')
+      Object.assign(report, { failureCategory: 'UNCONFIRMED', retryAvailable })
+      await page.clock.install()
+      await page.goto(roomUrl)
+      const panel = page.getByRole('region', { name: '회고 보고서' })
+      await expect(panel.getByRole('status')).toHaveText('보고서 생성 요청의 처리 결과를 확인하고 있어요.')
+      await expect(panel.getByRole('button', { name: '보고서 생성 다시 시도' })).toHaveCount(retryAvailable ? 1 : 0)
+      report.status = 'COMPLETED'
+      await page.clock.fastForward(reportPoll + 100)
+      await expect(openReport(page)).toBeVisible()
+      await page.clock.fastForward(reportPoll * 2)
+      expect(report.calls).toEqual(['GET status', 'GET status'])
+    })
+}
+
+for (const retryAvailable of [true, false]) {
+  test('30일 동안 접수를 확인하지 못하면 조회를 멈추고 남은 재시도만 제공한다 - 재시도 가능 ' + retryAvailable,
+    async ({ page, context }) => {
+      const { report } = await setup(context, 'FAILED')
+      Object.assign(report, { failureCategory: 'UNCONFIRMED', retryAvailable })
+      await page.clock.install()
+      await page.goto(roomUrl)
+      const panel = page.getByRole('region', { name: '회고 보고서' })
+      await expect(panel.getByRole('status')).toContainText('처리 결과를 확인하고 있어요')
+      report.failureCategory = 'RECOVERY_EXPIRED'
+      await page.clock.fastForward(reportPoll + 100)
+      await expect(panel.getByRole('status')).toHaveText('보고서 결과를 확인할 수 있는 기간이 지났어요.')
+      await expect(panel.getByText(/30일 동안 이전 요청의 결과/)).toBeVisible()
+      const retry = panel.getByRole('button', { name: '보고서 생성 다시 시도' })
+      await expect(retry).toHaveCount(retryAvailable ? 1 : 0)
+      await page.clock.fastForward(reportPoll * 2)
+      expect(report.calls).toEqual(['GET status', 'GET status'])
+      if (retryAvailable) {
+        await expect(panel.getByText(/같은 강연을 두 번/)).toBeVisible()
+        await retry.click()
+        await expect(panel.getByRole('status')).toHaveText('강연 기록을 정리하고 있어요.')
+      }
+    })
+}
+
 test('상태 조회에 실패하면 생성 실패로 표시하거나 재요청하지 않는다', async ({ page, context }) => {
   const { report } = await setup(context, 'FAILED')
   report.failureCategory = 'AI_SERVICE'

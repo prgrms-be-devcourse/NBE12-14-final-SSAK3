@@ -146,6 +146,9 @@ SESSION_COOKIE_SECURE=true
 GEMINI_API_KEY=<Gemini API 키>
 GEMINI_MODEL=<실제로 사용 가능한 모델명>
 OPENAI_API_KEY=<OpenAI API 키>
+OPENAI_REPORT_MODEL=gpt-6-luna
+OPENAI_REPORT_BACKGROUND_ENABLED=false
+OPENAI_REPORT_WEBHOOK_SECRET=
 REPORT_ALERT_WEBHOOK_URL=
 ```
 
@@ -157,6 +160,16 @@ REPORT_ALERT_WEBHOOK_URL=
 - 실제 비밀번호·API 키·GHCR 토큰은 Git, 문서, Docker 이미지나 공개 로그에 포함하지 않는다.
 - CI 테스트용 값이나 `.env.example`의 예시 비밀값을 운영에서 재사용하지 않는다.
 - OpenAI 및 Gemini 외부 API 호출에는 별도의 사용량·요금·모델 지원 여부 확인이 필요하다.
+
+### OpenAI 보고서 완료 웹훅
+
+기본 설정은 동기 호출이다. 백그라운드 생성을 켜면 서버가 응답 ID를 저장하고 같은 결과를 조회할 수 있다. OpenAI에 `background=true`, `store=true`를 보내므로 프로젝트의 모델 이용 권한과 데이터 보관 정책을 먼저 확인한다. `OPENAI_REPORT_MODEL`의 기본값은 `gpt-6-luna`이며 실제 운영 프로젝트에서 접근 가능한 모델을 지정한다. [OpenAI 백그라운드 모드](https://developers.openai.com/api/docs/guides/background)
+
+1. 보고서 API 키와 같은 OpenAI 프로젝트의 **Settings → Webhooks**에서 공개 HTTPS 주소 `https://www.re-act.site/api/v1/webhooks/openai`를 등록한다. 이벤트는 `response.completed`, `response.failed`, `response.incomplete`, `response.cancelled`를 선택한다. [OpenAI 웹훅 설정](https://developers.openai.com/api/docs/guides/webhooks) · [지원 이벤트](https://developers.openai.com/api/reference/resources/webhooks/methods/create)
+2. 발급된 서명 키(`whsec_…`)를 운영 서버 `/opt/react/.env`의 `OPENAI_REPORT_WEBHOOK_SECRET`에 보관하고 `OPENAI_REPORT_BACKGROUND_ENABLED=true`를 설정한다. [Backend 전용 변수 수정](#backend-전용-변수-수정) 절차로 `backend`와 `web`을 함께 재생성한다.
+3. 프록시가 원본 본문과 `webhook-id`, `webhook-timestamp`, `webhook-signature`를 백엔드까지 전달하고 서버 시계가 동기화되어야 한다. 서명이 유효한 지원 이벤트에 대한 `204`는 이벤트 접수만 확인한다. 실제 생성부터 확인하려면 테스트용 강연 보고서의 결과가 종료 화면의 ‘회고 보고서 보기’까지 이어지는지 확인한다. `401`이면 서명 키·프록시·시계(허용 오차 5분)를, `503`이면 DB 접수 가능 여부와 키 설정을 확인한다. 백그라운드 모드를 켠 서버는 유효한 서명 키를 설정해야 기동한다.
+
+응답 ID가 이미 DB에 있으면 웹훅을 받지 못해도 서버가 같은 ID를 조회한다. 생성 요청의 응답을 잃어 ID가 없으면 웹훅으로 그 요청을 식별해야 한다. 기능을 다시 끌 때도 처리 중인 기존 시도에는 API 키와 웹훅 설정을 유지한다. [상태별 처리 및 검증 범위](../experiments/report-background-recovery.md)
 
 ### 보고서 AI 오류 알림
 
@@ -336,7 +349,7 @@ sudo vi /opt/react/.env
 
 ### Backend 전용 변수 수정
 
-`CORS_ALLOWED_ORIGINS`, `ROOM_JOIN_BASE_URL`, `SESSION_COOKIE_SECURE`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`처럼 **Backend 컨테이너에만 주입되는 변수**는 현재 이미지 태그를 유지한 채 컨테이너를 재생성하여 반영할 수 있다.
+`CORS_ALLOWED_ORIGINS`, `ROOM_JOIN_BASE_URL`, `SESSION_COOKIE_SECURE`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OPENAI_API_KEY`, `OPENAI_REPORT_MODEL`, `OPENAI_REPORT_BACKGROUND_ENABLED`, `OPENAI_REPORT_WEBHOOK_SECRET`, `REPORT_ALERT_WEBHOOK_URL`처럼 **Backend 컨테이너에만 주입되는 변수**는 현재 이미지 태그를 유지한 채 컨테이너를 재생성하여 반영할 수 있다.
 
 Backend 재생성 시 Docker 내부 IP가 변경될 수 있으므로 Frontend Nginx도 함께 재생성한다.
 

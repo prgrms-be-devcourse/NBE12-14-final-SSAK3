@@ -86,12 +86,15 @@ public final class ReportAlertDispatcher {
     private static String message(List<Alert> batch) {
         var earliest = batch.stream().map(Alert::failedAt).min(java.time.Instant::compareTo).orElseThrow();
         var latest = batch.stream().map(Alert::failedAt).max(java.time.Instant::compareTo).orElseThrow();
-        var message = new StringBuilder("RE:ACT 회고 보고서 AI 생성 실패 ").append(batch.size())
+        var message = new StringBuilder("RE:ACT 회고 보고서 AI 생성 알림 ").append(batch.size())
                 .append("건\n발생 시각(UTC) ").append(earliest);
         if (!earliest.equals(latest)) message.append(" ~ ").append(latest);
         for (Alert failure : batch) {
             message.append("\n보고서 #").append(failure.reportId()).append(failure.retried() ? " 재시도 · " : " 최초 · ")
                     .append(failure.diagnosticCode());
+            if ("REPORT_DISPATCH_UNKNOWN".equals(failure.diagnosticCode())) {
+                message.append(" (요청 전달 여부 미확정)");
+            }
         }
         return message.toString();
     }

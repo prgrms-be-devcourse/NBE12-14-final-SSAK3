@@ -8,7 +8,7 @@ const pollMs = 5000
 const batchLimit = 50
 const blank = { rows: null, nextCursor: null, baselineCount: 0, hasNew: false,
   loading: null, pageError: null, headError: false, statusError: false, forbidden: false }
-const inProgress = status => status === 'PENDING' || status === 'PROCESSING'
+const inProgress = room => room.reportStatus === 'PENDING' || room.reportStatus === 'PROCESSING' || room.reportUnconfirmed
 
 function serverTimestamp(response) {
   const timestamp = Date.parse(response?.serverTime)
@@ -18,11 +18,11 @@ function serverTimestamp(response) {
 
 // The server truncates endedAt to seconds. A monotonic deadline keeps the receipt
 // grace period independent of the lecturer's wall clock.
-function observed(room, status, serverNow, graceChecked = false) {
+function observed(room, serverNow, graceChecked = false) {
   const remaining = Date.parse(room.endedAt) + receiptGraceMs - serverNow
-  const awaiting = status === null && remaining > 0 && !graceChecked
-  const delay = awaiting ? remaining : inProgress(status) ? pollMs : Infinity
-  return { ...room, reportStatus: status, awaiting, checkAt: performance.now() + delay }
+  const awaiting = room.reportStatus === null && remaining > 0 && !graceChecked
+  const delay = awaiting ? remaining : inProgress(room) ? pollMs : Infinity
+  return { ...room, awaiting, checkAt: performance.now() + delay }
 }
 
 export function useRoomHistory(restored) {
@@ -80,13 +80,17 @@ export function useRoomHistory(restored) {
           const result = await request(`${endpoint}/statuses?roomIds=${batch.join(',')}`)
           if (!active || version !== generation) return
           const serverNow = serverTimestamp(result)
-          for (const item of result.rooms) statuses.set(item.roomId, { status: item.reportStatus, serverNow })
+          for (const item of result.rooms) {
+            statuses.set(item.roomId, { reportStatus: item.reportStatus, reportUnconfirmed: item.reportUnconfirmed === true, serverNow })
+          }
         }
         // A room omitted by the owner-scoped server lookup is no longer available.
         const nextRows = state.rows.filter(row => !requested.has(row.roomId) || statuses.has(row.roomId))
           .map(row => {
             const item = statuses.get(row.roomId)
-            return item ? observed(row, item.status, item.serverNow, expired.has(row.roomId)) : row
+            if (!item) return row
+            const { serverNow, ...report } = item
+            return observed({ ...row, ...report }, serverNow, expired.has(row.roomId))
           })
         update({ rows: nextRows, statusError: false })
       } catch (error) {
@@ -107,7 +111,7 @@ export function useRoomHistory(restored) {
         const page = await request(cursor ? `${endpoint}?cursor=${encodeURIComponent(cursor)}` : endpoint)
         if (!active) return
         const serverNow = serverTimestamp(page)
-        const incoming = page.rooms.map(row => observed(row, row.reportStatus, serverNow))
+        const incoming = page.rooms.map(row => observed(row, serverNow))
         if (mode === 'more') {
           const previous = new Set(state.rows.map(row => row.roomId))
           update({ rows: [...state.rows, ...incoming.filter(row => !previous.has(row.roomId))],
@@ -143,7 +147,7 @@ export function useRoomHistory(restored) {
       }
       void checkHead()
       const now = performance.now()
-      update({ rows: state.rows.map(row => inProgress(row.reportStatus) ? { ...row, checkAt: now } : row) })
+      update({ rows: state.rows.map(row => inProgress(row) ? { ...row, checkAt: now } : row) })
       checkDue()
     }
 
@@ -157,7 +161,7 @@ export function useRoomHistory(restored) {
       // On Back, the selected room alone needs an immediate status check. Other
       // pending reports resume their normal interval after the list is restored.
       const nextPoll = performance.now() + pollMs
-      update({ rows: state.rows.map(row => inProgress(row.reportStatus) ? { ...row, checkAt: nextPoll } : row) })
+      update({ rows: state.rows.map(row => inProgress(row) ? { ...row, checkAt: nextPoll } : row) })
       const visited = state.rows?.find(row => row.roomId === restored.openedId)
       if (visited) void checkStatuses([visited])
       else schedule()

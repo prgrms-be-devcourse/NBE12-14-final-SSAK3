@@ -6,6 +6,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -126,8 +128,9 @@ class ReportRequestApiTest {
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ROOM_NOT_ENDED"));
     }
 
-    @Test
-    void retryOnlyRequeuesAnEligibleFailureOnce() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"LLM_TEMPORARY_FAILURE", "REPORT_DISPATCH_UNKNOWN", "REPORT_DISPATCH_EXPIRED"})
+    void retryOnlyRequeuesAnEligibleFailureOnce(String eligibleReason) throws Exception {
         String path = "/api/v1/rooms/{id}/reports/retry";
         jdbc.sql("INSERT INTO lecture_reports(lecture_room_id,status,created_at) VALUES (?,'FAILED',NOW())")
                 .param(room).update();
@@ -137,14 +140,13 @@ class ReportRequestApiTest {
             mvc.perform(post(path, room).with(csrf()).with(user(owner).roles("HOST")))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("FAILED"));
         }
-        jdbc.sql("UPDATE lecture_reports SET error_message='LLM_TEMPORARY_FAILURE' WHERE id=?").param(id).update();
+        jdbc.sql("UPDATE lecture_reports SET error_message=? WHERE id=?").params(eligibleReason, id).update();
         mvc.perform(post(path, room).with(csrf()).with(user(owner).roles("HOST")))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.data.reportId").value(id))
                 .andExpect(jsonPath("$.data.status").value("PENDING"));
         assertThat(jdbc.sql("SELECT retry_used AND error_message IS NULL FROM lecture_reports WHERE id=?")
                 .param(id).query(Boolean.class).single()).isTrue();
-        jdbc.sql("UPDATE lecture_reports SET status='FAILED', error_message='LLM_TEMPORARY_FAILURE' WHERE id=?")
-                .param(id).update();
+        jdbc.sql("UPDATE lecture_reports SET status='FAILED', error_message=? WHERE id=?").params(eligibleReason, id).update();
         mvc.perform(post(path, room).with(csrf()).with(user(owner).roles("HOST")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.reportId").value(id))
                 .andExpect(jsonPath("$.data.status").value("FAILED"));
