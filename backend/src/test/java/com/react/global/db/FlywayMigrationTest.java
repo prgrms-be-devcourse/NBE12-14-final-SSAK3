@@ -35,7 +35,8 @@ class FlywayMigrationTest {
             "ai_analyses", "ai_topic_groups", "ai_topic_group_messages",
             "ai_analysis_finalizations",
             "ai_llm_call_usages",
-            "lecture_reports");
+            "lecture_reports", "report_alert_outbox", "report_generation_attempts", "report_generation_slots",
+            "report_webhook_inbox");
 
     @Autowired
     private DataSource dataSource;
@@ -65,13 +66,26 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void ERD의_16개_테이블이_생성된다() {
+    void ERD의_테이블이_모두_생성된다() {
         List<String> tables = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables "
                         + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'",
                 String.class);
 
         assertThat(tables).containsExactlyInAnyOrderElementsOf(EXPECTED_TABLES);
+    }
+
+    @Test
+    void 보고서_전송_슬롯은_두_개로_제한하고_시도와_웹훅의_만기_조회에_인덱스가_있다() {
+        assertThat(jdbc.queryForList("SELECT slot_id FROM report_generation_slots ORDER BY slot_id", Integer.class))
+                .containsExactly(1, 2);
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO report_generation_slots(slot_id) VALUES(3)"))
+                .hasMessageContaining("chk_report_slot_id");
+        assertThat(jdbc.queryForList("""
+                SELECT DISTINCT index_name FROM information_schema.statistics WHERE table_schema=DATABASE()
+                AND table_name IN ('report_generation_attempts','report_webhook_inbox')
+                """, String.class)).contains("uk_report_attempt_ordinal","uk_report_attempt_response",
+                        "idx_report_attempt_due","idx_report_webhook_due");
     }
 
     @Test
@@ -125,6 +139,8 @@ class FlywayMigrationTest {
         long roomId = insertRoom(hostId, "CODE01");
 
         jdbc.update("INSERT INTO lecture_reports(lecture_room_id, status, created_at) VALUES (?, 'PENDING', NOW())", roomId);
+        assertThat(jdbc.queryForObject("SELECT retry_used FROM lecture_reports WHERE lecture_room_id=?",
+                Boolean.class, roomId)).isFalse();
         assertThatThrownBy(() -> jdbc.update("INSERT INTO lecture_reports(lecture_room_id, status, created_at) "
                 + "VALUES (?, 'PENDING', NOW())", roomId))
                 .isInstanceOf(DataIntegrityViolationException.class);

@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -94,9 +93,9 @@ class StompChatSendTest extends StompIntegrationTestSupport {
 
         // 보낸 사람을 포함해 같은 방 구독자 모두가 받는다.
         for (var queue : java.util.List.of(queueA, queueB, queueHost)) {
-            Map<String, Object> event = StompTestClient.nextOfType(queue, "CHAT_CREATED", 5000);
+            Map<String, Object> event = StompTestClient.nextOfType(queue, "CHAT_BATCH", 5000);
             assertThat(event).isNotNull();
-            assertThat(data(event).get("content")).isEqualTo("안녕하세요");
+            assertThat(messages(event).get(0).get("content")).isEqualTo("안녕하세요");
         }
         sessionA.disconnect();
         sessionB.disconnect();
@@ -116,23 +115,18 @@ class StompChatSendTest extends StompIntegrationTestSupport {
         sessionA.send(chatDestination(), Map.of("content", "우리 방 이야기"));
 
         // 우리 방에는 방송이 갔고(= 방송이 실제로 일어났고), 다른 방에는 오지 않는다.
-        assertThat(StompTestClient.nextOfType(queueA, "CHAT_CREATED", 5000)).isNotNull();
-        assertThat(StompTestClient.nextOfType(queueOther, "CHAT_CREATED", 1000)).isNull();
+        assertThat(StompTestClient.nextOfType(queueA, "CHAT_BATCH", 5000)).isNotNull();
+        assertThat(StompTestClient.nextOfType(queueOther, "CHAT_BATCH", 1000)).isNull();
         sessionA.disconnect();
         sessionOther.disconnect();
     }
 
     @Test
-    void 방송은_명세의_CHAT_CREATED_모양이다() throws Exception {
+    void 방송은_명세의_CHAT_BATCH_모양이다() throws Exception {
         var a = join("청중A");
         StompSession session = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
-        var echoedAttempt = new AtomicReference<String>();
         String topic = "/topic/rooms/" + room.getId() + "/chat";
-        var queue = client.subscribe(session, topic, (headers, event) -> {
-            if ("CHAT_CREATED".equals(event.get("type"))) {
-                echoedAttempt.set(headers.getFirst("X-Chat-Attempt"));
-            }
-        });
+        var queue = client.subscribe(session, topic);
         assertThat(StompTestClient.awaitBroadcast(queue, () -> broker.convertAndSend(topic, Map.of("type", "WARMUP"))))
                 .isNotNull();
 
@@ -142,8 +136,8 @@ class StompChatSendTest extends StompIntegrationTestSupport {
         headers.set("X-Chat-Attempt", attempt);
         session.send(headers, Map.of("content", "모양 확인"));
 
-        Map<String, Object> data = data(StompTestClient.nextOfType(queue, "CHAT_CREATED", 5000));
-        assertThat(echoedAttempt.get()).isEqualTo(attempt);
+        Map<String, Object> data = messages(StompTestClient.nextOfType(queue, "CHAT_BATCH", 5000)).get(0);
+        assertThat(data.get("attempt")).isEqualTo(attempt);
         assertThat(((Number) data.get("messageId")).longValue()).isPositive();
         assertThat(((Number) data.get("roomId")).longValue()).isEqualTo(room.getId());
         assertThat(data.get("content")).isEqualTo("모양 확인");
@@ -191,7 +185,7 @@ class StompChatSendTest extends StompIntegrationTestSupport {
         expectError(sessionA, chatDestination(), Map.of("content", "   "), ErrorCode.INVALID_INPUT);
 
         assertThat(savedCount(room)).isZero();
-        assertThat(StompTestClient.nextOfType(roomQueue, "CHAT_CREATED", 300)).isNull();
+        assertThat(StompTestClient.nextOfType(roomQueue, "CHAT_BATCH", 300)).isNull();
         sessionA.disconnect();
         sessionB.disconnect();
     }
@@ -224,6 +218,59 @@ class StompChatSendTest extends StompIntegrationTestSupport {
         assertThat(savedCount(endedRoom)).isZero();
         readySession.disconnect();
         endedSession.disconnect();
+    }
+
+    @Test
+    void 정상적으로_연결한_청중은_다른_방에_채팅을_보낼_수_없다() throws Exception {
+        LectureRoom otherRoom = liveRoom();
+        var a = join("청중A");
+        var other = join(otherRoom, "다른방청중");
+        StompSession sessionA = client.connect(StompTestClient.ALLOWED_ORIGIN, a.cookie());
+        StompSession sessionOther = client.connect(StompTestClient.ALLOWED_ORIGIN, other.cookie());
+        try {
+            var queueA = subscribeReady(sessionA, room);
+            var queueOther = subscribeReady(sessionOther, otherRoom);
+
+            // 자신의 방에는 정상적으로 저장되고 방송된다.
+            sessionA.send(chatDestination(), Map.of("content", "우리 방 이야기"));
+            assertThat(StompTestClient.nextOfType(queueA, "CHAT_BATCH", 5000)).isNotNull();
+            assertThat(savedCount(room)).isEqualTo(1);
+
+            // 정상 연결 상태에서 다른 방 번호로 전송해도 해당 방의 참여 인증이 필요하다.
+            expectError(sessionA, "/app/rooms/" + otherRoom.getId() + "/chat",
+                    Map.of("content", "다른 방 접근 시도"), ErrorCode.UNAUTHENTICATED);
+
+            assertThat(StompTestClient.nextOfType(queueOther, "CHAT_BATCH", 1000)).isNull();
+            assertThat(savedCount(otherRoom)).isZero();
+            assertThat(savedCount(room)).isEqualTo(1);
+        } finally {
+            sessionA.disconnect();
+            sessionOther.disconnect();
+        }
+    }
+
+    @Test
+    void 다른_강연방의_강연자는_채팅을_보낼_수_없다() throws Exception {
+        User otherHost = newHost("other-" + UUID.randomUUID() + "@example.com");
+        LectureRoom otherRoom = newRoom(otherHost, "다른 강연방");
+        jdbc.sql("UPDATE lecture_rooms SET status = 'LIVE' WHERE id = ?").param(otherRoom.getId()).update();
+        var other = join(otherRoom, "다른방청중");
+        StompSession hostSession = client.connect(StompTestClient.ALLOWED_ORIGIN, loginCookies(hostEmail));
+        StompSession sessionOther = client.connect(StompTestClient.ALLOWED_ORIGIN, other.cookie());
+        try {
+            var queueOther = subscribeReady(sessionOther, otherRoom);
+
+            // 실제 로그인한 강연자도 소유하지 않은 방에는 전송할 수 없다.
+            expectError(hostSession, "/app/rooms/" + otherRoom.getId() + "/chat",
+                    Map.of("content", "다른 방 접근 시도"), ErrorCode.FORBIDDEN);
+
+            assertThat(StompTestClient.nextOfType(queueOther, "CHAT_BATCH", 1000)).isNull();
+            assertThat(savedCount(otherRoom)).isZero();
+            assertThat(savedCount(room)).isZero();
+        } finally {
+            hostSession.disconnect();
+            sessionOther.disconnect();
+        }
     }
 
     @Test
@@ -262,11 +309,11 @@ class StompChatSendTest extends StompIntegrationTestSupport {
         var queue = subscribeReady(listenerSession, room);
 
         // 서버를 거치지 않고, 강연자가 보낸 것처럼 꾸민 CHAT_CREATED 를 방송 주소에 직접 보낸다.
-        attackerSession.send("/topic/rooms/" + room.getId() + "/chat", Map.of("type", "CHAT_CREATED",
+        attackerSession.send("/topic/rooms/" + room.getId() + "/chat", Map.of("type", "CHAT_BATCH",
                 "data", Map.of("content", "가짜 방송", "sender", Map.of("type", "HOST", "id", host.getId(), "name", "강연자"))));
 
         assertThat(StompTestClient.awaitClosed(attackerSession)).isTrue();
-        assertThat(StompTestClient.nextOfType(queue, "CHAT_CREATED", 500)).isNull();
+        assertThat(StompTestClient.nextOfType(queue, "CHAT_BATCH", 500)).isNull();
         assertThat(savedCount(room)).isZero();
         listenerSession.disconnect();
     }
@@ -296,6 +343,11 @@ class StompChatSendTest extends StompIntegrationTestSupport {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> data(Map<String, Object> event) {
         return (Map<String, Object>) event.get("data");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.List<Map<String, Object>> messages(Map<String, Object> event) {
+        return (java.util.List<Map<String, Object>>) data(event).get("messages");
     }
 
     /** 구독한 뒤, 서버가 그 구독을 등록해 방송이 닿는 것을 워밍업 방송으로 확인하고 큐를 돌려준다. */

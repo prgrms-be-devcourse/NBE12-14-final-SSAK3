@@ -1,4 +1,4 @@
-// RE:ACT MVP ERD v1.2 (16개 테이블)
+// RE:ACT MVP ERD (20개 테이블)
 // dbdiagram.io 에서 열 수 있는 DBML 원본이다. 실제 스키마의 기준은 Flyway 마이그레이션
 // (backend/src/main/resources/db/migration)이며, 이 파일과 어긋나면 새 V 파일로 맞추고 이 파일도 함께 갱신한다.
 // 링크: https://dbdiagram.io/e/6af3e06d063ad9ee168b99b8/6af3f73504c7e97b1d2c23f0
@@ -21,9 +21,11 @@ Table lecture_rooms {
   created_at datetime [not null]
   started_at datetime
   ended_at datetime
+  report_receipt_due boolean [not null, default: false, note: '강연 종료 후 보고서 접수를 기다리는 동안 참']
   indexes {
     host_user_id
     (host_user_id, status, ended_at, id) [name: 'idx_lecture_rooms_host_status_ended_id']
+    (report_receipt_due, id) [name: 'idx_rooms_report_receipt_due']
   }
 }
 
@@ -198,7 +200,12 @@ Table ai_topic_groups {
   category varchar(30) [not null, note: 'QUESTION, OPINION, REQUEST, CONFUSION, MIXED']
   summary text [not null]
   created_at datetime [not null]
-  indexes { analysis_id [name: 'idx_ai_topic_groups_analysis'] }
+  answered_at datetime
+  answered_by_user_id bigint [ref: > users.id]
+  indexes {
+    analysis_id [name: 'idx_ai_topic_groups_analysis']
+    answered_at [name: 'idx_ai_topic_groups_answered_at']
+  }
   Note: '주제별 청중 의견 요약. 대표 질문 아님. 혼합된 의견이면 MIXED로 분류하고 상반된 의견을 요약에 보존'
 }
 
@@ -218,7 +225,58 @@ Table lecture_reports {
   status varchar(20) [not null, note: 'PENDING, PROCESSING, COMPLETED, FAILED']
   content json
   error_message varchar(500)
+  retry_used boolean [not null, default: false, note: '강연자의 수동 재시도 사용 여부. 보고서당 1회']
   created_at datetime [not null]
   generated_at datetime
   updated_at datetime
+  indexes {
+    (status, id) [name: 'idx_reports_status_id']
+  }
 }
+
+Table report_alert_outbox {
+  report_id bigint [not null]
+  retry_used boolean [not null]
+  diagnostic_code varchar(64) [not null]
+  created_at datetime(6) [not null, note: '실패 시각 UTC']
+  next_attempt_at datetime(6) [not null, note: '다시 전송할 수 있는 시각 UTC']
+  lease_token char(36)
+  indexes {
+    (report_id, retry_used) [pk]
+    (next_attempt_at, report_id, retry_used) [name: 'idx_report_alert_due']
+    lease_token [name: 'idx_report_alert_lease']
+  }
+}
+
+Ref: report_alert_outbox.report_id > lecture_reports.id [delete: cascade]
+
+Table report_generation_attempts {
+  attempt_key char(36) [pk, note: '공급자 metadata.report_attempt와 대응하는 UUID']
+  report_id bigint [not null]
+  retry_used boolean [not null, note: 'false는 최초 요청, true는 강연자의 재시도']
+  state varchar(20) [not null, note: 'SUBMITTING, UNKNOWN, REMOTE, DELETE_PENDING, FINISHED, EXPIRED']
+  response_id varchar(255) [unique, note: '대소문자를 구분하는 공급자 응답 ID']
+  input_json json [note: '결과 검증에 쓰는 입력 스냅샷. 시도의 성공·실패 확정 또는 미확정 보존기간 만료 시 비운다.']
+  failure_alerted boolean [not null, default: false, note: '한 생성 시도에서 개발자 오류 알림을 이미 접수했는지 표시한다.']
+  next_action_at datetime(6) [not null, note: 'UTC']
+  indexes {
+    (report_id, retry_used) [unique, name: 'uk_report_attempt_ordinal']
+    (state, next_action_at, response_id) [name: 'idx_report_attempt_due']
+  }
+}
+
+Table report_generation_slots {
+  slot_id tinyint [pk, note: 'V15에서 1과 2를 생성한다.']
+  attempt_key char(36) [unique, note: 'NULL이면 다음 시도가 사용할 수 있다.']
+}
+
+Table report_webhook_inbox {
+  response_id varchar(255) [pk, note: '서명을 확인한 이벤트에서 받은 OpenAI 응답 ID']
+  next_action_at datetime(6) [not null, note: 'UTC']
+  indexes {
+    (next_action_at, response_id) [name: 'idx_report_webhook_due']
+  }
+}
+
+Ref: report_generation_attempts.report_id > lecture_reports.id [delete: cascade]
+Ref: report_generation_attempts.attempt_key - report_generation_slots.attempt_key [delete: set null]

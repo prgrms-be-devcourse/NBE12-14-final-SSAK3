@@ -2,6 +2,7 @@ package com.react.report;
 
 import com.react.report.dto.ReportReceipt;
 import com.react.report.repository.ReportRequestRepository;
+import com.react.report.service.ReportRecoveryService;
 import com.react.report.service.ReportRequestService;
 import com.react.room.service.LectureRoomService;
 import org.flywaydb.core.Flyway;
@@ -39,6 +40,7 @@ class RoomEndedReportIntegrationTest {
     @Autowired DataSource dataSource;
     @Autowired LectureRoomService rooms;
     @Autowired ReportRequestService reportRequests;
+    @Autowired ReportRecoveryService recovery;
     @Autowired TransactionTemplate transactions;
     @MockitoSpyBean ReportRequestRepository reports;
     private String owner;
@@ -89,7 +91,7 @@ class RoomEndedReportIntegrationTest {
     }
 
     @Test
-    void receiptFailureKeepsTheRoomEndedAndAllowsManualReceipt() throws InterruptedException {
+    void receiptFailureKeepsTheRoomEndedAndRecoveryFindsTheSameReceiptAsManualRequest() throws InterruptedException {
         var allowInsert = new CountDownLatch(1);
         var rolledBack = new CountDownLatch(1);
         doAnswer(call -> {
@@ -114,7 +116,16 @@ class RoomEndedReportIntegrationTest {
         }
         assertThat(rolledBack.await(10, TimeUnit.SECONDS)).isTrue();
         assertThat(reports.findByRoom(room)).isEmpty();
-        assertThat(reportRequests.request(room, owner).status()).isEqualTo(ReportReceipt.Status.PENDING);
+        assertThat(receiptDue()).isTrue();
+        recovery.recover();
+        assertThat(receiptDue()).isFalse();
+        var receipt = reports.findByRoom(room).orElseThrow();
+        assertThat(receipt.status()).isEqualTo(ReportReceipt.Status.PENDING);
+        assertThat(reportRequests.request(room, owner)).isEqualTo(receipt);
+    }
+
+    private boolean receiptDue() {
+        return jdbc.sql("SELECT report_receipt_due FROM lecture_rooms WHERE id=?").param(room).query(Boolean.class).single();
     }
 
     private void endRoom() {

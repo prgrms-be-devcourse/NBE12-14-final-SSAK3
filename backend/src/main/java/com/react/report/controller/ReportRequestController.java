@@ -22,7 +22,15 @@ public class ReportRequestController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<ReportReceipt>> request(@PathVariable long roomId, Authentication authentication) {
-        var receipt = reports.request(roomId, hosts.requireHostEmail(authentication));
+        return response(reports.request(roomId, hosts.requireHostEmail(authentication)));
+    }
+
+    @PostMapping("/retry")
+    public ResponseEntity<ApiResponse<ReportReceipt>> retry(@PathVariable long roomId, Authentication authentication) {
+        return response(reports.retry(roomId, hosts.requireHostEmail(authentication)));
+    }
+
+    private ResponseEntity<ApiResponse<ReportReceipt>> response(ReportReceipt receipt) {
         return ResponseEntity.status(receipt.inProgress() ? HttpStatus.ACCEPTED : HttpStatus.OK)
                 .body(ApiResponse.of(receipt));
     }

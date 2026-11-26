@@ -30,7 +30,7 @@ function HistoryRow({ row, remember }) {
       {row.reportStatus === 'COMPLETED'
         ? <Link className="history-report-link" to={roomPath + '/report'} aria-describedby={titleId}
             onClick={event => remember(event, row.roomId)}>회고 보고서 보기</Link>
-        : <span className="history-report-status">{statusText[row.reportStatus] ??
+        : <span className="history-report-status">{row.reportUnconfirmed ? '보고서 결과 확인 중' : statusText[row.reportStatus] ??
             (row.awaiting ? '보고서 접수 확인 중' : '보고서 접수 확인 필요')}</span>}
     </div>
   </li>

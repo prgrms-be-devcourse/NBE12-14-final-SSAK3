@@ -1,4 +1,4 @@
-import { Client } from '@stomp/stompjs'
+import { Client, ReconnectionTimeMode } from '@stomp/stompjs'
 import { getCsrfTokenForStomp } from '../stt/api.js'
 
 // 강연방 STOMP 연결의 공통 진입점이다. 연결·CSRF 확인·재접속 시 재구독·오류 큐 구독과
@@ -17,7 +17,10 @@ export function openRoomSocket({
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
   const client = new Client({
     brokerURL: `${scheme}://${location.host}/ws`,
+    // 서버가 끊겼을 때 모든 클라이언트가 3초마다 일제히 재접속하지 않도록 간격을 지수로 늘린다.
     reconnectDelay: 3000,
+    reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
+    maxReconnectDelay: 30000,
     connectionTimeout: 8000,
     beforeConnect: async () => {
       try {

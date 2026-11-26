@@ -237,9 +237,11 @@ test('a browser checkpoint must contain each final, including one received after
   first.release()
   await tick()
   assert.equal(f.recorder.getSnapshot().navigationSafe, false)
+  assert.equal(f.recorder.getSnapshot().unsecuredSegmentCount, 1)
   last.release()
   await tick()
   assert.equal(f.recorder.getSnapshot().navigationSafe, true)
+  assert.equal(f.recorder.getSnapshot().unsecuredSegmentCount, 0)
   const localCopy = structuredClone(f.snapshot())
   const durableKeys = localCopy.queue.filter(item => item.kind === 'segment').map(item => item.body.segmentKey)
   assert.equal(new Set(durableKeys).size, 2)
@@ -274,6 +276,63 @@ test('both saves can fail; a later disk retry secures archived finals and keeps 
   assert.equal(f.recorder.getSnapshot().navigationSafe, true)
   await f.recorder.start(true)
   assert.equal(f.active(), false)
+  await f.recorder.dispose()
+})
+
+test('offline finals can be exported from memory and a local retry succeeds while still offline', async () => {
+  const f = fixture()
+  await f.recorder.init(); await f.recorder.start()
+  const save = f.store.save
+  f.store.save = async () => { throw new Error('quota') }
+  f.api.me = async () => { throw new TypeError('offline') }
+  f.emit({ finals: [segment, { ...segment, transcript: '두 번째 발언' }], interim: '임시 발언' })
+  await tick()
+  assert.equal(f.recorder.getSnapshot().unsecuredSegmentCount, 2)
+  const exported = JSON.parse(await f.recorder.exportRecords())
+  assert.equal(exported.roomId, 10)
+  assert.deepEqual(exported.records.filter(item => item.kind === 'segment').map(item => item.body.transcript),
+    [segment.transcript, '두 번째 발언'])
+  assert.equal(f.recorder.getSnapshot().unsecuredSegmentCount, 2)
+  f.store.save = save
+  await f.recorder.retry()
+  assert.equal(f.recorder.getSnapshot().unsecuredSegmentCount, 0)
+  assert.equal(f.recorder.getSnapshot().pending, 2)
+  assert.equal(f.active(), false)
+  await f.recorder.dispose()
+})
+
+test('a room change saves the trailing final only to the original recorder and cancels a pending export', async () => {
+  const f = fixture()
+  await f.recorder.init(); await f.recorder.start()
+  const auth = gate()
+  f.api.me = async () => { await auth.promise; return { userId: 1 } }
+  const download = f.recorder.exportRecords()
+  f.recorder.speech.stop = async () => f.emit({ finals: [segment], interim: '' })
+  await f.recorder.dispose()
+  auth.release()
+  await assert.rejects(download)
+  assert.deepEqual(f.snapshot().queue.filter(item => item.kind === 'segment').map(item => item.body.transcript),
+    [segment.transcript])
+  assert.equal(f.calls.filter(([kind]) => kind === 'send').length, 0)
+})
+
+test('a delayed identity response cannot expose memory-only records after an account switch', async () => {
+  const f = fixture()
+  await f.recorder.init(); await f.recorder.start()
+  f.failStorage()
+  f.recorder.data.retryPaused = true
+  f.emit({ finals: [segment], interim: '' })
+  await tick()
+  const auth = gate()
+  f.api.me = async () => { await auth.promise; return { userId: 1 } }
+  const downloading = f.recorder.exportRecords()
+  f.api.me = async () => ({ userId: 2 })
+  await f.recorder.retry()
+  auth.release()
+  await assert.rejects(downloading)
+  assert.equal(f.recorder.getSnapshot().unsecuredSegmentCount, 0)
+  assert.equal(f.recorder.getSnapshot().visible, false)
+  assert.equal(f.calls.filter(([kind]) => kind === 'send').length, 0)
   await f.recorder.dispose()
 })
 

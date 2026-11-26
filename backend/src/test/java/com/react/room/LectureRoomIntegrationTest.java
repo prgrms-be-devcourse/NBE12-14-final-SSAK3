@@ -341,10 +341,21 @@ class LectureRoomIntegrationTest {
         assertThat(rows).hasSize(2);
         assertThat(rows).anyMatch(row -> row.required("roomId").asLong() == missing && row.required("reportStatus").isNull())
                 .anyMatch(row -> row.required("roomId").asLong() == pending && row.required("reportStatus").asText().equals("PENDING"));
-        jdbc.sql("UPDATE lecture_reports SET status = 'COMPLETED' WHERE lecture_room_id = ?").param(pending).update();
+        jdbc.sql("UPDATE lecture_reports SET status='FAILED', error_message='REPORT_DISPATCH_UNKNOWN' WHERE lecture_room_id=?")
+                .param(pending).update();
+        var page = mvc.perform(get("/api/v1/rooms/history").with(user(ownerEmail).roles("HOST")))
+                .andExpect(status().isOk()).andReturn();
+        assertThat(createdData(page).required("rooms"))
+                .anyMatch(row -> row.required("roomId").asLong() == pending && row.path("reportUnconfirmed").asBoolean());
         mvc.perform(get("/api/v1/rooms/history/statuses").with(user(ownerEmail).roles("HOST"))
                         .param("roomIds", Long.toString(pending)))
-                .andExpect(jsonPath("$.data.rooms[0].reportStatus").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.rooms[0].reportStatus").value("FAILED"))
+                .andExpect(jsonPath("$.data.rooms[0].reportUnconfirmed").value(true));
+        jdbc.sql("UPDATE lecture_reports SET status='COMPLETED', error_message=NULL WHERE lecture_room_id=?").param(pending).update();
+        mvc.perform(get("/api/v1/rooms/history/statuses").with(user(ownerEmail).roles("HOST"))
+                        .param("roomIds", Long.toString(pending)))
+                .andExpect(jsonPath("$.data.rooms[0].reportStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.rooms[0].reportUnconfirmed").doesNotExist());
     }
 
     @Test

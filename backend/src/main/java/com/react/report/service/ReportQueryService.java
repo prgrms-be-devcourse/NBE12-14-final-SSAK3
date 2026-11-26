@@ -35,10 +35,11 @@ public class ReportQueryService {
         var row = reports.findDetail(roomId).orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
         var createdAt = row.createdAt().toInstant(STORAGE_OFFSET);
         if (row.status() != ReportReceipt.Status.COMPLETED) {
-            return new ReportDetailView(row.reportId(), roomId, row.status(), createdAt, null, null);
+            return new ReportDetailView(row.reportId(), roomId, row.status(), createdAt, null, null,
+                    ReportStatusView.FailureCategory.from(row.status(), row.errorMessage()));
         }
         return new ReportDetailView(row.reportId(), roomId, row.status(), createdAt,
-                row.generatedAt().toInstant(STORAGE_OFFSET), storedContent(row.content()));
+                row.generatedAt().toInstant(STORAGE_OFFSET), storedContent(row.content()), null);
     }
 
     private JsonNode storedContent(String content) {

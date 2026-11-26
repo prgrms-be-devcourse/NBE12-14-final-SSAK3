@@ -2,6 +2,7 @@ import { ApiError, isTemporary } from './api.js'
 
 const RETRIES = [1000, 2000, 4000, 8000, 16000]
 const clockUnavailable = '서버 시각을 확인하지 못했습니다. 녹음을 다시 시작해 주세요.'
+const storageUnavailable = '브라우저에 기록을 보관할 수 없어 녹음을 중단했습니다. 저장 공간을 확인한 뒤 저장 재시도를 눌러 주세요.'
 const fresh = () => ({ version: 1, startKey: null, session: null, ownsSession: false, queue: [], archived: [],
   gap: null, stopReason: null, retryPaused: false, retryCount: 0, wasListening: false })
 
@@ -21,6 +22,7 @@ export class Recorder {
     this.unsecuredSegments = new Set()
     this.storageOk = true
     this.authOk = true
+    this.accountRevision = 0
     this.visible = true
     this.eligible = false
     this.speech = speechFactory({ onResult: value => this.result(value), onEnd: error => this.interrupted(error),
@@ -42,6 +44,7 @@ export class Recorder {
       storageOk: this.storageOk, authOk: this.authOk, visible: this.visible,
       hasSession: !!this.data.session, stopPending: !!this.data.stopReason,
       readyToCloseRoom: this.readyToCloseRoom(),
+      unsecuredSegmentCount: this.visible ? this.unsecuredSegments.size : 0,
       hasUnsecuredSegments: this.unsecuredSegments.size > 0,
       awaitingSpeechEnd: !!this.pausing,
       navigationSafe: this.navigationPause === 'paused' && this.unsecuredSegments.size === 0,
@@ -58,7 +61,10 @@ export class Recorder {
     this.saving = task
     try {
       await task
-      if (this.unsecuredSegments.size) {
+      const storageRecovered = !this.storageOk
+      this.storageOk = true
+      if (storageRecovered || this.unsecuredSegments.size) {
+        if (storageRecovered && this.message === storageUnavailable) this.message = '브라우저 저장소를 다시 사용할 수 있습니다.'
         // Another final may have arrived while this particular snapshot was being written.
         for (const item of [...snapshot.queue, ...snapshot.archived]) {
           if (item.kind === 'segment') this.unsecuredSegments.delete(item.body.segmentKey)
@@ -69,7 +75,7 @@ export class Recorder {
     } catch {
       if (this.storageOk) {
         this.storageOk = false
-        this.message = '브라우저에 기록을 보관할 수 없어 녹음을 중단했습니다. 화면을 닫으면 일부 기록을 잃을 수 있습니다.'
+        this.message = storageUnavailable
         this.pause('ERROR')
       }
       this.publish()
@@ -96,10 +102,7 @@ export class Recorder {
     this.cancel(this.retryTimer)
     this.retryTimer = null
     // Either destination is sufficient. An unavailable server must not delay the disk write.
-    void this.persist().then(ok => {
-      if (ok) this.storageOk = true
-      this.publish()
-    })
+    void this.persist()
     if (this.authOk) this.drain()
     else this.verifyUser().then(() => this.drain()).catch(error => this.fail(error))
   }
@@ -140,8 +143,12 @@ export class Recorder {
   }
 
   async verifyUser() {
+    const revision = this.accountRevision
     const me = await this.api.me()
+    if (this.disposed || revision !== this.accountRevision) throw new ApiError(401, 'ACCOUNT_CHANGED')
     if (String(me.userId) !== String(this.userId)) {
+      this.accountRevision++
+      this.authOk = false
       this.visible = false
       this.publish()
       throw new ApiError(401, 'ACCOUNT_CHANGED')
@@ -250,7 +257,7 @@ export class Recorder {
   }
 
   result({ finals, interim }) {
-    if (this.disposed || !this.data.session) return
+    if ((this.disposed && !this.collectingLastResults) || !this.data.session) return
     this.interim = interim
     for (const final of finals) {
       const segment = { ...final, startKey: this.data.startKey, segmentKey: this.uuid() }
@@ -260,7 +267,10 @@ export class Recorder {
       if (this.recent.length > 30) this.recent.shift()
     }
     this.publish()
-    if (finals.length) this.persist().then(() => this.drain())
+    if (finals.length) {
+      void this.persist()
+      void this.drain()
+    }
   }
 
   pause(reason = 'ERROR') {
@@ -424,17 +434,18 @@ export class Recorder {
 
   async retry() {
     if (this.disposed || !this.loaded || !this.release || this.busy || this.phase === 'blocked') return
+    this.data.retryCount = 0
+    this.data.retryPaused = false
+    this.cancel(this.retryTimer)
+    this.retryTimer = null
+    // Local recovery uses the existing account/room key even while the network is unavailable.
+    const saved = this.persist()
     try {
       await this.verifyUser()
-      if (await this.persist()) this.storageOk = true
-      this.data.retryCount = 0
-      this.data.retryPaused = false
-      this.cancel(this.retryTimer)
-      this.retryTimer = null
-      await this.persist()
-      this.publish()
-      await this.drain()
+      if (!this.disposed) await this.drain()
     } catch (error) { await this.fail(error) }
+    await saved
+    this.publish()
   }
 
   drain() {
@@ -551,7 +562,7 @@ export class Recorder {
   }
 
   async verifyLocalAccess() {
-    if (!this.loaded || !this.visible) throw new ApiError(401, 'ACCOUNT_CHANGED')
+    if (this.disposed || !this.loaded || !this.visible) throw new ApiError(401, 'ACCOUNT_CHANGED')
     try { await this.verifyUser() } catch (error) {
       // Allow recovery downloads during an outage, using this screen's verified account.
       if (isTemporary(error) && this.authOk && this.visible) return
@@ -561,10 +572,12 @@ export class Recorder {
   }
 
   async exportRecords() {
+    const records = [...this.data.archived, ...this.data.queue.map(item => ({ ...item, sessionId: this.data.session?.sttSessionId }))]
     await this.verifyLocalAccess()
+    if (this.disposed || !this.visible) throw new ApiError(401, 'ACCOUNT_CHANGED')
     return JSON.stringify({ roomId: this.roomId, exportedAt: new Date().toISOString(),
       notice: '추정 시각입니다. 서버 보고서에 자동 반영되지 않습니다.',
-      records: this.data.archived }, null, 2)
+      records }, null, 2)
   }
 
   async deleteArchived() {
@@ -592,7 +605,12 @@ export class Recorder {
     for (const timer of [this.retryTimer, this.restartTimer, this.pollTimer, this.stableTimer]) this.cancel(timer)
     if (this.data.wasListening) this.openGap('ERROR')
     this.data.wasListening = false
-    this.speech.abort()
+    if (this.phase === 'listening' || this.pausing) {
+      // stop() can deliver final words during a room/account change. Keep them in the original store.
+      this.phase = 'paused'
+      this.collectingLastResults = true
+      try { await this.stopSpeech() } finally { this.collectingLastResults = false }
+    } else this.speech.abort()
     await this.initializing
     if (this.release) {
       // Keep ownership until outstanding writes finish, preventing stale snapshots in another tab.

@@ -148,7 +148,7 @@ public class LectureRoomService {
             nextCursor = new RoomPageCursor(last.endedAt(), last.roomId()).encode();
         }
         var rooms = entries.stream().map(entry -> new RoomHistoryPage.Room(entry.roomId(), entry.title(),
-                toInstant(entry.endedAt()), entry.reportStatus())).toList();
+                toInstant(entry.endedAt()), entry.reportStatus(), entry.reportUnconfirmed())).toList();
         return new RoomHistoryPage(rooms, nextCursor, historyRepository.countEnded(hostId), serverTime);
     }
 

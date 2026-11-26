@@ -1,9 +1,10 @@
 package com.react.chat.controller;
 
-import com.react.chat.dto.ChatCreatedEvent;
+import com.react.chat.dto.ChatBatchEvent;
 import com.react.chat.dto.ChatErrorEvent;
 import com.react.chat.dto.ChatMessageView;
 import com.react.chat.dto.ChatSendRequest;
+import com.react.chat.service.ChatBroadcastBatcher;
 import com.react.chat.service.ChatMessageService;
 import com.react.global.exception.BusinessException;
 import com.react.global.exception.ErrorCode;
@@ -18,11 +19,9 @@ import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
 
-import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -32,7 +31,7 @@ public class ChatStompController {
     private static final String ATTEMPT_HEADER = "X-Chat-Attempt";
     private final StompActorResolver actors;
     private final ChatMessageService messages;
-    private final SimpMessagingTemplate broker;
+    private final ChatBroadcastBatcher batcher;
     private final ChatMessageMetrics metrics;
 
     /** 작성자는 서버가 쿠키·로그인으로 정한다. 본문에서는 content 만 읽는다. */
@@ -48,15 +47,9 @@ public class ChatStompController {
         // SCRUM-91: 저장에 성공한 채팅 메시지 수를 기록한다.
         metrics.recordSavedMessage();
 
-        // 저장 서비스가 끝났으므로 이미 커밋된 뒤다. 방송이 실패해도 저장된 채팅은 유지하고, 내역 조회로 복구할 수 있다.
-        // 같은 전송 식별자의 재전송이면 이미 저장된 메시지가 같은 헤더로 다시 방송된다.
-        try {
-            broker.convertAndSend("/topic/rooms/" + roomId + "/chat", ChatCreatedEvent.of(roomId, saved),
-                    attempt == null ? null : Map.of(ATTEMPT_HEADER, attempt));
-        } catch (RuntimeException e) {
-            metrics.recordBroadcastFailure();
-            log.warn("채팅 전송 실패. roomId={}, messageId={}", roomId, saved.messageId(), e);
-        }
+        // 저장 서비스가 끝났으므로 이미 커밋된 뒤다. 전송은 배처가 잠깐 모아서 한 프레임으로 보낸다.
+        // 같은 전송 식별자의 재전송이면 이미 저장된 메시지가 같은 식별자로 다시 전송된다.
+        batcher.enqueue(roomId, ChatBatchEvent.message(roomId, saved, attempt));
     }
 
     /** 거절 사유(LIVE 아님, 길이, 권한 등)를 보낸 사람의 개인 우편함으로만 알린다. */

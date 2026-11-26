@@ -15,6 +15,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -38,8 +39,10 @@ public class SecurityConfig {
             ObjectMapper objectMapper
     ) throws Exception {
 
+        var openAiWebhook = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/v1/webhooks/openai");
         return http
                 .csrf(csrf -> csrf
+                        .ignoringRequestMatchers(openAiWebhook)
                         .csrfTokenRepository(
                                 new HttpSessionCsrfTokenRepository()
                         )
@@ -72,6 +75,7 @@ public class SecurityConfig {
                         )
                 )
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(openAiWebhook).permitAll()
 
                         // 회원가입과 로그인은 인증 불필요
                         // 단, POST이므로 CSRF 토큰은 필요

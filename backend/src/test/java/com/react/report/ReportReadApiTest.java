@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -82,13 +83,15 @@ class ReportReadApiTest {
     }
 
     @Test
-    void completedStatusReturnsOnlyStatus() throws Exception {
+    void completedStatusIncludesOnlyPublicRecoveryInformation() throws Exception {
         jdbc.sql("""
                 INSERT INTO lecture_reports(lecture_room_id,status,content,created_at,updated_at,generated_at)
                 VALUES (?,'COMPLETED',JSON_OBJECT('timeline',JSON_ARRAY()),NOW(),NOW(),NOW())
                 """).param(roomId).update();
 
-        assertThat(read(STATUS, roomId)).isEqualTo(json.readTree("{\"status\":\"COMPLETED\"}"));
+        assertThat(read(STATUS, roomId)).isEqualTo(json.readTree("""
+                {"status":"COMPLETED","retryAvailable":false,"delayed":false,"failureCategory":null}
+                """));
     }
 
     @Test
@@ -125,10 +128,13 @@ class ReportReadApiTest {
     void unfinishedReportsOnlyExposeTheirStateAndPublicFailureMessage(String reportStatus) throws Exception {
         jdbc.sql("""
                 INSERT INTO lecture_reports(lecture_room_id,status,content,error_message,created_at,updated_at)
-                VALUES (?,?,JSON_OBJECT('partial','공개되지 않을 내용'),'INVALID_REPORT_EVIDENCE',NOW(),NOW())
+                VALUES (?,?,JSON_OBJECT('partial','공개되지 않을 내용'),'INVALID_REPORT_EVIDENCE',
+                        UTC_TIMESTAMP() + INTERVAL 9 HOUR, UTC_TIMESTAMP() + INTERVAL 9 HOUR)
                 """).params(roomId, reportStatus).update();
 
-        assertThat(read(STATUS, roomId)).isEqualTo(json.createObjectNode().put("status", reportStatus));
+        assertThat(read(STATUS, roomId)).isEqualTo(json.createObjectNode().put("status", reportStatus)
+                .put("retryAvailable", false).put("delayed", false)
+                .put("failureCategory", reportStatus.equals("FAILED") ? "AI_OUTPUT" : null));
         var result = read(REPORT, roomId);
         assertThat(result.required("status").asText()).isEqualTo(reportStatus);
         assertThat(result.required("content").isNull()).isTrue();
@@ -138,6 +144,85 @@ class ReportReadApiTest {
         } else {
             assertThat(result.required("generatedAt").isNull()).isTrue();
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "PROCESSING"})
+    void delayUsesDatabaseTimeAndTheStartOfTheCurrentState(String state) throws Exception {
+        jdbc.sql("""
+                INSERT INTO lecture_reports(lecture_room_id,status,created_at)
+                VALUES (?,?, UTC_TIMESTAMP() + INTERVAL 9 HOUR - INTERVAL 120 SECOND)
+                """).params(roomId, state).update();
+        assertThat(read(STATUS, roomId).required("delayed").asBoolean()).isTrue();
+        jdbc.sql("UPDATE lecture_reports SET updated_at=UTC_TIMESTAMP() + INTERVAL 9 HOUR WHERE lecture_room_id=?")
+                .param(roomId).update();
+        assertThat(read(STATUS, roomId).required("delayed").asBoolean()).isFalse();
+    }
+
+    @Test
+    void unknownDispatchOffersOneRetryAndWaitsForALateResultWithoutDeclaringFailure() throws Exception {
+        jdbc.sql("""
+                INSERT INTO lecture_reports(lecture_room_id,status,error_message,created_at)
+                VALUES (?,'FAILED','REPORT_DISPATCH_UNKNOWN',NOW())
+                """).param(roomId).update();
+        var unconfirmed = json.createObjectNode().put("status", "FAILED").put("retryAvailable", true)
+                .put("delayed", false).put("failureCategory", "UNCONFIRMED");
+        assertThat(read(STATUS, roomId)).isEqualTo(unconfirmed);
+        assertThat(read(REPORT, roomId).required("message").asText()).isEqualTo("보고서 생성 요청의 처리 결과를 확인하고 있습니다.");
+        jdbc.sql("UPDATE lecture_reports SET retry_used=TRUE WHERE lecture_room_id=?").param(roomId).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(unconfirmed.put("retryAvailable", false));
+        jdbc.sql("UPDATE lecture_reports SET status='COMPLETED',error_message=NULL WHERE lecture_room_id=?").param(roomId).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(json.createObjectNode().put("status", "COMPLETED")
+                .put("retryAvailable", false).put("delayed", false).putNull("failureCategory"));
+    }
+
+    @Test
+    void expiredDispatchClosesResultRecoveryAndPreservesOnlyAnUnspentRetry() throws Exception {
+        jdbc.sql("""
+                INSERT INTO lecture_reports(lecture_room_id,status,error_message,created_at)
+                VALUES (?,'FAILED','REPORT_DISPATCH_EXPIRED',NOW())
+                """).param(roomId).update();
+        var expired = json.createObjectNode().put("status", "FAILED").put("retryAvailable", true)
+                .put("delayed", false).put("failureCategory", "RECOVERY_EXPIRED");
+        assertThat(read(STATUS, roomId)).isEqualTo(expired);
+        assertThat(read(REPORT, roomId).required("message").asText()).isEqualTo("보고서 생성 요청의 결과를 확인할 수 있는 기간이 지났습니다.");
+        jdbc.sql("UPDATE lecture_reports SET retry_used=TRUE WHERE lecture_room_id=?").param(roomId).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(expired.put("retryAvailable", false));
+    }
+
+    @Test
+    void onlyTheUnspentTransientFailureShowsTheRetryAction() throws Exception {
+        jdbc.sql("""
+                INSERT INTO lecture_reports(lecture_room_id,status,error_message,created_at)
+                VALUES (?,'FAILED','LLM_TEMPORARY_FAILURE','2025-01-01')
+                """).param(roomId).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(json.readTree("""
+                {"status":"FAILED","retryAvailable":true,"delayed":false,"failureCategory":"AI_SERVICE"}
+                """));
+        jdbc.sql("UPDATE lecture_reports SET retry_used=TRUE WHERE lecture_room_id=?").param(roomId).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(json.readTree("""
+                {"status":"FAILED","retryAvailable":false,"delayed":false,"failureCategory":"AI_SERVICE"}
+                """));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "LLM_REQUEST_FAILED, AI_SERVICE",
+            "INVALID_REPORT_FORMAT, AI_OUTPUT",
+            "INVALID_REPORT_EVIDENCE, AI_OUTPUT",
+            "GENERATION_INTERRUPTED, REPORT",
+            "REPORT_STORAGE_FAILED, REPORT",
+            "sensitive legacy provider error detail, REPORT",
+            ", REPORT"
+    })
+    void failuresExposeOnlyTheirPublicCategory(String internalReason, String category) throws Exception {
+        jdbc.sql("""
+                INSERT INTO lecture_reports(lecture_room_id,status,error_message,created_at)
+                VALUES (?,'FAILED',?,NOW())
+                """).params(roomId, internalReason).update();
+        assertThat(read(STATUS, roomId)).isEqualTo(json.createObjectNode()
+                .put("status", "FAILED").put("retryAvailable", false).put("delayed", false)
+                .put("failureCategory", category));
     }
 
     @ParameterizedTest

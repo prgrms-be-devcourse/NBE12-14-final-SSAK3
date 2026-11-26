@@ -13,6 +13,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -67,6 +68,105 @@ class StompSessionLifecycleIntegrationTest
         } finally {
             if (session.isConnected()) {
                 session.disconnect();
+            }
+        }
+    }
+
+    @Test
+    void HOST가_로그아웃하면_같은_HTTP_세션의_모든_WebSocket만_종료된다()
+            throws Exception {
+
+        String email =
+                "host-" + UUID.randomUUID() + "@example.com";
+
+        var host = newHost(email);
+        var room = newRoom(host, "다중 연결 종료 테스트");
+
+        // 같은 계정으로 로그인하되 서로 다른 HTTP 세션을 발급받는다.
+        String cookies = loginCookies(email);
+        String otherCookies = loginCookies(email);
+
+        assertThat(cookies).isNotEqualTo(otherCookies);
+
+        var sessions = new ArrayList<StompSession>();
+
+        try {
+            // 동일한 HTTP 세션에서 여러 WebSocket을 연결한다.
+            for (int i = 0; i < 3; i++) {
+                StompSession session = client.connectWithRole(
+                        StompTestClient.ALLOWED_ORIGIN,
+                        "HOST",
+                        cookies
+                );
+
+                sessions.add(session);
+
+                assertThat(session.isConnected()).isTrue();
+            }
+
+            // 동일 계정의 별도 HTTP 세션으로 WebSocket을 연결한다.
+            StompSession otherSession = client.connectWithRole(
+                    StompTestClient.ALLOWED_ORIGIN,
+                    "HOST",
+                    otherCookies
+            );
+
+            sessions.add(otherSession);
+
+            assertThat(otherSession.isConnected()).isTrue();
+
+            // 첫 번째 HTTP 세션만 로그아웃한다.
+            HttpResponse<String> response = postWithCsrf(
+                    cookies,
+                    "/api/v1/auth/logout",
+                    null
+            );
+
+            assertThat(response.statusCode()).isEqualTo(204);
+
+            // 로그아웃한 HTTP 세션의 모든 WebSocket이 종료되어야 한다.
+            for (int i = 0; i < 3; i++) {
+                assertThat(
+                        StompTestClient.awaitClosed(sessions.get(i))
+                ).isTrue();
+            }
+
+            // 무효화된 HTTP 세션으로 HOST 연결을 다시 생성할 수 없어야 한다.
+            assertThatThrownBy(() ->
+                    client.connectWithRole(
+                            StompTestClient.ALLOWED_ORIGIN,
+                            "HOST",
+                            cookies
+                    )
+            ).isInstanceOf(ExecutionException.class);
+
+            // 같은 계정이라도 별도의 HTTP 세션은 유지되어야 한다.
+            assertThat(otherSession.isConnected()).isTrue();
+
+            String destination =
+                    "/topic/rooms/" + room.getId() + "/chat";
+
+            var received = client.subscribe(
+                    otherSession,
+                    destination
+            );
+
+            // 별도 HTTP 세션은 실제로 구독하고 방송도 받을 수 있어야 한다.
+            assertThat(
+                    StompTestClient.awaitBroadcast(
+                            received,
+                            () -> broker.convertAndSend(
+                                    destination,
+                                    Map.of("type", "WARMUP")
+                            )
+                    )
+            ).containsEntry("type", "WARMUP");
+
+        } finally {
+            for (StompSession session : sessions) {
+                if (session.isConnected()) {
+                    session.disconnect();
+                }
             }
         }
     }
@@ -268,8 +368,7 @@ class StompSessionLifecycleIntegrationTest
 
         // STOMP CONNECT 헤더에는
         // 테스트에서 지정한 CSRF 토큰만 전달
-        StompHeaders connectHeaders =
-                new StompHeaders();
+        StompHeaders connectHeaders = new StompHeaders();
 
         if (csrfToken != null) {
             connectHeaders.add(
