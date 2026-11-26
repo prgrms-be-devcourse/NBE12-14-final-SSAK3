@@ -7,7 +7,7 @@
 
 | 기능 ID | 기능 | 데이터 조회 API | 실시간 이벤트 |
 | --- | --- | --- | --- |
-| DASH-01 | 실시간 채팅 | GET `/rooms/{roomId}/messages` | CHAT_CREATED |
+| DASH-01 | 실시간 채팅 | GET `/rooms/{roomId}/messages` | CHAT_BATCH |
 | DASH-02 | 이해도 체크 현황 | GET `/rooms/{roomId}/polls?status=OPEN` 및 `/polls/{pollId}/results`(`type=UNDERSTANDING`) | POLL_CREATED / POLL_RESULTS_UPDATED / POLL_CLOSED |
 | DASH-03 | 투표 현황 | GET `/rooms/{roomId}/polls` 및 결과 조회 | POLL_CREATED / POLL_RESULTS_UPDATED / POLL_CLOSED |
 | DASH-04 | AI 주제별 의견 요약 | GET `/rooms/{roomId}/ai/analyses` | AI_ANALYSIS_COMPLETED |
