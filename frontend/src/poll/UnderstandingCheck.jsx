@@ -1,90 +1,182 @@
-import React, { useEffect, useId, useRef, useState } from 'react'
-import { remainingSeconds } from './understanding.js'
-import { watchUnderstanding } from './watchUnderstanding.js'
-import './understanding.css'
+import React, {
+  useEffect,
+  useId,
+  useState,
+} from 'react'
 
-const failureText = '전송하지 못했어요. 다시 눌러 주세요.'
+import { watchPollResults } from './watchPollResults.js'
 
-export function UnderstandingCheck({ roomId }) {
-  const [state, setState] = useState(null)
-  const [ended, setEnded] = useState(false)
-  const [busy, setBusy] = useState(null)
-  const [error, setError] = useState('')
-  const [now, setNow] = useState(() => performance.now())
+import './understandingSummary.css'
+
+const percent = value => `${value.toFixed(1)}%`
+
+const time = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+export function UnderstandingSummary({ roomId }) {
+  const [checks, setChecks] = useState([])
+  const [connected, setConnected] = useState(false)
   const [denied, setDenied] = useState(false)
-  const watcher = useRef(null)
-  const shown = useRef(false)
+
   const headingId = useId()
 
   useEffect(() => {
-    const subscription = watchUnderstanding({
+    setChecks([])
+    setConnected(false)
+    setDenied(false)
+
+    const subscription = watchPollResults({
       roomId,
-      onPoll(next) {
-        // 열려 있던 체크가 사라지면 마감 안내를 보여 주고, 새 체크가 열리면 지운다.
-        if (next) { shown.current = true; setEnded(false) }
-        else if (shown.current) { shown.current = false; setEnded(true) }
-        setState(next)
-        setError('')
-      },
+      type: 'UNDERSTANDING',
+      onPolls: setChecks,
+      onConnection: setConnected,
       onDenied: () => setDenied(true),
     })
-    watcher.current = subscription
-    return () => { watcher.current = null; subscription.close() }
+
+    return () => subscription.close()
   }, [roomId])
 
-  const poll = state?.poll
-  useEffect(() => {
-    if (!poll) return undefined
-    const timer = window.setInterval(() => setNow(performance.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [poll])
+  const current = checks.find(
+      check => check.status === 'OPEN',
+  )
 
-  const seconds = poll ? remainingSeconds(poll, now) : 0
-  // 시간이 다 됐는데 마감 이벤트가 없으면 한 번 더 서버 상태를 확인한다.
-  useEffect(() => {
-    if (!poll || seconds > 0) return undefined
-    const timer = window.setTimeout(() => void watcher.current?.sync(), 1500)
-    return () => window.clearTimeout(timer)
-  }, [poll, seconds])
-
-  async function choose(optionId) {
-    if (!poll || busy !== null || optionId === state.selected || seconds === 0) return
-    const pollId = poll.pollId
-    setBusy(optionId)
-    setError('')
-    try {
-      await watcher.current.respond(pollId, optionId)
-      setState(current => current?.poll.pollId === pollId ? { ...current, selected: optionId } : current)
-    } catch (failure) {
-      if (failure.code === 'POLL_CLOSED' || failure.code === 'ROOM_ENDED') void watcher.current?.sync()
-      else setError(failureText)
-    } finally {
-      setBusy(null)
-    }
+  // 마감된 회차는 UnderstandingRounds에서만 표시한다.
+  if (denied || !current) {
+    return null
   }
 
-  if (denied) return null
-  if (!poll) return ended
-    ? <section className="understanding" aria-label="이해도 체크"><p role="status" className="understanding-ended">이해도 체크가 마감되었어요.</p></section>
-    : null
-  const locked = seconds === 0
-  return <section className="understanding" aria-labelledby={headingId}>
-    <div className="understanding-heading">
-      <h2 id={headingId}>{poll.question}</h2>
-      <span className="understanding-time" aria-label={`남은 시간 ${seconds}초`}>{seconds}초</span>
-    </div>
-    <div className="understanding-options" role="group" aria-labelledby={headingId}>
-      {poll.options.map(option => <button key={option.optionId} type="button"
-        className={option.optionId === state.selected ? 'understanding-selected' : undefined}
-        aria-pressed={option.optionId === state.selected}
-        disabled={locked || busy !== null}
-        onClick={() => void choose(option.optionId)}>
-        {option.content}{busy === option.optionId && <span className="understanding-sending"> 전송 중</span>}
-      </button>)}
-    </div>
-    <p role="status" className="understanding-hint">
-      {locked ? '마감 중이에요.' : state.selected === null ? '지금 설명이 어땠는지 눌러 주세요.' : '마감 전에는 선택을 바꿀 수 있어요.'}
-    </p>
-    {error && <p role="alert" className="understanding-error">{error}</p>}
-  </section>
+  return (
+      <section
+          className="understanding-summary"
+          aria-labelledby={headingId}
+      >
+
+        <div className="understanding-summary-heading">
+
+          <h2 id={headingId}>
+            진행 중인 이해도 체크
+          </h2>
+
+          <span>
+                    {checks.length}회차
+                </span>
+
+          {!connected && (
+              <span>연결 확인 중</span>
+          )}
+
+        </div>
+
+        <ul
+            className="understanding-summary-list"
+            aria-label="진행 중인 이해도 체크 목록"
+        >
+          <UnderstandingCheckCard
+              check={current}
+              number={checks.length}
+          />
+        </ul>
+
+      </section>
+  )
+}
+
+function UnderstandingCheckCard({ check, number }) {
+  const openedAt = Date.parse(check.createdAt)
+
+  return (
+      <li
+          className="understanding-summary-card"
+          aria-label={`이해도 체크 ${number}`}
+      >
+
+        <div className="understanding-summary-title">
+
+          <strong>
+            {number}회차
+          </strong>
+
+          {Number.isFinite(openedAt) && (
+              <time dateTime={check.createdAt}>
+                {time.format(new Date(openedAt))} 시작
+              </time>
+          )}
+
+          <span className="understanding-summary-open">
+                    진행 중
+                </span>
+
+        </div>
+
+        <ul className="understanding-summary-options">
+
+          {check.options.map(option => (
+              <li key={option.optionId}>
+
+                <div className="understanding-summary-row">
+
+                  <strong>
+                    {option.content}
+                  </strong>
+
+                  <span>
+                                {option.count}명
+                            </span>
+
+                </div>
+
+                <div
+                    className="understanding-summary-bar"
+                    aria-hidden="true"
+                >
+                            <span
+                                style={{
+                                  width:
+                                      `${option.percentageOfResponses}%`,
+                                }}
+                            />
+                </div>
+
+                <p>
+                  응답자의 {percent(option.percentageOfResponses)}
+                  {' · '}
+                  전체의 {percent(option.percentageOfAllParticipants)}
+                </p>
+
+              </li>
+          ))}
+
+        </ul>
+
+        <dl className="understanding-summary-totals">
+
+          <div>
+            <dt>전체 참여</dt>
+            <dd>{check.totalParticipants}명</dd>
+          </div>
+
+          <div>
+            <dt>응답</dt>
+            <dd>
+              {check.respondedParticipants}명
+              {' '}
+              ({percent(check.responseRate)})
+            </dd>
+          </div>
+
+          <div>
+            <dt>미응답</dt>
+            <dd>
+              {check.unrespondedParticipants}명
+            </dd>
+          </div>
+
+        </dl>
+
+      </li>
+  )
 }

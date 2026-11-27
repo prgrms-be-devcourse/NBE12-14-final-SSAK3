@@ -21,7 +21,7 @@
 }
 .report-app button:hover:not(:disabled) { background: #103b2c; }
 .report-app button:disabled { opacity: .5; cursor: not-allowed; }
-.report-app :is(button, select, summary, a):focus-visible { outline-offset: 3px; outline: 3px solid #65b8af; }
+.report-app :is(button, select, summary, a):focus-visible { outline-offset: 3px; outline: 3px solid var(--react-focus); }
 .report-app a { color: var(--report-forest); }
 .report-app summary { cursor: pointer; }
 .report-app :is(h1, h2, h3, h4) { text-wrap: pretty; }
@@ -233,7 +233,7 @@
 }
 
 .report-app .report-understanding {
-    background: #edf8f5;
+    background: var(--react-primary-surface);
     border-left-color: var(--react-primary);
 }
 

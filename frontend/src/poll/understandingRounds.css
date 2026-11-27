@@ -1,40 +1,403 @@
+/* RE:ACT — 회차별 이해도 결과 */
+
 .understanding-rounds {
   grid-column: 1 / -1;
+  min-width: 0;
   padding: 20px;
-  border: 1px solid #dde3e8;
-  border-radius: 16px;
-  background: #fff;
+  border: 1px solid var(--react-line);
+  border-radius: var(--react-card-radius);
+  background: var(--react-white);
 }
-.understanding-rounds-heading { display: flex; align-items: baseline; gap: 10px; }
-.understanding-rounds h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
-.understanding-rounds-heading span { color: #526170; font-size: 13px; }
-.understanding-rounds-note { margin: 10px 0 0; color: #526170; font-size: 13px; line-height: 1.5; }
-.understanding-rounds-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0 0; color: #8a2a22; font-size: 14px; }
-.understanding-rounds-error button { min-height: 36px; padding: 4px 12px; border: 1px solid #c7d3c6; border-radius: 8px; background: #fff; color: #354a3e; }
 
-.understanding-rounds-chart { display: block; width: 100%; max-width: 760px; height: auto; margin-top: 8px; }
-.understanding-rounds-grid line { stroke: #dde3e8; stroke-width: 1; }
-.understanding-rounds-axis text { fill: #526170; font-size: 11px; }
-.understanding-rounds-label { fill: #172721; font-size: 12px; font-weight: 700; }
-.understanding-rounds-time { fill: #526170; font-size: 11px; }
-.understanding-rounds-threshold { stroke: #172721; stroke-width: 1.5; stroke-dasharray: 5 4; }
-.understanding-rounds-flag rect { fill: #963a32; }
-.understanding-rounds-flag text { fill: #fff; font-size: 11px; font-weight: 700; }
-rect.understanding-rounds-understood, .understanding-rounds-swatch.understanding-rounds-understood { fill: #184d3b; background: #184d3b; }
-rect.understanding-rounds-confused, .understanding-rounds-swatch.understanding-rounds-confused { fill: #e8b84a; background: #e8b84a; }
-rect.understanding-rounds-not_understood, .understanding-rounds-swatch.understanding-rounds-not_understood { fill: #b3412f; background: #b3412f; }
+.understanding-rounds-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
-.understanding-rounds-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 4px 0 0; padding: 0; list-style: none; color: #354a3e; font-size: 13px; }
-.understanding-rounds-legend li { display: inline-flex; align-items: center; gap: 7px; }
-.understanding-rounds-swatch { display: inline-block; width: 14px; height: 14px; }
-.understanding-rounds-dash { display: inline-block; width: 22px; height: 0; border-top: 2px dashed #172721; }
+.understanding-rounds-heading h2 {
+  margin: 0;
+  color: var(--react-ink);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -.035em;
+}
 
-.understanding-rounds-table { margin-top: 16px; overflow-x: auto; }
-.understanding-rounds-table table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
-.understanding-rounds-table caption { padding-bottom: 8px; color: #526170; font-size: 13px; text-align: left; }
-.understanding-rounds-table th, .understanding-rounds-table td { padding: 8px 12px; border-bottom: 1px solid #dde3e8; text-align: right; }
-.understanding-rounds-table thead th { background: #f2f4ec; }
-.understanding-rounds-table th:first-child, .understanding-rounds-table th:last-child, .understanding-rounds-table td:last-child { text-align: left; }
-.understanding-rounds-table tbody th { font-weight: 700; }
-.understanding-rounds-table time { margin-left: 6px; color: #526170; font-size: 12px; font-weight: 400; }
-.understanding-rounds-badge { display: inline-block; padding: 2px 9px; border-radius: 99px; background: #963a32; color: #fff; font-size: 12px; font-weight: 700; }
+.understanding-rounds-heading > span {
+  color: var(--react-muted);
+  font-size: 13px;
+}
+
+.understanding-rounds-note {
+  margin: 12px 0 0;
+  color: var(--react-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  word-break: keep-all;
+}
+
+/* 결과 조회 실패 */
+
+.understanding-rounds-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--react-danger-soft);
+  color: var(--react-danger);
+  font-size: 13px;
+}
+
+.understanding-rounds-error p {
+  flex: 1 1 180px;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.understanding-rounds-error button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--react-line);
+  border-radius: 7px;
+  background: var(--react-white);
+  color: var(--react-text);
+  font-size: 12px;
+}
+
+/* 이해도 색상 */
+
+.understanding-rounds-understood {
+  --understanding-tone: var(--react-primary);
+  --understanding-tone-soft: var(--react-primary-soft);
+  --understanding-tone-text: var(--react-primary);
+}
+
+.understanding-rounds-confused {
+  --understanding-tone: #d9ad49;
+  --understanding-tone-soft: #fff5df;
+  --understanding-tone-text: #986715;
+}
+
+.understanding-rounds-not_understood {
+  --understanding-tone: #b3412f;
+  --understanding-tone-soft: #fff1ee;
+  --understanding-tone-text: #b3412f;
+}
+
+/* 범례 */
+
+.understanding-rounds-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  margin: 18px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.understanding-rounds-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--react-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.understanding-rounds-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--understanding-tone);
+}
+
+/* 회차별 목록 */
+
+.understanding-rounds-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.understanding-rounds-card {
+  min-width: 0;
+  padding: 18px 0;
+  border-top: 1px solid var(--react-line);
+}
+
+.understanding-rounds-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+}
+
+.understanding-rounds-card-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.understanding-rounds-card-title > strong {
+  color: var(--react-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.understanding-rounds-card-title time {
+  color: var(--react-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.understanding-rounds-response {
+  color: var(--react-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.understanding-rounds-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--react-danger-soft);
+  color: var(--react-danger);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 가로 누적 막대 */
+
+.understanding-rounds-bar {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #edf1f3;
+}
+
+.understanding-rounds-segment {
+  display: flex;
+  flex-basis: 0;
+  flex-shrink: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--understanding-tone);
+  color: #ffffff;
+}
+
+.understanding-rounds-segment + .understanding-rounds-segment {
+  box-shadow: inset 1px 0 rgb(255 255 255 / 45%);
+}
+
+.understanding-rounds-segment > span {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.understanding-rounds-segment.understanding-rounds-confused {
+  color: #49380d;
+}
+
+/* 응답이 없는 회차 */
+
+.understanding-rounds-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  border: 1px dashed var(--react-input-line);
+  border-radius: 7px;
+  background: var(--react-surface);
+  color: var(--react-muted);
+  font-size: 12px;
+}
+
+/* 상세 결과 펼쳐보기 */
+
+.understanding-rounds-details {
+  margin-top: 10px;
+}
+
+.understanding-rounds-details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  color: var(--react-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+
+.understanding-rounds-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.understanding-rounds-details summary::after {
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  content: "";
+}
+
+.understanding-rounds-details[open] summary::after {
+  margin-top: 3px;
+  transform: rotate(225deg);
+}
+
+.understanding-rounds-details summary:hover {
+  color: var(--react-primary);
+}
+
+.understanding-rounds-details summary:focus-visible {
+  outline: 2px solid var(--react-focus, #799e72);
+  outline-offset: 4px;
+}
+
+.understanding-rounds-detail-body {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--react-line);
+  border-radius: 9px;
+  background: var(--react-surface);
+}
+
+/* 선택지별 상세 비율 */
+
+.understanding-rounds-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.understanding-rounds-value {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px 6px;
+  border-radius: 7px;
+  background: var(--understanding-tone-soft);
+}
+
+.understanding-rounds-value > span {
+  color: var(--understanding-tone-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.understanding-rounds-value > strong {
+  color: var(--understanding-tone-text);
+  font-size: clamp(16px, 2vw, 23px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.035em;
+}
+
+.understanding-rounds-value > small {
+  color: var(--react-muted);
+  font-size: 12px;
+}
+
+/* 참여 인원 통계 */
+
+.understanding-rounds-totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 14px 0 0;
+}
+
+.understanding-rounds-totals > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+
+.understanding-rounds-totals dt {
+  color: var(--react-muted);
+}
+
+.understanding-rounds-totals dd {
+  margin: 0;
+  color: var(--react-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 모바일 */
+
+@media (max-width: 760px) {
+  .understanding-rounds {
+    padding: 16px;
+  }
+
+  .understanding-rounds-heading h2 {
+    font-size: 16px;
+  }
+
+  .understanding-rounds-card {
+    padding-block: 16px;
+  }
+
+  .understanding-rounds-legend {
+    gap: 8px 14px;
+  }
+
+  .understanding-rounds-bar,
+  .understanding-rounds-empty {
+    height: 28px;
+  }
+
+  .understanding-rounds-detail-body {
+    padding: 10px;
+  }
+
+  .understanding-rounds-values {
+    gap: 6px;
+  }
+
+  .understanding-rounds-value {
+    padding-inline: 4px;
+  }
+
+  .understanding-rounds-value > span {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 420px) {
+  .understanding-rounds-totals {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

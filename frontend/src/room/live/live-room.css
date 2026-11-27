@@ -34,8 +34,8 @@
    ================================================== */
 
 .react-live-room {
-    --rl-accent: #008780;
-    --rl-soft: #e9f6f3;
+    --rl-accent: var(--react-primary);
+    --rl-soft: var(--react-primary-soft);
     --rl-line: #e5eaee;
     --rl-ink: #15212f;
     --rl-muted: #64748b;
@@ -82,9 +82,9 @@
 }
 
 .react-live-room button.rl-button:enabled:hover {
-    border-color: #93c7bd;
-    color: #00766c;
-    background: #f0f9f7;
+    border-color: var(--react-primary-line);
+    color: var(--react-primary);
+    background: var(--react-primary-surface);
 }
 
 /* ==================================================
@@ -116,7 +116,7 @@
     padding: 5px 10px;
     border-radius: 20px;
     background: var(--rl-soft);
-    color: #00766c;
+    color: var(--react-primary);
     font-weight: 600;
 }
 
@@ -176,15 +176,15 @@
     border: 0;
     border-radius: 40px;
     padding: 13px 18px;
-    background: #e5f4f0;
-    color: #006d65;
+    background: var(--react-primary-soft);
+    color: var(--react-primary-hover);
     font-size: 14px;
     font-weight: 700;
     white-space: nowrap;
 }
 
 .react-live-room button.rl-new-button:enabled:hover {
-    background: #d5eee7;
+    background: var(--react-primary-soft);
 }
 
 /* ==================================================
@@ -250,7 +250,7 @@
 }
 
 .react-live-room .rl-tone-good strong {
-    color: #008780;
+    color: var(--react-primary);
 }
 
 .react-live-room .rl-tone-mixed strong {
@@ -271,7 +271,7 @@
 }
 
 .react-live-room .rl-understanding-bar .rl-tone-good {
-    background: #008780;
+    background: var(--react-primary);
 }
 
 .react-live-room .rl-understanding-bar .rl-tone-mixed {
@@ -312,13 +312,13 @@
 }
 
 .room-app .react-live-room .rl-tabs button.rl-tab[aria-pressed="true"] {
-    color: #00766c;
-    border-bottom-color: #008780;
+    color: var(--react-primary);
+    border-bottom-color: var(--react-primary);
     background: transparent;
 }
 
 .room-app .react-live-room .rl-tabs button.rl-tab:hover {
-    color: #008780;
+    color: var(--react-primary);
     background: transparent;
 }
 
@@ -335,8 +335,8 @@
 }
 
 .react-live-room .rl-tab[aria-pressed="true"] span {
-    background: #d9efea;
-    color: #00766c;
+    background: var(--react-primary-soft);
+    color: var(--react-primary);
 }
 
 /* ==================================================
@@ -349,14 +349,14 @@
     gap: 18px;
     padding: 21px 24px;
     border-radius: 12px;
-    background: #eaf6f3;
+    background: var(--react-primary-surface);
     margin-bottom: 8px;
 }
 
 .react-live-room .rl-summary > svg {
     flex: none;
     margin-top: 3px;
-    color: #008780;
+    color: var(--react-primary);
 }
 
 .react-live-room .rl-summary > div {
@@ -368,7 +368,7 @@
     display: block;
     font-size: 18px;
     font-weight: 700;
-    color: #00766c;
+    color: var(--react-primary);
 }
 
 .react-live-room .rl-keywords {
@@ -380,17 +380,17 @@
 
 .react-live-room .rl-keywords span {
     padding: 5px 10px;
-    border: 1px solid #cde6df;
+    border: 1px solid var(--react-primary-line);
     border-radius: 6px;
     background: #fff;
-    color: #32645d;
+    color: var(--react-primary);
     font-size: 13px;
     font-weight: 600;
 }
 
 .react-live-room .rl-summary p {
     margin: 9px 0 0;
-    color: #526f69;
+    color: #526855;
     font-size: 13px;
 }
 
@@ -416,7 +416,7 @@
     height: 9px;
     margin-top: 11px;
     border-radius: 50%;
-    background: #008780;
+    background: var(--react-primary);
 }
 
 .react-live-room .rl-topic-done .rl-topic-dot {
@@ -460,8 +460,8 @@
 
 .react-live-room .rl-new-tag {
     padding: 3px 6px;
-    background: #e3f4ef;
-    color: #00766c;
+    background: var(--react-primary-soft);
+    color: var(--react-primary);
     border-radius: 4px;
     font-size: 10px;
     font-weight: 700;
@@ -509,7 +509,7 @@
     padding: 5px 0;
     border: 0;
     border-radius: 0;
-    color: #008780;
+    color: var(--react-primary);
     background: transparent;
     font-size: 13px;
     font-weight: 600;
@@ -579,7 +579,7 @@
 }
 
 .react-live-room .rl-empty > svg {
-    color: #79a8a1;
+    color: #799e72;
 }
 
 .react-live-room .rl-empty strong {
@@ -644,7 +644,7 @@
     width: min(400px, calc(100vw - 32px));
     padding: 17px 18px;
     border: 1px solid #dfe7eb;
-    border-left: 3px solid #008780;
+    border-left: 3px solid var(--react-primary);
     border-radius: 12px;
     background: #fff;
     box-shadow: 0 8px 30px rgb(21 33 47 / 12%);
@@ -652,7 +652,7 @@
 
 .react-live-room .rl-toast > svg {
     flex: none;
-    color: #008780;
+    color: var(--react-primary);
 }
 
 .react-live-room .rl-toast > div {
@@ -695,8 +695,8 @@
     padding: 12px 14px;
     margin: 8px 0;
     border-radius: 9px;
-    background: #edf7f5;
-    color: #176b64;
+    background: var(--react-primary-surface);
+    color: var(--react-primary);
     font-size: 13px;
 }
 
@@ -743,17 +743,17 @@
 
 .react-live-room .rl-toolbar button svg {
     flex: none;
-    color: #008780;
+    color: var(--react-primary);
 }
 
 .room-app .react-live-room .rl-toolbar button.rl-primary {
-    background: #008780;
-    border-color: #008780;
+    background: var(--react-primary);
+    border-color: var(--react-primary);
     color: #fff;
 }
 
 .room-app .react-live-room .rl-toolbar button.rl-primary:hover {
-    background: #006d67;
+    background: var(--react-primary-hover);
 }
 
 .react-live-room .rl-toolbar button.rl-primary svg {
@@ -895,8 +895,8 @@
 }
 
 .react-live-room .rl-chat-panel .chat-log .chat-own p {
-    background: #e3f4ef;
-    color: #176b64;
+    background: var(--react-primary-soft);
+    color: var(--react-primary);
     border-radius: 12px 4px 12px 12px;
 }
 
@@ -945,7 +945,7 @@
     min-width: 48px;
     min-height: 48px;
     border-radius: 10px;
-    background: #008780;
+    background: var(--react-primary);
     color: #fff;
 }
 
@@ -1040,7 +1040,7 @@
     padding: 18px;
     border: 1px solid var(--rl-line);
     border-radius: 10px;
-    background: #f5faf8;
+    background: var(--react-primary-surface);
 }
 
 .react-live-room .rl-dialog .understanding-summary,
@@ -1397,7 +1397,7 @@
 }
 
 .host-shell .rl-room-information > summary:hover {
-    color: #008780;
+    color: var(--react-primary);
 }
 
 .host-shell .rl-room-information > summary svg {
@@ -1480,9 +1480,9 @@
 }
 
 .react-live-room button.rl-chat-toggle:enabled:hover {
-    border-color: #93c7bd;
-    background: #e9f6f3;
-    color: #008780;
+    border-color: var(--react-primary-line);
+    background: var(--react-primary-soft);
+    color: var(--react-primary);
 }
 
 .react-live-room .rl-chat-toggle svg {

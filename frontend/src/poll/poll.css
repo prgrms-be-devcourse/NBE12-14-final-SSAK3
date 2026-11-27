@@ -26,7 +26,7 @@
 }
 
 .participation-poll .participation-poll-time {
-    color: #00746d;
+    color: var(--react-primary);
     font-size: 14px;
 }
 
@@ -57,7 +57,7 @@
 .participation-poll-option input {
     margin-top: 5px;
     flex-shrink: 0;
-    accent-color: #00746d;
+    accent-color: var(--react-primary);
 }
 
 .participation-poll-option span {
@@ -66,7 +66,7 @@
 }
 
 .participation-poll .participation-poll-saved {
-    color: #00746d;
+    color: var(--react-primary);
     font-size: 14px;
 }
 
@@ -81,7 +81,7 @@
 
 .participation-poll form > button {
     width: 100%;
-    background: #00746d;
+    background: var(--react-primary);
     color: white;
 }
 
@@ -99,7 +99,7 @@
 
 .participation-poll button:focus-visible,
 .participation-poll input:focus-visible {
-    outline: 3px solid #5199d3;
+    outline: 3px solid var(--react-focus);
     outline-offset: 2px;
 }
 

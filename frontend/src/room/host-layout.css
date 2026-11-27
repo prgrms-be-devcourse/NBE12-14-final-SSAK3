@@ -225,7 +225,7 @@
 }
 
 .host-shell :is(button, a, input, textarea, summary):focus-visible {
-    outline: 3px solid #65b8af;
+    outline: 3px solid var(--react-focus);
     outline-offset: 3px;
 }
 

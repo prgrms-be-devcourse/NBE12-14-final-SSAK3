@@ -1,50 +1,128 @@
 import { percentage } from './understandingSummary.js'
 
-// 막대를 쌓는 순서(아래부터). 서버의 UnderstandingStatus 이름과 같다.
-export const stackOrder = ['UNDERSTOOD', 'CONFUSED', 'NOT_UNDERSTOOD']
-export const statusLabels = { UNDERSTOOD: '이해됨', CONFUSED: '헷갈림', NOT_UNDERSTOOD: '모르겠음' }
+export const statusLabels = {
+  UNDERSTOOD: '이해됨',
+  CONFUSED: '헷갈림',
+  NOT_UNDERSTOOD: '모르겠음',
+}
 
-// 그래프 그림판(viewBox)의 막대가 놓이는 영역. 위쪽이 100%, 아래쪽이 0% 다.
-export const plot = { left: 44, right: 540, top: 0, height: 160 }
-const maxBarWidth = 56
+export const statusOrder = Object.keys(statusLabels)
 
-const clock = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const clock = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
 
-export const roundLabel = index => `${index + 1}회`
-export const roundTime = round => clock.format(new Date(round.openedAt))
-export const formatRatio = value => `${value.toFixed(1)}%`
+export const roundLabel = index => `${index + 1}회차`
 
-const tidy = value => Math.round(value * 10) / 10
+export function roundTime(round) {
+  const time = Date.parse(round.openedAt)
 
-// 응답자를 100% 로 본 선택지별 비율. 응답하지 않은 사람은 어느 선택지로도 세지 않고, 응답자가 없으면 모두 0 이다.
+  return Number.isFinite(time)
+      ? clock.format(new Date(time))
+      : '—'
+}
+
+export const formatRatio = value =>
+    Number.isFinite(value)
+        ? `${value.toFixed(1)}%`
+        : '—'
+
 export function shares(round) {
-  return Object.fromEntries(stackOrder.map(status => [status, percentage(round.counts?.[status] ?? 0, round.respondedParticipants)]))
+  return Object.fromEntries(
+      statusOrder.map(status => [
+        status,
+        percentage(
+            round.counts?.[status] ?? 0,
+            round.respondedParticipants,
+        ),
+      ]),
+  )
 }
 
-// 라운드마다 막대 하나. 이해됨이 맨 아래이고 그 위로 헷갈림, 모르겠음을 쌓는다. 응답자가 없으면 칸이 없다.
-export function bars(rounds) {
-  const slot = (plot.right - plot.left) / Math.max(rounds.length, 1)
-  const width = tidy(Math.min(maxBarWidth, slot * 0.56))
-  return rounds.map((round, index) => {
-    const responded = round.respondedParticipants
-    let bottom = plot.top + plot.height
-    const segments = responded > 0 ? stackOrder.map(status => {
-      const height = (round.counts?.[status] ?? 0) / responded * plot.height
-      bottom -= height
-      return { status, y: tidy(bottom), height: tidy(height) }
-    }).filter(segment => segment.height > 0) : []
-    return { x: tidy(plot.left + slot * index + (slot - width) / 2), width, centerX: tidy(plot.left + slot * (index + 0.5)), segments }
-  })
+export function barSegments(round) {
+  if (round.respondedParticipants <= 0) {
+    return []
+  }
+
+  const values = shares(round)
+
+  return statusOrder
+      .map(status => {
+        const count = round.counts?.[status] ?? 0
+
+        return {
+          status,
+          count,
+          value: values[status],
+
+          width: (
+              count / round.respondedParticipants
+          ) * 100,
+        }
+      })
+      .filter(segment => segment.count > 0)
 }
 
-// 이해 부족 기준선의 높이. 헷갈림+모르겠음이 ratio% 이상이면 이해됨 칸이 이 선 아래에서 끝난다.
-export const thresholdY = ratio => tidy(plot.top + plot.height * ratio / 100)
+// 라운드 API 조회에 실패하더라도 이미 받은
+// 마감 투표 결과는 표시할 수 있도록 변환한다.
+export function roundFromPoll(poll) {
+  const counts = Object.fromEntries(
+      statusOrder.map(status => [status, 0]),
+  )
 
-// 화면 낭독용 한 줄 요약. 기준을 넘은 라운드가 있으면 번호를 알려 준다.
-export function describe(rounds, ratio) {
-  const low = rounds.flatMap((round, index) => round.lowUnderstanding ? [roundLabel(index)] : [])
-  const base = `이해도 체크 라운드별 변화 막대 그래프. 마감된 ${rounds.length}개 라운드를 표시합니다.`
-  return low.length
-    ? `${base} ${low.join(', ')}에서 이해 부족 기준(${ratio}%)을 넘었습니다.`
-    : `${base} 이해 부족 기준(${ratio}%)을 넘은 라운드는 없습니다.`
+  for (const option of poll.options ?? []) {
+    if (Object.hasOwn(counts, option.understandingStatus)) {
+      counts[option.understandingStatus] = option.count
+    }
+  }
+
+  const lackCount =
+      counts.CONFUSED +
+      counts.NOT_UNDERSTOOD
+
+  return {
+    pollId: poll.pollId,
+    openedAt: poll.createdAt,
+    closedAt: poll.closedAt,
+
+    totalParticipants: poll.totalParticipants,
+    respondedParticipants: poll.respondedParticipants,
+
+    counts,
+    lackCount,
+
+    lackRatio: percentage(
+        lackCount,
+        poll.respondedParticipants,
+    ),
+
+    // 서버의 이해 부족 판정은 임의로 추정하지 않는다.
+    lowUnderstanding: null,
+  }
+}
+
+export function mergeClosedRounds(polls, serverRounds) {
+  const merged = new Map()
+
+  for (const poll of polls) {
+    if (poll.status === 'CLOSED') {
+      merged.set(
+          poll.pollId,
+          roundFromPoll(poll),
+      )
+    }
+  }
+
+  // 서버의 확정 라운드 데이터가 있으면 우선 사용한다.
+  for (const round of serverRounds ?? []) {
+    merged.set(round.pollId, round)
+  }
+
+  return [...merged.values()].sort(
+      (first, second) =>
+          first.pollId - second.pollId,
+  )
 }

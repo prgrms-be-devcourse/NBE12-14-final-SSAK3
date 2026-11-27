@@ -22,10 +22,44 @@ const reviewFeatures = [
     },
 ]
 
+const waveBars = [
+    8, 12, 18, 28, 42, 60, 84, 62,
+    38, 20, 12, 24, 48, 78, 108, 132,
+    96, 64, 36, 18, 32, 58, 86, 118,
+    92, 68, 42, 24, 14, 28, 52, 76,
+    56, 34, 20, 12, 8, 14, 10, 6,
+]
+
 function StudioBanner() {
     return (
-        <section className="hh-hero" aria-labelledby="hh-hero-title">
-            <div className="hh-hero-image" aria-hidden="true" />
+        <section
+            className="hh-hero"
+            aria-labelledby="hh-hero-title"
+        >
+            <svg
+                className="hh-hero-wave"
+                viewBox="0 0 400 160"
+                aria-hidden="true"
+                focusable="false"
+            >
+                {waveBars.map((height, index) => (
+                    <rect
+                        key={index}
+                        x={index * 10 + 3}
+                        y={(160 - height) / 2}
+                        width="4"
+                        height={height}
+                        rx="2"
+                        fill="currentColor"
+                        opacity={
+                            0.12 +
+                            0.48 * Math.sin(
+                                Math.PI * index / (waveBars.length - 1)
+                            )
+                        }
+                    />
+                ))}
+            </svg>
 
             <div className="hh-hero-content">
                 <span className="hh-eyebrow">
@@ -85,7 +119,10 @@ function ReviewOverview() {
                         key={feature.title}
                     >
                         <span className="hh-feature-icon">
-                            <Icon name={feature.icon} size={22} />
+                            <Icon
+                                name={feature.icon}
+                                size={22}
+                            />
                         </span>
 
                         <h3>{feature.title}</h3>

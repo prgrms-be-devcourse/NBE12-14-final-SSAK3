@@ -6,7 +6,7 @@
 }
 .understanding-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .understanding h2 { margin: 0; font-size: 18px; line-height: 1.4; letter-spacing: -.03em; }
-.understanding-time { flex: none; color: #00746d; font-weight: 700; font-variant-numeric: tabular-nums; }
+.understanding-time { flex: none; color: var(--react-primary); font-weight: 700; font-variant-numeric: tabular-nums; }
 .understanding-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
 .understanding-options button {
   min-height: 52px;
@@ -19,9 +19,9 @@
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-.understanding-options button.understanding-selected { border-color: #00746d; background: #00746d; color: #fff; }
+.understanding-options button.understanding-selected { border-color: var(--react-primary); background: var(--react-primary); color: #fff; }
 .understanding-options button:disabled { opacity: .6; }
-.understanding-options button:focus-visible { outline: 3px solid #4285af; outline-offset: 3px; }
+.understanding-options button:focus-visible { outline: 3px solid var(--react-focus); outline-offset: 3px; }
 .understanding-sending { font-weight: 400; font-size: 12px; }
 .understanding p { margin: 12px 0 0; color: #526170; font-size: 14px; }
 .understanding p.understanding-error { color: #a1281d; }

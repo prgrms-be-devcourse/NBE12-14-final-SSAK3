@@ -11,10 +11,10 @@
 .poll-results-list { margin-top: 16px; display: grid; gap: 20px; }
 .poll-results-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .poll-results-title span { flex: none; color: #526170; font-size: 13px; }
-.poll-results-title span.poll-results-open { color: #00746d; font-weight: 700; }
+.poll-results-title span.poll-results-open { color: var(--react-primary); font-weight: 700; }
 .poll-results-options { margin-top: 12px; display: grid; gap: 10px; }
 .poll-results-row { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
 .poll-results-bar { height: 8px; margin-top: 6px; border-radius: 4px; background: #eef1f4; overflow: hidden; }
-.poll-results-bar span { display: block; height: 100%; background: #00746d; }
+.poll-results-bar span { display: block; height: 100%; background: var(--react-primary); }
 .poll-results-options p { margin: 4px 0 0; color: #526170; font-size: 13px; }
 .poll-results p.poll-results-totals { margin: 12px 0 0; color: #526170; font-size: 14px; }

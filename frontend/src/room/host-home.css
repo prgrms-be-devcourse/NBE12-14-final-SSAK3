@@ -1,6 +1,4 @@
-/* ==================================================
-   RE:ACT — 강연자 홈
-   ================================================== */
+/* RE:ACT — 강연자 홈 */
 
 .host-shell .hh-home {
     width: 100%;
@@ -32,9 +30,7 @@
     line-height: 1.6;
 }
 
-/* ==================================================
-   강연 목록 공통
-   ================================================== */
+/* 강연 목록 */
 
 .hh-room-lists {
     display: flex;
@@ -51,22 +47,19 @@
 .host-shell .hh-home .room-live-list .room-card {
     margin: 0;
     padding: 22px 26px 10px;
-    border-radius: 12px;
-    box-shadow: none;
     border: 1px solid var(--hh-card-border, var(--react-line));
+    border-radius: 12px;
     background: var(--hh-card-background, #ffffff);
+    box-shadow: none;
 }
 
 .host-shell .hh-home .room-live-list h2 {
     display: flex;
     align-items: center;
     gap: 10px;
-
     margin: 0;
     padding-bottom: 16px;
-
     border-bottom: 1px solid var(--react-line);
-
     color: var(--react-ink);
     font-size: 18px;
     font-weight: 700;
@@ -77,34 +70,43 @@
     display: inline-grid;
     place-items: center;
     flex-shrink: 0;
-
     width: 36px;
     height: 36px;
-
     border-radius: 9px;
-
     background: var(--react-primary-soft);
     color: var(--react-primary);
 }
 
 .host-shell .hh-home .room-live-list ul {
     margin: 0;
-    list-style: none;
     padding: 0;
+    list-style: none;
 }
 
 .host-shell .hh-home .room-live-list li {
-    gap: 12px 20px;
-    padding: 18px 0;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
+    gap: 12px 20px;
+    padding: 18px 0;
+}
+
+.host-shell .hh-home .room-live-list li + li {
+    border-top: 1px solid var(--react-line);
+}
+
+.host-shell .hh-home .room-live-list > p {
+    padding: 15px 20px;
+    border: 1px solid var(--react-line);
+    border-radius: 12px;
+    background: #ffffff;
+    color: var(--react-muted);
 }
 
 .hh-room-row-info {
-    min-width: 0;
     flex: 1 1 220px;
+    min-width: 0;
     overflow-wrap: anywhere;
 }
 
@@ -123,10 +125,10 @@
 }
 
 .host-shell .hh-home .room-live-list :is(time, small) {
+    display: block;
     margin-top: 6px;
     color: var(--react-muted);
     font-size: 13px;
-    display: block;
 }
 
 /* 강연 상태 */
@@ -135,10 +137,8 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-
     padding: 4px 9px;
     border-radius: 999px;
-
     font-size: 11px;
     font-weight: 600;
     line-height: 1.4;
@@ -152,10 +152,8 @@
 
 .hh-room-status-live::before {
     content: "";
-
     width: 6px;
     height: 6px;
-
     border-radius: 50%;
     background: var(--react-primary);
 }
@@ -165,36 +163,43 @@
     color: var(--react-muted);
 }
 
-/* 진행 중인 강연 강조 */
+/* 진행 중인 강연 */
 
 .host-shell .hh-home .hh-live-card {
-    --hh-card-border: #c7e3dc;
-    --hh-card-background: #f7fcfa;
+    --hh-card-border: var(--react-primary-line);
+    --hh-card-background: var(--react-primary-surface);
 }
 
-.host-shell .hh-home .hh-live-list li a {
+/* 강연 목록 이동 버튼 */
+
+.host-shell .hh-home .hh-live-list li a,
+.host-shell .hh-home .hh-ready-list li a {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-
-    min-height: 42px;
-    padding: 10px 16px;
-
-    border: 1px solid var(--react-primary);
+    border: 1px solid;
     border-radius: 8px;
-
-    background: var(--react-primary);
-    color: #ffffff;
-
     font-size: 13px;
     font-weight: 600;
     text-decoration: none;
 }
 
+.host-shell .hh-home .hh-live-list li a {
+    min-height: 42px;
+    padding: 10px 16px;
+    border-color: var(--react-primary);
+    background: var(--react-primary);
+    color: #ffffff;
+}
+
 .host-shell .hh-home .hh-live-list li a:hover {
     border-color: var(--react-primary-hover);
     background: var(--react-primary-hover);
+}
+
+.host-shell .hh-home .hh-live-list li a svg {
+    color: inherit;
 }
 
 /* 준비 중인 강연 */
@@ -205,22 +210,11 @@
 }
 
 .host-shell .hh-home .hh-ready-list li a {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-
     min-height: 40px;
     padding: 9px 14px;
-
-    border: 1px solid var(--react-line);
-    border-radius: 8px;
-
+    border-color: var(--react-line);
     background: #ffffff;
     color: var(--react-primary-hover);
-
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
 }
 
 .host-shell .hh-home .hh-ready-list li a:hover {
@@ -228,16 +222,94 @@
     border-color: var(--react-primary-soft);
 }
 
-/* 빈 상태 */
+/* 강연방 메뉴 및 삭제 */
+
+.room-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.room-row-menu {
+    position: relative;
+}
+
+.host-shell .room-more-trigger {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 44px;
+    padding: 0;
+    background: transparent;
+    color: var(--host-ink);
+    font-size: 22px;
+    line-height: 1;
+}
+
+.host-shell .room-more-trigger:hover,
+.host-shell .room-more-trigger[aria-expanded="true"] {
+    background: var(--react-primary-soft);
+}
+
+.room-row-popup {
+    position: absolute;
+    z-index: 2;
+    top: 100%;
+    right: 0;
+    padding: 4px;
+    border: 1px solid var(--host-line);
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 5px 18px rgb(23 39 33 / 13%);
+}
+
+.host-shell .room-row-popup button {
+    white-space: nowrap;
+    background: #ffffff;
+    color: #a12b32;
+}
+
+.host-shell .room-row-popup button:hover {
+    background: #fff0f1;
+}
+
+.host-shell .room-delete-confirm {
+    background: #a12b32;
+}
+
+.room-delete-details time {
+    display: block;
+    color: var(--host-muted);
+    font-size: 14px;
+}
+
+.room-delete-notice {
+    margin: 0 0 16px;
+    color: var(--host-ink);
+}
+
+.room-ready-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 12px 0;
+    border-top: 1px solid var(--host-line);
+}
+
+.room-ready-more p {
+    margin: 0;
+}
+
+/* 강연이 없는 상태 */
 
 .hh-empty {
     display: flex;
     align-items: center;
     gap: 14px;
-
     min-height: 96px;
     padding: 20px 4px;
-
     color: var(--react-muted);
 }
 
@@ -260,39 +332,33 @@
     line-height: 1.6;
 }
 
-/* ==================================================
-   기존 마이크 이미지 배너
-   ================================================== */
+/* 음성 파형 배너 */
 
 .hh-hero {
     position: relative;
     isolation: isolate;
     overflow: hidden;
-
     min-height: 230px;
     padding: clamp(26px, 3vw, 36px);
-
-    border: 1px solid #123c31;
     border-radius: 12px;
-
-    background: #123c31;
+    background: linear-gradient(
+            110deg,
+            #123c31 0%,
+            #184d3b 55%,
+            #315533 100%
+    );
     color: #ffffff;
 }
 
-.hh-hero-image {
+.hh-hero-wave {
     position: absolute;
     z-index: -1;
-    inset: 0 0 0 30%;
-
-    background:
-            linear-gradient(
-                    90deg,
-                    #123c31 0%,
-                    rgb(18 60 49 / 70%) 25%,
-                    transparent 75%
-            ),
-            url('/images/studio-mic.webp') right 58% / cover no-repeat;
-
+    top: 50%;
+    right: 4%;
+    width: 52%;
+    height: auto;
+    transform: translateY(-50%);
+    color: var(--react-brand-lime);
     pointer-events: none;
 }
 
@@ -305,10 +371,8 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-
     margin-bottom: 12px;
-
-    color: #b8e5d7;
+    color: var(--react-brand-lime);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: .12em;
@@ -316,7 +380,6 @@
 
 .hh-hero h2 {
     margin: 0;
-
     color: #ffffff;
     font-size: clamp(26px, 2.8vw, 36px);
     font-weight: 700;
@@ -326,50 +389,48 @@
 
 .hh-hero p {
     margin: 12px 0 20px;
-
-    color: #d6e9e2;
+    color: #e0eade;
     font-size: 14px;
     line-height: 1.7;
 }
 
-.host-shell a.hh-create-button {
+/* 홈 주요 이동 버튼 */
+
+.host-shell a.hh-create-button,
+.host-shell a.hh-history-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 9px;
-
-    min-height: 42px;
+    gap: 8px;
     padding: 10px 16px;
-
-    border: 1px solid #cdebe2;
+    border: 1px solid;
     border-radius: 8px;
-
-    background: #def3ee;
-    color: #005e58;
-
     font-size: 13px;
-    font-weight: 700;
     text-decoration: none;
     white-space: nowrap;
-
     transition: background-color 150ms ease;
+}
+
+.host-shell a.hh-create-button {
+    min-height: 42px;
+    gap: 9px;
+    border-color: var(--react-primary-line);
+    background: var(--react-brand-lime);
+    color: var(--react-primary-hover);
+    font-weight: 700;
 }
 
 .host-shell a.hh-create-button:hover {
     background: #ffffff;
 }
 
-/* ==================================================
-   강연 기록 및 회고 보고서
-   ================================================== */
+/* 강연 기록 및 회고 보고서 */
 
 .hh-review {
     min-width: 0;
     padding: 26px;
-
     border: 1px solid var(--react-line);
     border-radius: 12px;
-
     background: #ffffff;
 }
 
@@ -379,23 +440,23 @@
     gap: 14px;
 }
 
-.hh-section-icon {
+.hh-section-icon,
+.hh-feature-icon {
     display: inline-grid;
     place-items: center;
     flex-shrink: 0;
-
-    width: 46px;
-    height: 46px;
-
-    border-radius: 10px;
-
     background: var(--react-primary-soft);
     color: var(--react-primary);
 }
 
+.hh-section-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 10px;
+}
+
 .hh-review-heading h2 {
     margin: 0;
-
     color: var(--react-ink);
     font-size: 18px;
     font-weight: 700;
@@ -404,18 +465,16 @@
 
 .hh-review-heading p {
     margin: 6px 0 0;
-
     color: var(--react-muted);
     font-size: 13px;
     line-height: 1.6;
 }
 
-/* 기능 안내 카드 */
+/* 회고 기능 안내 */
 
 .hh-feature-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-
     gap: 14px;
     margin: 24px 0;
 }
@@ -423,30 +482,20 @@
 .hh-feature {
     min-width: 0;
     padding: 20px;
-
     border: 1px solid var(--react-line);
     border-radius: 10px;
-
     background: var(--react-surface);
 }
 
 .hh-feature-icon {
-    display: inline-grid;
-    place-items: center;
-
     width: 40px;
     height: 40px;
-
     margin-bottom: 14px;
     border-radius: 9px;
-
-    background: var(--react-primary-soft);
-    color: var(--react-primary);
 }
 
 .hh-feature h3 {
     margin: 0 0 10px;
-
     color: var(--react-ink);
     font-size: 15px;
     font-weight: 700;
@@ -455,7 +504,6 @@
 
 .hh-feature p {
     margin: 0;
-
     color: var(--react-muted);
     font-size: 13px;
     line-height: 1.8;
@@ -463,26 +511,22 @@
     overflow-wrap: anywhere;
 }
 
-/* 회고 안내 및 이동 버튼 */
+/* 강연 기록 이동 영역 */
 
 .hh-review-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-
     gap: 18px;
     padding-top: 20px;
-
     border-top: 1px solid var(--react-line);
 }
 
 .hh-review-notice {
     display: flex;
     align-items: flex-start;
-
     min-width: 0;
     gap: 8px;
-
     color: var(--react-muted);
 }
 
@@ -500,27 +544,12 @@
 }
 
 .host-shell a.hh-history-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     flex-shrink: 0;
-
-    gap: 8px;
     min-height: 44px;
-    padding: 10px 16px;
-
-    border: 1px solid var(--react-primary);
-    border-radius: 8px;
-
+    border-color: var(--react-primary);
     background: var(--react-primary);
     color: #ffffff;
-
-    font-size: 13px;
     font-weight: 600;
-    text-decoration: none;
-    white-space: nowrap;
-
-    transition: background-color 150ms ease;
 }
 
 .host-shell a.hh-history-button:hover {
@@ -528,9 +557,7 @@
     border-color: var(--react-primary-hover);
 }
 
-/* ==================================================
-   태블릿
-   ================================================== */
+/* 태블릿 */
 
 @media (max-width: 1000px) {
     .hh-feature {
@@ -554,9 +581,7 @@
     }
 }
 
-/* ==================================================
-   모바일
-   ================================================== */
+/* 모바일 */
 
 @media (max-width: 760px) {
     .hh-heading {
@@ -585,7 +610,6 @@
     }
 
     .host-shell .hh-home .room-live-list li {
-        flex-wrap: wrap;
         padding: 16px 0;
     }
 
@@ -616,17 +640,10 @@
         padding: 24px;
     }
 
-    .hh-hero-image {
-        inset-inline-start: 10%;
-
-        background:
-                linear-gradient(
-                        90deg,
-                        #123c31 0%,
-                        rgb(18 60 49 / 75%) 45%,
-                        rgb(18 60 49 / 25%) 100%
-                ),
-                url('/images/studio-mic.webp') right center / cover no-repeat;
+    .hh-hero-wave {
+        right: -15%;
+        width: 80%;
+        opacity: .25;
     }
 
     .hh-hero h2 {
@@ -687,30 +704,4 @@
     .host-shell a.hh-history-button {
         transition: none;
     }
-}
-.room-row-actions { display: inline-flex; align-items: center; gap: 4px; }
-.room-row-menu { position: relative; }
-.host-shell .room-more-trigger { display: grid; place-items: center; width: 42px; height: 44px; padding: 0; background: transparent; color: var(--host-ink); font-size: 22px; line-height: 1; }
-.host-shell .room-more-trigger:hover, .host-shell .room-more-trigger[aria-expanded="true"] {
-    background: var(--react-primary-soft); }
-.room-row-popup { position: absolute; right: 0; top: 100%; z-index: 2; padding: 4px; border: 1px solid var(--host-line); border-radius: 10px; background: white; box-shadow: 0 5px 18px rgb(23 39 33 / 13%); }
-.host-shell .room-row-popup button { white-space: nowrap; background: white; color: #a12b32; }
-.host-shell .room-row-popup button:hover { background: #fff0f1; }
-.host-shell .room-delete-confirm { background: #a12b32; }
-.room-delete-details time { display: block; color: var(--host-muted); font-size: 14px; }
-.room-delete-notice { color: var(--host-ink); margin: 0 0 16px; }
-.room-ready-more { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 16px; padding: 12px 0; border-top: 1px solid var(--host-line); }
-.room-ready-more p { margin: 0; }
-.host-shell .hh-home .room-live-list li + li {
-    border-top: 1px solid var(--react-line);
-}
-.host-shell .hh-home .room-live-list > p {
-    padding: 15px 20px;
-    border: 1px solid var(--react-line);
-    border-radius: 12px;
-    background: #fff;
-    color: var(--react-muted);
-}
-.host-shell .hh-home .hh-live-list li a svg {
-    color: inherit;
 }

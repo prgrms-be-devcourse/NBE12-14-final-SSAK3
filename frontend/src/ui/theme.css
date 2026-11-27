@@ -1,23 +1,33 @@
 /* RE:ACT — 공통 디자인 변수 */
 
 :root {
-    --react-primary: #008780;
-    --react-primary-hover: #006d67;
-    --react-primary-soft: #def3ee;
+    /* 브랜드 색상 */
+    --react-primary: #184d3b;
+    --react-primary-hover: #103b2c;
+    --react-primary-soft: #edf3dc;
+    --react-brand-lime: #d7f477;
+    --react-primary-line: #c5d9b5;
+    --react-primary-surface: #f7faf3;
+    --react-focus: #799e72;
 
+    /* 텍스트 */
     --react-ink: #15212f;
     --react-text: #344452;
     --react-muted: #64748b;
 
+    /* 테두리 */
     --react-line: #e5eaee;
     --react-input-line: #cbd5df;
 
+    /* 화면 배경 */
     --react-white: #ffffff;
     --react-surface: #f8fafb;
 
+    /* 오류 및 위험 */
     --react-danger: #c52d38;
     --react-danger-soft: #fff1f2;
 
+    /* 모서리 */
     --react-radius: 10px;
     --react-card-radius: 14px;
 }

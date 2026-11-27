@@ -1,4 +1,13 @@
+/* RE:ACT — 청중 참여 화면 */
+
 .participation {
+  --ink: var(--react-ink);
+  --muted: var(--react-muted);
+  --forest: var(--react-primary);
+  --lime: var(--react-primary-soft);
+  --paper: var(--react-surface);
+  --line: var(--react-line);
+
   min-height: 100dvh;
   padding-bottom: max(40px, env(safe-area-inset-bottom));
   background: var(--paper);
@@ -6,128 +15,198 @@
   font: 16px/1.55 Pretendard, sans-serif;
   word-break: keep-all;
   overflow-wrap: anywhere;
-  --ink: var(--react-ink);
-  --forest: var(--react-primary);
-  --lime: var(--react-primary-soft);
-  --paper: var(--react-surface);
-  --line: var(--react-line);
-  --muted: var(--react-muted);
 }
-.participation-bar { border-bottom: 1px solid var(--line); background: #fff; }
+
+.participation *,
+.participation *::before,
+.participation *::after {
+  box-sizing: border-box;
+}
+
+.participation :is(button, a, input, textarea, summary):focus-visible {
+  outline: 3px solid var(--react-focus);
+  outline-offset: 3px;
+}
+
+/* 상단 헤더 */
+
+.participation-bar {
+  border-bottom: 1px solid var(--line);
+  background: #ffffff;
+}
+
 .participation-bar-inner {
-  width: min(100%, 1264px);
-  min-height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  width: min(100%, 1264px);
+  min-height: 70px;
   margin: auto;
   padding: 0 clamp(20px, 5vw, 64px);
 }
-.participation-role, .participation-identity, .participation-status {
+
+.participation-role,
+.participation-identity,
+.participation-status {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
-.participation-role { color: var(--muted); font-size: 13px; font-weight: 600; }
+
+.participation-role {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 입장 및 대기 화면 */
+
 .participation main {
   width: min(calc(100% - 32px), 520px);
   margin: clamp(28px, 9vh, 96px) auto 0;
   border: 1px solid var(--line);
-  background: #fff;
-    border-color: var(--react-line);
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgb(21 33 47 / 4%);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgb(21 33 47 / 4%);
 }
+
+/* 강연 정보 */
+
 .participation-cover {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
+  min-width: 0;
   padding: clamp(24px, 4vw, 36px);
-  border-radius: 21px 21px 0 0;
-  background: #143d30;
-  color: white;
+  border-bottom: 1px solid var(--line);
+  border-radius: 16px 16px 0 0;
+  background: #ffffff;
+  color: var(--ink);
 }
-.participation-cover::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 0 28%;
-  z-index: -1;
-  pointer-events: none;
-  background: repeating-radial-gradient(ellipse at 112% 135%, transparent 0 21px, #d7f47725 22px 23px, transparent 24px 33px);
-  mask-image: linear-gradient(to right, transparent, black);
-}
+
 .participation .participation-status {
   width: fit-content;
   max-width: 100%;
   margin: 0;
   padding: 5px 10px;
+  border: 0;
   border-radius: 20px;
+  background: var(--lime);
+  color: var(--react-primary-hover);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.3;
-    border: 0;
-    color: var(--react-primary-hover);
-    background: var(--react-primary-soft);
 }
-.participation-room-heading { margin: 0; font-size: inherit; }
+
+.participation-room-heading {
+  margin: 0;
+  font-size: inherit;
+}
+
 .participation-title {
   display: block;
   margin: 19px 0 0;
-  font-size: clamp(28px, 4vw, 38px);
-  line-height: 1.24;
-  letter-spacing: -.055em;
+  color: var(--ink);
+  font-size: clamp(25px, 3vw, 32px);
   font-weight: 700;
+  line-height: 1.24;
+  letter-spacing: -.035em;
   text-wrap: balance;
 }
+
 .participation-identity {
   margin: 14px 0 0;
-  color: #e1eae1;
+  color: var(--muted);
   font-size: 14px;
 }
-.participation-identity svg, .participation-status svg { flex-shrink: 0; }
+
+.participation-identity svg,
+.participation-status svg {
+  flex-shrink: 0;
+}
+
 .participation-description {
   margin: 0 clamp(22px, 4vw, 36px);
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 14px;
 }
-.participation-description summary { padding: 14px 0; color: var(--ink); cursor: pointer; }
-.participation-description p {
-  margin: 0 0 16px;
-  white-space: pre-wrap;
-  max-height: 13em;
-  overflow: auto;
+
+.participation-description summary {
+  padding: 14px 0;
+  color: var(--ink);
+  cursor: pointer;
 }
-.participation-join, .participation-state, .participation-wait { padding: clamp(24px, 4vw, 36px); }
+
+.participation-description p {
+  max-height: 13em;
+  margin: 0 0 16px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+/* 청중 이름 입력 */
+
+.participation-join,
+.participation-state,
+.participation-wait {
+  padding: clamp(24px, 4vw, 36px);
+}
+
 .participation-join label {
   display: block;
   margin: 0 0 7px;
   color: var(--ink);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
+
 .participation-join input {
   width: 100%;
   min-height: 50px;
   padding: 11px 14px;
-  border: 1px solid #909f93;
+  border: 1px solid var(--react-input-line);
   border-radius: 9px;
-  background: #fff;
+  background: #ffffff;
   color: var(--ink);
   font: inherit;
 }
-.participation-join input::placeholder { color: #68756b; }
-.participation-join input[readonly] { background: var(--paper); }
-.participation-hint { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
-.participation-join [role="alert"], .participation-join [role="status"], .participation-notice {
+
+.participation-join input:focus {
+  border-color: var(--forest);
+}
+
+.participation-join input::placeholder {
+  color: var(--muted);
+}
+
+.participation-join input[readonly] {
+  background: var(--paper);
+}
+
+.participation-hint {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* 오류 및 상태 안내 */
+
+.participation-join [role="alert"],
+.participation-join [role="status"],
+.participation-notice {
   padding: 10px 14px;
   border-radius: 8px;
-  background: #fff2cf;
-  color: #70480a;
+  background: #fff4df;
+  color: #8a631d;
   font-size: 14px;
 }
-.participation-notice { margin: 16px clamp(20px, 4vw, 36px) 0; }
+
+.participation-notice {
+  margin: 16px clamp(20px, 4vw, 36px) 0;
+}
+
+/* 강연 참여 버튼 */
+
 .participation-action {
   display: flex;
   align-items: center;
@@ -136,48 +215,114 @@
   width: 100%;
   min-height: 48px;
   margin: 24px 0 0;
+  padding: 10px 16px;
   border: 0;
   border-radius: 9px;
   background: var(--forest);
-  color: white;
+  color: #ffffff;
   font: inherit;
   font-weight: 700;
+  cursor: pointer;
 }
-.participation-action:hover:enabled { background: #103a2c; }
-.participation-action:disabled { opacity: 1; background: #e4e9df; color: #606b61; }
-.participation :is(button, input, textarea, summary, a):focus-visible {
-  outline: 3px solid #31835b;
-  outline-offset: 2px;
+
+.participation-action:hover:enabled {
+  background: var(--react-primary-hover);
 }
-.participation-state, .participation-wait { text-align: center; }
+
+.participation-action:disabled {
+  opacity: 1;
+  background: #e9eef1;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* 대기 및 종료 화면 */
+
+.participation-state,
+.participation-wait {
+  text-align: center;
+}
+
 .participation-state-icon {
   display: inline-grid;
   place-items: center;
   width: 48px;
   height: 48px;
-  border-radius: 14px;
-  background: #edf5df;
+  border-radius: 12px;
+  background: var(--lime);
   color: var(--forest);
 }
-.participation-state h1 { margin: 18px 0 8px; font-size: 28px; letter-spacing: -.045em; }
-.participation-state p, .participation-wait p { margin: 0; }
-.participation-state p.participation-next { margin-top: 8px; color: var(--muted); font-size: 14px; }
-.participation-wait { display: flex; gap: 16px; align-items: center; text-align: start; }
-.participation-wait .participation-state-icon { flex: none; }
-.participation-wait p { font-size: 15px; }
+
+.participation-state h1 {
+  margin: 18px 0 8px;
+  font-size: 28px;
+  letter-spacing: -.045em;
+}
+
+.participation-state p,
+.participation-wait p {
+  margin: 0;
+}
+
+.participation-state p.participation-next {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.participation-wait {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  text-align: start;
+}
+
+.participation-wait .participation-state-icon {
+  flex: none;
+}
+
+.participation-wait p {
+  font-size: 15px;
+}
+
+.participation-code-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 14px;
+  color: var(--forest);
+  font-weight: 600;
+  text-underline-offset: 4px;
+}
+
+/* 실시간 강연 참여 */
+
 .participation-live main {
-  width: min(calc(100% - 48px), 1040px);
-  margin: clamp(20px, 5vh, 52px) auto 0;
+  width: min(calc(100% - 48px), 1160px);
+  margin: 28px auto 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
+
 .participation-live .participation-cover {
-    border: 1px solid var(--react-line);
-    border-radius: var(--react-card-radius); }
-.participation-live .participation-notice { margin: 12px 0 0; }
-.participation-jumps { display: none; }
+  border: 1px solid var(--line);
+  border-radius: var(--react-card-radius);
+}
+
+.participation-live .participation-notice {
+  margin: 12px 0 0;
+}
+
+/* 투표 및 채팅 레이아웃 */
+
+.participation-jumps {
+  display: none;
+}
+
 .participation-tools {
   display: grid;
   grid-template-columns: minmax(0, 4fr) minmax(0, 5fr);
@@ -185,134 +330,16 @@
   gap: 20px;
   margin-top: 20px;
 }
-.participation-votes { display: grid; align-content: start; gap: 14px; }
-.participation-tools > div { min-width: 0; scroll-margin-block-start: 16px; }
-.participation .participation-poll, .participation .understanding, .participation .chat-panel {
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #fff;
-  color: var(--ink);
-}
-.participation .participation-poll, .participation .understanding { padding: clamp(18px, 3vw, 26px); }
-.participation .understanding {
-    border-top: 3px solid var(--react-primary); }
-.participation-tools h2 { color: var(--ink); font-size: 19px; letter-spacing: -.04em; }
-.participation .participation-poll h2 { margin: 0 0 14px; }
-.participation .participation-poll p, .participation .understanding-hint { color: var(--muted); }
-.participation .participation-poll-question { color: var(--ink); }
-.participation .participation-poll-option { align-items: center; border-color: var(--line); }
-.participation .participation-poll-option:has(input:checked) { border-color: var(--forest); background: #f0f6e7; }
-.participation .participation-poll-option input { min-height: 0; width: 18px; height: 18px; margin: 0; accent-color: var(--forest); }
-.participation .participation-poll-time, .participation .participation-poll-saved, .participation .understanding-time { color: var(--forest); }
-.participation .participation-poll-refresh { min-height: 44px; margin: 0; border-color: var(--line); color: var(--muted); font-size: 14px; }
-.participation .participation-poll form + .participation-poll-refresh { margin-top: 10px; }
-.participation .participation-poll form > button, .participation .understanding-selected, .participation .chat-actions button:enabled { background: var(--forest); }
-.participation .understanding-selected { border-color: var(--forest); }
-.participation .chat-host, .participation .chat-log .chat-own p { background: #e4f0d7; color: var(--forest); }
-.participation .chat-panel-heading, .participation .chat-composer { border-color: var(--line); }
-.participation .chat-actions button { min-height: 44px; padding-inline: 18px; }
-.participation .chat-actions .chat-discard:enabled { background: var(--paper); color: var(--ink); }
-.participation .chat-composer textarea { color: var(--ink);
-    border-color: var(--react-input-line); }
-.participation .chat-empty { color: var(--muted); text-align: center; }
-.participation .chat-log:has(.chat-empty) { display: grid; align-items: center; }
-@media (max-width: 760px) {
-  .participation-bar-inner { min-height: 60px; }
-  .participation main { margin-top: 24px; }
-  .participation-live main { width: calc(100% - 28px); }
-  .participation-live .participation-cover { padding: 22px; }
-  .participation-live .participation-title { margin-top: 12px; font-size: 26px; }
-  .participation-tools { grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 14px; }
-  .participation-jumps { display: flex; gap: 8px; margin-top: 14px; }
-  .participation-jumps a {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    min-height: 44px;
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    background: #fff;
-    color: var(--forest);
-    text-decoration: none;
-    font-size: 14px;
-    font-weight: 600;
-  }
 
-    .participation.participation-live main {
-        width: calc(100% - 28px);
-        margin-top: 18px;
-    }
-
-    .participation .participation-tools {
-        gap: 14px;
-    }
-}
-.participation-code-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 14px;
-  min-height: 44px;
-  color: #184d3b;
-  font-weight: 600;
-  text-underline-offset: 4px;
+.participation-tools > div {
+  min-width: 0;
+  scroll-margin-block-start: 16px;
 }
 
-.participation .participation-cover {
-    color: var(--react-ink);
-    background: var(--react-white);
-    border-bottom: 1px solid var(--react-line);
-}
-
-.participation .participation-cover::before {
-    display: none;
-}
-
-.participation .participation-title {
-    color: var(--react-ink);
-    font-size: clamp(25px, 3vw, 32px);
-    letter-spacing: -.035em;
-}
-
-.participation .participation-identity {
-    color: var(--react-muted);
-}
-
-.participation .participation-state-icon {
-    color: var(--react-primary);
-    background: var(--react-primary-soft);
-}
-
-.participation .participation-join input {
-    border-color: var(--react-input-line);
-}
-
-.participation .participation-action:enabled {
-    background: var(--react-primary);
-}
-
-.participation .participation-action:hover:enabled {
-    background: var(--react-primary-hover);
-}
-
-.participation .participation-action:disabled {
-    background: #e9eef1;
-    color: var(--react-muted);
-}
-
-.participation .participation-code-link {
-    color: var(--react-primary);
-}
-
-.participation.participation-live main {
-    width: min(calc(100% - 48px), 1160px);
-    margin-top: 28px;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
+.participation-votes {
+  display: grid;
+  align-content: start;
+  gap: 14px;
 }
 
 .participation :is(
@@ -320,31 +347,197 @@
     .understanding,
     .chat-panel
 ) {
-    border-color: var(--react-line);
-    border-radius: var(--react-card-radius);
-    box-shadow: none;
+  border: 1px solid var(--line);
+  border-radius: var(--react-card-radius);
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: none;
 }
 
-.participation
-.participation-poll-option:has(input:checked) {
-    border-color: var(--react-primary);
-    background: var(--react-primary-soft);
+.participation .participation-poll,
+.participation .understanding {
+  padding: clamp(18px, 3vw, 26px);
 }
 
-.participation
-.participation-poll form > button:enabled,
-.participation
-.chat-actions button:enabled:not(.chat-discard) {
-    background: var(--react-primary);
+.participation .understanding {
+  border-top: 3px solid var(--forest);
 }
+
+.participation-tools h2 {
+  color: var(--ink);
+  font-size: 19px;
+  letter-spacing: -.04em;
+}
+
+/* 일반 투표 */
+
+.participation .participation-poll h2 {
+  margin: 0 0 14px;
+}
+
+.participation .participation-poll p {
+  color: var(--muted);
+}
+
+.participation .participation-poll .participation-poll-question {
+  color: var(--ink);
+}
+
+.participation .participation-poll-option {
+  align-items: center;
+  border-color: var(--line);
+}
+
+.participation .participation-poll-option:has(input:checked) {
+  border-color: var(--forest);
+  background: var(--lime);
+}
+
+.participation .participation-poll-option input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--forest);
+}
+
+.participation .participation-poll .participation-poll-time,
+.participation .participation-poll .participation-poll-saved {
+  color: var(--forest);
+}
+
+.participation .participation-poll form > button {
+  background: var(--forest);
+}
+
+.participation .participation-poll form > button:enabled:hover {
+  background: var(--react-primary-hover);
+}
+
+.participation .participation-poll-refresh {
+  min-height: 44px;
+  margin: 0;
+  border-color: var(--line);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.participation .participation-poll form + .participation-poll-refresh {
+  margin-top: 10px;
+}
+
+/* 이해도 체크 */
+
+.participation .understanding-hint {
+  color: var(--muted);
+}
+
+.participation .understanding-time {
+  color: var(--forest);
+}
+
+.participation .understanding-options button.understanding-selected {
+  border-color: var(--forest);
+  background: var(--forest);
+  color: #ffffff;
+}
+
+/* 실시간 채팅 */
 
 .participation .chat-host,
 .participation .chat-log .chat-own p {
-    color: var(--react-primary-hover);
-    background: var(--react-primary-soft);
+  background: var(--lime);
+  color: var(--react-primary-hover);
 }
 
-.participation :is(button, a, input, textarea, summary):focus-visible {
-    outline: 3px solid #65b8af;
-    outline-offset: 3px;
+.participation .chat-panel-heading,
+.participation .chat-composer {
+  border-color: var(--line);
+}
+
+.participation .chat-actions button {
+  min-height: 44px;
+  padding-inline: 18px;
+}
+
+.participation .chat-actions button:enabled:not(.chat-discard) {
+  background: var(--forest);
+}
+
+.participation .chat-actions button:enabled:not(.chat-discard):hover {
+  background: var(--react-primary-hover);
+}
+
+.participation .chat-actions .chat-discard:enabled {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.participation .chat-composer textarea {
+  border-color: var(--react-input-line);
+  color: var(--ink);
+}
+
+.participation .chat-empty {
+  color: var(--muted);
+  text-align: center;
+}
+
+.participation .chat-log:has(.chat-empty) {
+  display: grid;
+  align-items: center;
+}
+
+/* 모바일 */
+
+@media (max-width: 760px) {
+  .participation-bar-inner {
+    min-height: 60px;
+  }
+
+  .participation main {
+    margin-top: 24px;
+  }
+
+  .participation-live main {
+    width: calc(100% - 28px);
+    margin-top: 18px;
+  }
+
+  .participation-live .participation-cover {
+    padding: 22px;
+  }
+
+  .participation-live .participation-title {
+    margin-top: 12px;
+    font-size: 26px;
+  }
+
+  .participation-tools {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .participation-jumps {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .participation-jumps a {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #ffffff;
+    color: var(--forest);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+  }
 }

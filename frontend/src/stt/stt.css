@@ -23,7 +23,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px 
 .stt-status > div { border: 1px solid #dce2eb; border-radius: 12px; padding: 18px; display: grid; gap: 8px; }
 .stt-status span, .stt-status small { font-size: 13px; color: #64748b; }
 .stt-status strong { font-size: 18px; }
-.stt-live { color: #087c58; }
+.stt-live { color: var(--react-primary); }
 .stt-notice, .stt-archive { padding: 16px; border-radius: 10px; background: #fff8e6; line-height: 1.6; }
 .stt-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 24px 0; }
 .stt-transcript { border-top: 1px solid #e2e8f0; padding-top: 8px; }

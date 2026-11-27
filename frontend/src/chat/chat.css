@@ -29,7 +29,7 @@
 .chat-panel .chat-log li { display: grid; justify-items: start; gap: 4px; min-width: 0; }
 .chat-panel .chat-log .chat-own { justify-items: end; }
 .chat-meta { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 13px; overflow-wrap: anywhere; }
-.chat-host { padding: 1px 6px; border-radius: 5px; color: #06655f; background: #daf3ef; font-size: 11px; font-weight: 700; }
+.chat-host { padding: 1px 6px; border-radius: 5px; color: var(--react-primary-hover); background: var(--react-primary-soft); font-size: 11px; font-weight: 700; }
 .chat-panel .chat-log li p {
   max-width: 100%;
   margin: 0;
@@ -41,11 +41,11 @@
   overflow-wrap: anywhere;
   line-height: 1.5;
 }
-.chat-panel .chat-log .chat-own p { background: #e2f4f0; border-radius: 12px 4px 12px 12px; }
+.chat-panel .chat-log .chat-own p { background: var(--react-primary-soft); border-radius: 12px 4px 12px 12px; }
 .chat-panel .chat-empty { margin: 0; color: #62727e; font-size: 14px; }
 .chat-panel .chat-jump {
   width: auto; position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-  border: 1px solid #bfd2d2; border-radius: 18px; background: white; color: #08645e;
+  border: 1px solid var(--react-primary-line); border-radius: 18px; background: white; color: var(--react-primary);
   box-shadow: 0 2px 8px #1d3e4217; margin: 0; padding: 6px 14px; white-space: nowrap;
 }
 .chat-panel .chat-composer { display: grid; gap: 8px; padding: 14px 18px; border-top: 1px solid #e2e8ea; margin: 0; }
@@ -60,9 +60,9 @@
 .chat-panel .chat-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .chat-panel .chat-actions button, .chat-panel .chat-feedback button {
   margin: 0; width: auto; padding: 7px 12px; border: 0; border-radius: 8px; min-height: 36px;
-  background: #08776f; color: white; font: inherit; font-weight: 600;
+  background: var(--react-primary); color: white; font: inherit; font-weight: 600;
 }
 .chat-panel .chat-actions .chat-discard, .chat-panel .chat-feedback button { background: #edf2f3; color: #28424a; }
 .chat-panel button { cursor: pointer; }
 .chat-panel button:disabled { background: #e2e8e9; color: #63737c; cursor: default; }
-.chat-panel :focus-visible { outline: 3px solid #287a87; outline-offset: -2px; }
+.chat-panel :focus-visible { outline: 3px solid var(--react-focus); outline-offset: -2px; }
