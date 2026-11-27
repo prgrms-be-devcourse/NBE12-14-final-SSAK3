@@ -1,0 +1,688 @@
+/* ==================================================
+   RE:ACT — 공통 디자인 시스템
+   ================================================== */
+
+:root {
+    --react-primary: #008780;
+    --react-primary-hover: #006d67;
+    --react-primary-soft: #def3ee;
+
+    --react-ink: #15212f;
+    --react-text: #344452;
+    --react-muted: #64748b;
+
+    --react-line: #e5eaee;
+    --react-input-line: #cbd5df;
+
+    --react-white: #ffffff;
+    --react-surface: #f8fafb;
+
+    --react-danger: #c52d38;
+    --react-danger-soft: #fff1f2;
+
+    --react-radius: 10px;
+    --react-card-radius: 14px;
+}
+
+/* ==================================================
+   공통 페이지 테마
+   ================================================== */
+
+.room-app.host-shell:not(:has(.react-live-room)) {
+    --host-ink: var(--react-ink);
+    --host-muted: var(--react-muted);
+    --host-line: var(--react-line);
+    --host-surface: var(--react-white);
+    --host-green: var(--react-primary);
+    --host-lime: var(--react-primary-soft);
+    --host-rail-size: 112px;
+
+    background: var(--react-white);
+}
+
+.auth-app,
+.participation {
+    --ink: var(--react-ink);
+    --muted: var(--react-muted);
+    --forest: var(--react-primary);
+    --lime: var(--react-primary-soft);
+    --line: var(--react-line);
+    --paper: var(--react-surface);
+
+    background: var(--react-surface);
+    color: var(--react-ink);
+}
+
+.report-app {
+    --report-ink: var(--react-ink);
+    --report-muted: var(--react-muted);
+    --report-forest: var(--react-primary);
+    --report-line: var(--react-line);
+    --report-paper: var(--react-surface);
+    --report-lime: var(--react-primary-soft);
+}
+
+/* ==================================================
+   강연자 공통 사이드바
+   ================================================== */
+
+.host-shell:not(:has(.react-live-room)) .host-rail {
+    background: var(--react-surface);
+}
+
+.host-shell:not(:has(.react-live-room)) .host-rail .host-menu {
+    padding: 18px 8px;
+    gap: 8px;
+}
+
+.host-shell:not(:has(.react-live-room))
+.host-rail .host-menu-item {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 62px;
+    padding: 10px 4px;
+    border-radius: var(--react-radius);
+    text-align: center;
+    font-size: 12px;
+}
+
+.host-shell:not(:has(.react-live-room))
+.host-rail .host-menu-item svg {
+    width: 23px;
+    height: 23px;
+}
+
+.host-shell:not(:has(.react-live-room))
+.host-menu-item:enabled:hover {
+    color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.host-shell:not(:has(.react-live-room))
+.host-menu-item[aria-current],
+.host-shell:not(:has(.react-live-room))
+.host-menu-item[aria-expanded="true"] {
+    color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.host-shell:not(:has(.react-live-room))
+.host-menu-item[aria-current] svg,
+.host-shell:not(:has(.react-live-room))
+.host-menu-item[aria-expanded="true"] svg {
+    color: var(--react-primary);
+}
+
+.host-shell:not(:has(.react-live-room))
+.host-rail .host-profile {
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 4px;
+}
+
+.host-shell:not(:has(.react-live-room))
+.host-rail .host-logout {
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+}
+
+/* ==================================================
+   강연자 홈 및 공통 카드
+   ================================================== */
+
+.host-shell:not(:has(.react-live-room))
+.host-body > main {
+    max-width: 1440px;
+    padding: 32px clamp(24px, 4vw, 56px) 48px;
+}
+
+.host-shell .room-create,
+.host-shell .host-history {
+    max-width: 1160px;
+}
+
+.host-shell:not(:has(.react-live-room))
+.host-home-hero {
+    min-height: auto;
+    padding: 0 0 26px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--react-line);
+    border-radius: 0;
+    background: var(--react-white);
+    box-shadow: none;
+}
+
+.host-shell .host-home-art {
+    display: none;
+}
+
+.host-shell .host-home-intro {
+    width: 100%;
+    max-width: none;
+}
+
+.host-shell .host-home-hero h1 {
+    color: var(--react-ink);
+    font-size: clamp(25px, 2.2vw, 34px);
+}
+
+.host-shell .host-home-hero p {
+    color: var(--react-muted);
+    margin: 10px 0 18px;
+}
+
+.host-shell .host-create-shortcut {
+    color: var(--react-white);
+    background: var(--react-primary);
+    border: 1px solid var(--react-primary);
+    border-radius: var(--react-radius);
+}
+
+.host-shell .host-create-shortcut:enabled:hover {
+    background: var(--react-primary-hover);
+}
+
+.host-shell:not(:has(.react-live-room))
+:is(.room-card, .ai-panel, .stt-panel, .chat-panel) {
+    border: 1px solid var(--react-line);
+    border-radius: var(--react-card-radius);
+    background: var(--react-white);
+    box-shadow: none;
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-heading-icon {
+    color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-live-list li a {
+    color: var(--react-primary);
+    border-color: var(--react-line);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-live-list li a:hover {
+    background: var(--react-primary-soft);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-more-trigger:hover {
+    background: var(--react-primary-soft);
+}
+
+/* ==================================================
+   강연 생성 폼
+   ================================================== */
+
+.host-shell .room-create :is(input, textarea) {
+    border-color: var(--react-input-line);
+    border-radius: var(--react-radius);
+    color: var(--react-ink);
+    background: var(--react-white);
+}
+
+.host-shell .room-create :is(input, textarea):focus {
+    border-color: var(--react-primary);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-form-actions button:not(.room-secondary) {
+    color: var(--react-white);
+    background: var(--react-primary);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-form-actions button:not(.room-secondary):enabled:hover {
+    background: var(--react-primary-hover);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-note {
+    background: var(--react-primary-soft);
+    color: var(--react-primary-hover);
+}
+
+/* ==================================================
+   강연 준비 및 종료 화면
+   ================================================== */
+
+.host-shell:not(:has(.react-live-room))
+.host-room-heading-row h1 {
+    font-size: clamp(24px, 2vw, 30px);
+    letter-spacing: -.035em;
+    line-height: 1.4;
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-lifecycle button:not(.room-secondary) {
+    background: var(--react-primary);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-lifecycle button:not(.room-secondary):enabled:hover {
+    background: var(--react-primary-hover);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-secondary {
+    color: var(--react-text);
+    border-color: var(--react-line);
+    background: var(--react-white);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-secondary:enabled:hover {
+    background: var(--react-primary-soft);
+    color: var(--react-primary-hover);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-badge {
+    background: #eef2f5;
+    color: var(--react-muted);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-LIVE {
+    background: var(--react-primary);
+    color: var(--react-white);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-READY {
+    background: #fff4df;
+    color: #8a631d;
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-ENDED {
+    background: #eef2f5;
+    color: var(--react-muted);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-recording .stt-status > div,
+.host-shell:not(:has(.react-live-room))
+.ai-status {
+    background: var(--react-surface);
+}
+
+.host-shell:not(:has(.react-live-room))
+.ai-live-label {
+    color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.host-shell:not(:has(.react-live-room))
+.room-poll .room-poll-understanding {
+    background: var(--react-surface);
+}
+
+/* ==================================================
+   내 강연 기록
+   ================================================== */
+
+.host-shell .history-heading h1 {
+    color: var(--react-ink);
+    font-size: clamp(26px, 2.3vw, 34px);
+}
+
+.host-shell .history-rows {
+    border-color: var(--react-line);
+    border-radius: var(--react-card-radius);
+    box-shadow: none;
+}
+
+.host-shell .history-row-actions .history-report-link {
+    color: var(--react-primary-hover);
+    background: var(--react-primary-soft);
+    border-color: var(--react-primary-soft);
+}
+
+.host-shell .history-row-actions a:hover {
+    color: var(--react-primary);
+    border-color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.host-shell .history-empty {
+    background: var(--react-white);
+    border-color: var(--react-line);
+}
+
+/* ==================================================
+   로그인 / 회원가입 / 참여 코드 입력
+   ================================================== */
+
+.auth-app .studio-header {
+    background: var(--react-white);
+    border-color: var(--react-line);
+}
+
+.auth-app .studio-header-inner {
+    height: 70px;
+}
+
+.auth-app .studio-spread {
+    border-color: var(--react-line);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgb(21 33 47 / 4%);
+}
+
+/* 기존 강연 스튜디오 소개 영역 */
+
+.auth-app .studio-cover {
+    background: linear-gradient(
+            145deg,
+            #edf8f5 0%,
+            #def3ee 100%
+    );
+
+    color: var(--react-ink);
+}
+
+.auth-app .studio-cover::before {
+    display: none;
+}
+
+.auth-app .studio-cover h2 {
+    font-size: clamp(36px, 3.8vw, 56px);
+    letter-spacing: -.055em;
+}
+
+.auth-app .studio-cover h2 em {
+    color: var(--react-primary);
+}
+
+.auth-app .studio-eyebrow {
+    color: var(--react-primary-hover);
+}
+
+.auth-app .studio-cover p {
+    color: var(--react-muted);
+}
+
+.auth-app .studio-mode {
+    background: var(--react-surface);
+    border-color: var(--react-line);
+}
+
+.auth-app .studio-mode a[aria-current] {
+    background: var(--react-white);
+    color: var(--react-primary);
+}
+
+.auth-app .auth-input {
+    border-color: var(--react-input-line);
+    color: var(--react-muted);
+}
+
+.auth-app .auth-input:has(input:focus) {
+    border-color: var(--react-primary);
+    box-shadow: 0 0 0 3px rgb(0 135 128 / 12%);
+}
+
+.auth-app .auth-input:has([aria-invalid=true]) {
+    border-color: var(--react-danger);
+}
+
+.auth-app .auth-submit {
+    background: var(--react-primary);
+}
+
+.auth-app .auth-submit:hover:not(:disabled) {
+    background: var(--react-primary-hover);
+}
+
+.auth-app .studio-preview:hover,
+.auth-app .auth-reveal:hover {
+    background: var(--react-primary-soft);
+}
+
+.auth-app .studio-feature-icon {
+    color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+/* ==================================================
+   청중 입장 / 대기 / 진행 / 종료
+   ================================================== */
+
+.participation main {
+    border-color: var(--react-line);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgb(21 33 47 / 4%);
+}
+
+.participation .participation-cover {
+    color: var(--react-ink);
+    background: var(--react-white);
+    border-bottom: 1px solid var(--react-line);
+}
+
+.participation .participation-cover::before {
+    display: none;
+}
+
+.participation .participation-status {
+    border: 0;
+    color: var(--react-primary-hover);
+    background: var(--react-primary-soft);
+}
+
+.participation .participation-title {
+    color: var(--react-ink);
+    font-size: clamp(25px, 3vw, 32px);
+    letter-spacing: -.035em;
+}
+
+.participation .participation-identity {
+    color: var(--react-muted);
+}
+
+.participation .participation-state-icon {
+    color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.participation .participation-join input {
+    border-color: var(--react-input-line);
+}
+
+.participation .participation-action:enabled {
+    background: var(--react-primary);
+}
+
+.participation .participation-action:hover:enabled {
+    background: var(--react-primary-hover);
+}
+
+.participation .participation-action:disabled {
+    background: #e9eef1;
+    color: var(--react-muted);
+}
+
+.participation .participation-code-link {
+    color: var(--react-primary);
+}
+
+/* 청중 진행 화면 */
+
+.participation.participation-live main {
+    width: min(calc(100% - 48px), 1160px);
+    margin-top: 28px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.participation-live .participation-cover {
+    border: 1px solid var(--react-line);
+    border-radius: var(--react-card-radius);
+}
+
+.participation :is(
+    .participation-poll,
+    .understanding,
+    .chat-panel
+) {
+    border-color: var(--react-line);
+    border-radius: var(--react-card-radius);
+    box-shadow: none;
+}
+
+.participation .understanding {
+    border-top: 3px solid var(--react-primary);
+}
+
+.participation
+.participation-poll-option:has(input:checked) {
+    border-color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.participation
+.participation-poll form > button:enabled,
+.participation
+.chat-actions button:enabled:not(.chat-discard) {
+    background: var(--react-primary);
+}
+
+.participation .chat-host,
+.participation .chat-log .chat-own p {
+    color: var(--react-primary-hover);
+    background: var(--react-primary-soft);
+}
+
+.participation .chat-composer textarea {
+    border-color: var(--react-input-line);
+}
+
+/* ==================================================
+   보고서 공통 색상
+   기존 데이터 및 레이아웃 유지
+   ================================================== */
+
+.report-app .report-header {
+    color: var(--react-ink);
+    background: var(--react-white);
+    border: 1px solid var(--react-line);
+    border-radius: var(--react-card-radius);
+}
+
+.report-app .report-header::after {
+    display: none;
+}
+
+.report-app .report-cover-label,
+.report-app .report-cover-meta {
+    color: var(--react-muted);
+}
+
+.report-app .report-status-pill {
+    color: var(--react-primary-hover);
+    background: var(--react-primary-soft);
+}
+
+.report-app .report-preview-bar {
+    background: var(--react-surface);
+}
+
+.report-app .report-column > header {
+    background: var(--react-surface);
+}
+
+.report-app .report-ai {
+    color: var(--react-primary-hover);
+    background: var(--react-primary-soft);
+}
+
+.report-app .report-understanding {
+    background: #edf8f5;
+    border-left-color: var(--react-primary);
+}
+
+.report-app .report-evidence-record {
+    background: var(--react-surface);
+}
+
+.report-app .report-contents a:hover {
+    background: var(--react-primary-soft);
+}
+
+.report-app .report-empty {
+    background: var(--react-surface);
+    border-color: var(--react-line);
+}
+
+/* ==================================================
+   공통 키보드 접근성
+   ================================================== */
+
+.host-shell:not(:has(.react-live-room))
+:is(button, a, input, textarea, summary):focus-visible,
+.auth-app :is(button, a, input):focus-visible,
+.participation
+:is(button, a, input, textarea, summary):focus-visible,
+.report-app
+:is(button, a, select, summary):focus-visible {
+    outline: 3px solid #65b8af;
+    outline-offset: 3px;
+}
+
+/* ==================================================
+   모바일
+   ================================================== */
+
+@media (max-width: 760px) {
+    .room-app.host-shell:not(:has(.react-live-room)) {
+        --host-rail-size: 0px;
+        --host-bar-size: 60px;
+    }
+
+    .host-shell:not(:has(.react-live-room))
+    .host-body > main {
+        padding: 24px 16px 36px;
+    }
+
+    .host-shell:not(:has(.react-live-room))
+    .host-home-hero {
+        min-height: auto;
+        padding: 0 0 20px;
+    }
+
+    .host-shell .host-home-intro {
+        max-width: 100%;
+    }
+
+    .host-shell .host-home-hero h1 {
+        font-size: 27px;
+    }
+
+    .auth-app .studio-header-inner {
+        height: 60px;
+    }
+
+    .auth-app .studio-cover {
+        min-height: auto;
+    }
+
+    .participation.participation-live main {
+        width: calc(100% - 28px);
+        margin-top: 18px;
+    }
+
+    .participation .participation-tools {
+        gap: 14px;
+    }
+
+    .report-app .report-header {
+        padding: 24px;
+    }
+}

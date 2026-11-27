@@ -17,6 +17,8 @@ import { watchPollResults } from '../../poll/watchPollResults.js'
 import { Icon } from '../../ui/Icon.jsx'
 
 import { LiveAnalysisPanel } from './LiveAnalysisPanel.jsx'
+import { LiveRecordingControl } from './LiveRecordingControl.jsx'
+
 import './live-room.css'
 
 const emptySubscribe = () => () => {}
@@ -38,20 +40,37 @@ function elapsed(startedAt, now) {
 
     if (!Number.isFinite(start)) return '—'
 
-    const seconds = Math.max(0, Math.floor((now - start) / 1000))
+    const seconds = Math.max(
+        0,
+        Math.floor((now - start) / 1000),
+    )
 
     return [
         Math.floor(seconds / 3600),
         Math.floor(seconds / 60) % 60,
         seconds % 60,
-    ].map(value => String(value).padStart(2, '0')).join(':')
+    ].map(value =>
+        String(value).padStart(2, '0'),
+    ).join(':')
 }
 
-function LiveStatus({ startedAt, recording }) {
+function LiveStatus({
+                        startedAt,
+                        recorder,
+                        recording,
+                        ending,
+                        offline,
+                        chatOpen,
+                        onToggleChat,
+                    }) {
     const [now, setNow] = useState(Date.now)
 
     useEffect(() => {
-        const timer = window.setInterval(() => setNow(Date.now()), 1000)
+        const timer = window.setInterval(
+            () => setNow(Date.now()),
+            1000,
+        )
+
         return () => window.clearInterval(timer)
     }, [])
 
@@ -59,20 +78,59 @@ function LiveStatus({ startedAt, recording }) {
 
     return <div className="rl-status">
 
-    <span className="rl-live-label">
-      <i aria-hidden="true" />
-      강연 진행 중
-    </span>
+        <div className="rl-status-info">
 
-        <span>
-      <Icon name="clock" size={18} />
-            {elapsed(startedAt, now)}
-    </span>
+            <span className="rl-live-label">
+                <i aria-hidden="true" />
+                강연 진행 중
+            </span>
 
-        <span className={active ? 'rl-recording' : ''}>
-      <i aria-hidden="true" />
-            {recorderLabels[recording?.phase] || '녹음 확인 중'}
-    </span>
+            <span className="rl-elapsed">
+                <Icon name="clock" size={18} />
+                {elapsed(startedAt, now)}
+            </span>
+
+            <span className={`rl-record-status${active ? ' rl-recording' : ''}`}>
+                <i aria-hidden="true" />
+
+                {recorderLabels[recording?.phase] || '녹음 확인 중'}
+            </span>
+
+        </div>
+
+        <div className="rl-status-actions">
+
+            <LiveRecordingControl
+                recorder={recorder}
+                ending={ending}
+                offline={offline}
+            />
+
+            <span className="rl-action-divider" aria-hidden="true" />
+
+            <button
+                type="button"
+                className="room-secondary rl-button rl-chat-toggle"
+                aria-expanded={chatOpen}
+                aria-controls="rl-chat-area"
+                onClick={onToggleChat}
+            >
+                <Icon name="message" size={17} />
+
+                {chatOpen ? '채팅 접기' : '채팅 열기'}
+
+                <Icon
+                    name="chevron-right"
+                    size={15}
+                    className={
+                        chatOpen
+                            ? 'rl-chat-toggle-arrow'
+                            : 'rl-chat-toggle-arrow is-closed'
+                    }
+                />
+            </button>
+
+        </div>
 
     </div>
 }
@@ -108,10 +166,20 @@ function useLivePolls(roomId) {
         }
     }, [roomId])
 
-    return { understanding, general, connected, denied }
+    return {
+        understanding,
+        general,
+        connected,
+        denied,
+    }
 }
 
-function LatestUnderstanding({ check, loaded, connected, denied }) {
+function LatestUnderstanding({
+                                 check,
+                                 loaded,
+                                 connected,
+                                 denied,
+                             }) {
     const tones = {
         UNDERSTOOD: 'good',
         CONFUSED: 'mixed',
@@ -122,7 +190,9 @@ function LatestUnderstanding({ check, loaded, connected, denied }) {
     }
 
     const percent = value =>
-        Number.isFinite(value) ? `${value.toFixed(1)}%` : '—'
+        Number.isFinite(value)
+            ? `${value.toFixed(1)}%`
+            : '—'
 
     const tone = option =>
         tones[option.understandingStatus] ||
@@ -137,55 +207,63 @@ function LatestUnderstanding({ check, loaded, connected, denied }) {
             <h3>최근 이해도 체크</h3>
 
             {!denied && check && <span>
-        {check.status === 'OPEN' ? '진행 중' : '마감'}
+                {check.status === 'OPEN' ? '진행 중' : '마감'}
                 {' · '}
                 {check.respondedParticipants}/{check.totalParticipants}명 응답
-      </span>}
+            </span>}
         </div>
 
-        {denied ? <p role="alert">
-            이해도 결과를 조회할 수 없습니다.
-        </p> : !loaded ? <p role="status">
-            이해도 결과 확인 중입니다.
-        </p> : !check ? <p>
-            아직 표시할 이해도 체크 결과가 없습니다.
-        </p> : <>
-
-            <div className="rl-understanding-values">
-
-                {check.options.map(option => <div
-                    key={option.optionId}
-                    className={`rl-tone-${tone(option)}`}
-                >
-                    <strong>
-                        {hasResponses ? percent(option.percentageOfResponses) : '—'}
-                    </strong>
-
-                    <span>{option.content}</span>
-                </div>)}
-
-            </div>
-
-            {hasResponses && <div
-                className="rl-understanding-bar"
-                aria-hidden="true"
-            >
-                {check.options.filter(option => option.count > 0).map(option =>
-                    <span
-                        key={option.optionId}
-                        className={`rl-tone-${tone(option)}`}
-                        style={{ flex: option.count }}
-                    />,
-                )}
-            </div>}
-
-            <p>
-                {hasResponses
-                    ? `응답자 기준 · 응답률 ${percent(check.responseRate)} · 미응답 ${check.unrespondedParticipants}명`
-                    : '아직 응답이 없습니다.'}
+        {denied
+            ? <p role="alert">
+                이해도 결과를 조회할 수 없습니다.
             </p>
+            : !loaded
+                ? <p role="status">
+                    이해도 결과 확인 중입니다.
+                </p>
+                : !check
+                    ? <p>
+                        아직 표시할 이해도 체크 결과가 없습니다.
+                    </p>
+                    : <>
+                        <div className="rl-understanding-values">
 
-        </>}
+                            {check.options.map(option => <div
+                                key={option.optionId}
+                                className={`rl-tone-${tone(option)}`}
+                            >
+                                <strong>
+                                    {hasResponses
+                                        ? percent(option.percentageOfResponses)
+                                        : '—'}
+                                </strong>
+
+                                <span>
+                                    {option.content}
+                                </span>
+                            </div>)}
+
+                        </div>
+
+                        {hasResponses && <div
+                            className="rl-understanding-bar"
+                            aria-hidden="true"
+                        >
+                            {check.options
+                                .filter(option => option.count > 0)
+                                .map(option => <span
+                                    key={option.optionId}
+                                    className={`rl-tone-${tone(option)}`}
+                                    style={{ flex: option.count }}
+                                />)}
+                        </div>}
+
+                        <p>
+                            {hasResponses
+                                ? `응답자 기준 · 응답률 ${percent(check.responseRate)} · 미응답 ${check.unrespondedParticipants}명`
+                                : '아직 응답이 없습니다.'}
+                        </p>
+                    </>}
 
         {!denied && !connected && <p role="status">
             연결 확인 중 · 조회한 결과만 표시합니다.
@@ -199,15 +277,16 @@ export function LiveRoomWorkspace({
                                       userId,
                                       onRecorder,
                                       ending,
+                                      offline = false,
                                       onAccessError,
                                   }) {
     const [recorder, setRecorder] = useState(null)
     const [tool, setTool] = useState(null)
+    const [chatOpen, setChatOpen] = useState(true)
 
     const dialog = useRef(null)
+    const rememberChatPosition = useRef(null)
 
-    // 콜백 참조가 바뀌어 녹음 컨트롤러가
-    // 재생성되지 않도록 유지한다.
     const registerRecorder = useCallback(value => {
         setRecorder(value)
         onRecorder?.(value)
@@ -229,11 +308,16 @@ export function LiveRoomWorkspace({
         recording.retryPaused ||
         recording.archived ||
         recording.stopPending ||
+        recording.hasUnsecuredSegments ||
+        recording.storageOk === false ||
         recording.phase === 'blocked' ||
+        recording.phase === 'paused' ||
         recording.authOk === false
     )
 
-    const pollTool = tool === 'poll' || tool === 'understanding'
+    const pollTool =
+        tool === 'poll' ||
+        tool === 'understanding'
 
     useEffect(() => {
         const node = dialog.current
@@ -244,16 +328,28 @@ export function LiveRoomWorkspace({
 
         if (tool === 'understanding') {
             node.querySelector('.room-poll-understanding')
-                ?.scrollIntoView({ block: 'nearest' })
+                ?.scrollIntoView({
+                    block: 'nearest',
+                })
         } else {
             node.scrollTop = 0
         }
     }, [tool])
 
+    function toggleChat() {
+        if (chatOpen) {
+            rememberChatPosition.current?.()
+        }
+
+        setChatOpen(open => !open)
+    }
+
     function openPoll() {
-        setTool(currentPoll?.type === 'UNDERSTANDING'
-            ? 'understanding'
-            : 'poll')
+        setTool(
+            currentPoll?.type === 'UNDERSTANDING'
+                ? 'understanding'
+                : 'poll',
+        )
     }
 
     const titles = {
@@ -262,13 +358,20 @@ export function LiveRoomWorkspace({
         recording: '발언 기록',
     }
 
-    return <div className="react-live-room">
+    return <div
+        className={`react-live-room${chatOpen ? '' : ' rl-chat-collapsed'}`}
+    >
 
         <div className="rl-main">
 
             <LiveStatus
                 startedAt={room.startedAt}
+                recorder={recorder}
                 recording={recording}
+                ending={ending}
+                offline={offline}
+                chatOpen={chatOpen}
+                onToggleChat={toggleChat}
             />
 
             <AudienceRoomPanel
@@ -291,14 +394,19 @@ export function LiveRoomWorkspace({
                 }
             />
 
-            {currentPoll && <div className="rl-notice" role="status">
-
+            {currentPoll && <div
+                className="rl-notice"
+                role="status"
+            >
                 <div>
                     <strong>
                         {currentPoll.type === 'UNDERSTANDING'
                             ? '이해도 체크'
                             : '투표'}
-                        {polls.connected ? ' 진행 중' : ' 상태 확인 필요'}
+
+                        {polls.connected
+                            ? ' 진행 중'
+                            : ' 상태 확인 필요'}
                     </strong>
 
                     <p>{currentPoll.question}</p>
@@ -311,12 +419,20 @@ export function LiveRoomWorkspace({
                 >
                     확인하기
                 </button>
-
             </div>}
 
-            {recordingProblem && <div className="rl-notice rl-warning" role="status">
+            {recordingProblem && <div
+                className="rl-notice rl-warning"
+                role="status"
+            >
+                <div>
+                    <strong>
+                        발언 기록의 상태를 확인해 주세요.
+                    </strong>
 
-                <strong>발언 기록의 저장 상태를 확인해 주세요.</strong>
+                    {recording.message &&
+                        <p>{recording.message}</p>}
+                </div>
 
                 <button
                     type="button"
@@ -325,14 +441,16 @@ export function LiveRoomWorkspace({
                 >
                     확인하기
                 </button>
-
             </div>}
 
-            <nav className="rl-toolbar" aria-label="강연 진행 도구">
-
+            <nav
+                className="rl-toolbar"
+                aria-label="강연 진행 도구"
+            >
                 <button
                     type="button"
                     className="room-secondary rl-button rl-primary"
+                    disabled={ending}
                     onClick={() => setTool('poll')}
                 >
                     <Icon name="chart" size={21} />
@@ -342,6 +460,7 @@ export function LiveRoomWorkspace({
                 <button
                     type="button"
                     className="room-secondary rl-button"
+                    disabled={ending}
                     onClick={() => setTool('understanding')}
                 >
                     <Icon name="check" size={21} />
@@ -353,40 +472,45 @@ export function LiveRoomWorkspace({
                     className="room-secondary rl-button"
                     onClick={() => setTool('recording')}
                 >
-                    <Icon name="mic" size={21} />
+                    <Icon name="file" size={21} />
                     발언 기록
 
                     {recording?.phase === 'listening' &&
                         <span className="rl-rec-tag">REC</span>}
                 </button>
-
             </nav>
 
         </div>
 
-        <aside className="rl-chat" aria-label="실시간 채팅">
-
+        {/* 채팅을 숨겨도 컴포넌트와 구독은 유지한다. */}
+        <aside
+            id="rl-chat-area"
+            className="rl-chat"
+            aria-label="실시간 채팅"
+            hidden={!chatOpen}
+        >
             <ChatPanel
                 roomId={room.roomId}
                 live
                 showAvatars
-                viewer={{ type: 'HOST', id: userId }}
+                visible={chatOpen}
+                rememberPositionRef={rememberChatPosition}
+                viewer={{
+                    type: 'HOST',
+                    id: userId,
+                }}
                 since={room.startedAt}
                 onAccessError={onAccessError}
             />
-
         </aside>
 
-        {/* 기존 컴포넌트는 닫힌 모달 안에서도 유지한다.
-        녹음 중 모달을 닫아도 SttPanel을 제거하지 않는다. */}
-
+        {/* 모달을 닫아도 녹음 컨트롤러는 유지한다. */}
         <dialog
             ref={dialog}
             className="rl-dialog"
             aria-labelledby="rl-dialog-title"
             onClose={() => setTool(null)}
         >
-
             <div className="rl-dialog-head">
 
                 <h2 id="rl-dialog-title">
@@ -407,9 +531,6 @@ export function LiveRoomWorkspace({
             <div className="rl-dialog-body">
 
                 <div hidden={!pollTool}>
-
-                    {/* 일반 투표와 이해도 체크는
-              기존 컴포넌트 하나를 공유한다. */}
                     <PollCreatePanel
                         roomId={room.roomId}
                         ending={ending}
@@ -420,25 +541,22 @@ export function LiveRoomWorkspace({
                     <UnderstandingSummary roomId={room.roomId} />
 
                     <UnderstandingRounds roomId={room.roomId} />
-
                 </div>
 
                 <div
                     className="room-recording"
                     hidden={tool !== 'recording'}
                 >
-
                     <SttPanel
                         roomId={room.roomId}
                         userId={userId}
                         onRecorder={registerRecorder}
                         ending={ending}
+                        externalControls
                     />
-
                 </div>
 
             </div>
-
         </dialog>
 
     </div>

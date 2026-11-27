@@ -18,7 +18,7 @@ export function AuthPage() {
 function AuthForm({ signup, location }) {
   const navigate = useNavigate()
   const returnTo = returnPath(new URLSearchParams(location.search).get('returnTo'))
-  const target = returnTo || '/host/rooms/new'
+  const target = returnTo || '/host/rooms'
   const suffix = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''
   const [values, setValues] = useState({ name: '', email: location.state?.email || '', password: '', confirm: '' })
   const [touched, setTouched] = useState({})

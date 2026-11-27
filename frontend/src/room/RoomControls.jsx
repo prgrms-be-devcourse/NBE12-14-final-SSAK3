@@ -1,56 +1,120 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
+
+import { createPortal } from 'react-dom'
 import { request } from '../stt/api.js'
 import { terminal } from './state.js'
 
 const subscribeNone = () => () => {}
 const noRecorder = () => null
 
-export function RoomControls({ room, userId, recorder, onRoom, onAccessError, onEnding, offline }) {
+const startLimitMessages = {
+  LIVE_ROOM_LIMIT_EXCEEDED:
+      '현재 동시에 진행할 수 있는 강연방 수에 도달했습니다. 다른 강연이 종료된 후 다시 시도해 주세요.',
+
+  HOST_LIVE_ROOM_LIMIT_EXCEEDED:
+      '이미 진행 중인 강연이 있습니다. 기존 강연을 종료한 후 새로운 강연을 시작해 주세요.',
+}
+
+export function RoomControls({
+                               room,
+                               userId,
+                               recorder,
+                               onRoom,
+                               onAccessError,
+                               onEnding,
+                               offline,
+                               liveTarget,
+                             }) {
   const base = `/rooms/${room.roomId}`
   const key = `react:host-end:${userId}:${room.roomId}`
+
   const [phase, setPhase] = useState(() => {
     try {
-      const saved = room.status === 'LIVE' && sessionStorage.getItem(key)
+      const saved =
+          room.status === 'LIVE' &&
+          sessionStorage.getItem(key)
+
       if (saved === 'end') return 'resume-end'
+
       return saved === 'save' ? 'resume' : 'idle'
+    } catch {
+      return 'idle'
     }
-    catch { return 'idle' }
   })
+
   const [confirming, setConfirming] = useState(false)
+  const [startError, setStartError] = useState('')
+
   const dialog = useRef(null)
   const trigger = useRef(null)
   const active = useRef(false)
   const working = useRef(false)
   const latest = useRef(room.status)
+
   latest.current = room.status
-  const view = useSyncExternalStore(recorder?.subscribe || subscribeNone, recorder?.getSnapshot || noRecorder)
+
+  const view = useSyncExternalStore(
+      recorder?.subscribe || subscribeNone,
+      recorder?.getSnapshot || noRecorder,
+  )
 
   function remember(value) {
     try {
       if (value) sessionStorage.setItem(key, value)
       else sessionStorage.removeItem(key)
-    } catch { /* On reload the server status is still authoritative. */ }
+    } catch {
+      /* On reload the server status is still authoritative. */
+    }
   }
 
   useEffect(() => {
     active.current = true
+
     return () => { active.current = false }
   }, [])
+
   useEffect(() => {
     if (room.status === 'ENDED') {
       remember(null)
       setConfirming(false)
+      setStartError('')
       setPhase('idle')
     } else if (room.status === 'LIVE') {
-      setPhase(p => ['starting', 'check-start', 'retry-start'].includes(p) ? 'idle' : p)
+      setStartError('')
+
+      setPhase(p =>
+          ['starting', 'check-start', 'retry-start'].includes(p)
+              ? 'idle'
+              : p,
+      )
     }
   }, [room.status])
+
   useEffect(() => {
-    onEnding(room.status === 'LIVE' && ['saving', 'retry-save', 'ending', 'retry-end', 'check-end', 'resume', 'resume-end'].includes(phase))
+    onEnding(
+        room.status === 'LIVE' &&
+        [
+          'saving',
+          'retry-save',
+          'ending',
+          'retry-end',
+          'check-end',
+          'resume',
+          'resume-end',
+        ].includes(phase),
+    )
   }, [room.status, phase, onEnding])
+
   useEffect(() => {
-    if (confirming) dialog.current?.showModal()
-  }, [confirming])
+    if (confirming && dialog.current && !dialog.current.open) {
+      dialog.current.showModal()
+    }
+  }, [confirming, liveTarget])
 
   function cancel() {
     dialog.current?.close()
@@ -60,12 +124,21 @@ export function RoomControls({ room, userId, recorder, onRoom, onAccessError, on
 
   async function reconcile(action) {
     setPhase(`check-${action}`)
+
     try {
       const value = await request(base)
-      if (!active.current) return
+
+      if (!active.current || latest.current === 'ENDED') return
+
       onRoom(value)
+
       const pending = action === 'start' ? 'READY' : 'LIVE'
-      setPhase(value.status === pending ? `retry-${action}` : 'idle')
+
+      setPhase(
+          value.status === pending
+              ? `retry-${action}`
+              : 'idle',
+      )
     } catch (e) {
       if (active.current && terminal(e)) onAccessError(e)
     }
@@ -73,76 +146,231 @@ export function RoomControls({ room, userId, recorder, onRoom, onAccessError, on
 
   async function send(action) {
     setPhase(action === 'start' ? 'starting' : 'ending')
+
+    if (action === 'start') setStartError('')
     if (action === 'end') remember('end')
+
     try {
-      const value = await request(`${base}/${action}`, { method: 'POST' })
-      if (!active.current) return
-      if (value?.status !== (action === 'start' ? 'LIVE' : 'ENDED')) throw new Error('UNKNOWN_STATUS')
+      const value = await request(`${base}/${action}`, {
+        method: 'POST',
+      })
+
+      if (!active.current || latest.current === 'ENDED') return
+
+      if (value?.status !== (action === 'start' ? 'LIVE' : 'ENDED')) {
+        throw new Error('UNKNOWN_STATUS')
+      }
+
       onRoom(value)
       setPhase('idle')
     } catch (e) {
-      if (!active.current) return
-      if (terminal(e)) onAccessError(e)
-      else await reconcile(action)
+      if (!active.current || latest.current === 'ENDED') return
+
+      if (terminal(e)) {
+        onAccessError(e)
+        return
+      }
+
+      const limitMessage =
+          action === 'start' && e.status === 409
+              ? startLimitMessages[e.code]
+              : null
+
+      if (typeof limitMessage === 'string') {
+        if (latest.current === 'READY') {
+          setStartError(limitMessage)
+          setPhase('idle')
+        }
+
+        return
+      }
+
+      await reconcile(action)
     }
   }
 
   async function run(job) {
     if (working.current) return
+
     working.current = true
-    try { await job() } finally { working.current = false }
+
+    try {
+      await job()
+    } finally {
+      working.current = false
+    }
   }
 
   async function finish() {
     setConfirming(false)
+
     remember('save')
+
     setPhase('saving')
+
     try {
       const saved = await recorder?.finishForRoomEnd()
+
       if (!active.current || latest.current !== 'LIVE') return
+
       if (saved) await send('end')
       else setPhase('retry-save')
     } catch {
-      if (active.current) setPhase('retry-save')
+      if (active.current && latest.current === 'LIVE') {
+        setPhase('retry-save')
+      }
     }
   }
 
-  // A background STT retry may finish after the initial stop returned. A reload restores
-  // 'resume', so only the still-open, confirmed flow can close the room automatically.
+  // 진행 중인 종료 요청에서 저장 재시도가 성공한 경우에만
+  // 강연 종료를 이어서 수행한다.
   useEffect(() => {
-    if (phase === 'retry-save' && view?.readyToCloseRoom && room.status === 'LIVE') {
+    if (
+        phase === 'retry-save' &&
+        view?.readyToCloseRoom &&
+        room.status === 'LIVE'
+    ) {
       void run(() => send('end'))
     }
   }, [phase, view?.readyToCloseRoom, room.status])
 
+  function placeActions(content) {
+    // 상태와 요청 처리는 기존 RoomControls에서 유지하고,
+    // LIVE 상태의 화면 출력 위치만 사이드바로 이동한다.
+    return room.status === 'LIVE' && liveTarget
+        ? createPortal(content, liveTarget)
+        : content
+  }
+
   if (room.status === 'ENDED') return null
-  const checking = phase === 'check-end' || phase === 'check-start'
-  if (checking) return <div className="room-warning" role="status">
-    방 상태를 확인하고 있습니다. 연결이 끊겼다면 다시 확인해 주세요.{' '}
-    <button onClick={() => run(() => reconcile(phase === 'check-start' ? 'start' : 'end'))}>상태 다시 확인</button>
-  </div>
-  if (room.status === 'READY') return <div className="room-lifecycle">
-    <button disabled={offline || phase === 'starting'} onClick={() => run(() => send('start'))}>
-      {phase === 'starting' ? '시작 중…' : phase === 'retry-start' ? '강연 시작 다시 시도' : '강연 시작'}</button>
-  </div>
+
+  const checking =
+      phase === 'check-end' ||
+      phase === 'check-start'
+
+  if (checking) return placeActions(
+      <div className="room-warning" role="status">
+        방 상태를 확인하고 있습니다.
+        연결이 끊겼다면 다시 확인해 주세요.
+
+        <button
+            onClick={() => run(
+                () => reconcile(phase === 'check-start' ? 'start' : 'end'),
+            )}
+        >
+          상태 다시 확인
+        </button>
+      </div>,
+  )
+
+  if (room.status === 'READY') {
+    return <div className="room-lifecycle">
+
+      {startError && <div className="room-warning" role="alert">
+        {startError}
+      </div>}
+
+      <button
+          disabled={offline || phase === 'starting'}
+          onClick={() => run(() => send('start'))}
+      >
+        {phase === 'starting'
+            ? '시작 중…'
+            : phase === 'retry-start'
+                ? '강연 시작 다시 시도'
+                : '강연 시작'}
+      </button>
+
+    </div>
+  }
+
   if (room.status !== 'LIVE') return null
-  return <div className="room-lifecycle">
-    {phase === 'retry-end' ? <><span role="status">녹음 저장은 완료됐고 강연방은 열려 있습니다.</span>
-      <button disabled={offline} onClick={() => run(() => send('end'))}>강연 종료 다시 시도</button></>
-    : ['resume', 'resume-end', 'retry-save'].includes(phase) ? <>
-      <span role="status">{phase !== 'retry-save' ? '진행 중이던 강연 종료를 확인해 주세요.'
-        : view?.archived ? '서버가 저장을 거절한 기록이 있습니다. 발언 기록에서 보관 내용을 확인해 주세요.'
-        : '남은 기록의 저장과 녹음 종료를 확인해야 합니다.'}</span>
-      <button disabled={offline || !recorder || view?.busy} onClick={() => run(phase === 'resume-end' ? () => send('end') : finish)}>
-        {phase === 'retry-save' ? '재시도 후 강연 종료' : '강연 종료 계속하기'}</button></>
-    : <button ref={trigger} className="room-secondary room-end" disabled={offline || !recorder || view?.busy || ['ending','saving'].includes(phase)}
-        onClick={() => setConfirming(true)}>
-        {phase === 'saving' ? '마지막 기록 저장 중…' : phase === 'ending' ? '강연 종료 중…' : '강연 종료'}</button>}
-    {confirming && <dialog ref={dialog} className="room-dialog room-end-dialog" aria-labelledby="end-title"
-        onCancel={cancel}>
-      <h2 id="end-title">강연을 종료할까요?</h2><p>마지막 발언을 저장한 뒤 방을 닫습니다. 종료하면 청중은 새 채팅이나 투표 응답을 보낼 수 없습니다.</p>
-      <div><button autoFocus className="room-secondary" onClick={cancel}>계속 진행</button>
-        <button onClick={() => run(finish)}>강연 종료</button></div>
-    </dialog>}
-  </div>
+
+  return placeActions(
+      <div className="room-lifecycle">
+        {phase === 'retry-end'
+            ? <>
+          <span role="status">
+            녹음 저장은 완료됐고 강연방은 열려 있습니다.
+          </span>
+
+              <button
+                  disabled={offline}
+                  onClick={() => run(() => send('end'))}
+              >
+                강연 종료 다시 시도
+              </button>
+            </>
+            : ['resume', 'resume-end', 'retry-save'].includes(phase)
+                ? <>
+            <span role="status">
+              {phase !== 'retry-save'
+                  ? '진행 중이던 강연 종료를 확인해 주세요.'
+                  : view?.archived
+                      ? '서버가 저장을 거절한 기록이 있습니다. 발언 기록에서 보관 내용을 확인해 주세요.'
+                      : '남은 기록의 저장과 녹음 종료를 확인해야 합니다.'}
+            </span>
+
+                  <button
+                      disabled={offline || !recorder || view?.busy}
+                      onClick={() => run(
+                          phase === 'resume-end'
+                              ? () => send('end')
+                              : finish,
+                      )}
+                  >
+                    {phase === 'retry-save'
+                        ? '재시도 후 강연 종료'
+                        : '강연 종료 계속하기'}
+                  </button>
+                </>
+                : <button
+                    ref={trigger}
+                    className="room-secondary room-end"
+                    disabled={
+                        offline ||
+                        !recorder ||
+                        view?.busy ||
+                        ['ending', 'saving'].includes(phase)
+                    }
+                    onClick={() => setConfirming(true)}
+                >
+                  {phase === 'saving'
+                      ? '마지막 기록 저장 중…'
+                      : phase === 'ending'
+                          ? '강연 종료 중…'
+                          : '강연 종료'}
+                </button>}
+
+        {confirming && <dialog
+            ref={dialog}
+            className="room-dialog room-end-dialog"
+            aria-labelledby="end-title"
+            onCancel={cancel}
+        >
+          <h2 id="end-title">
+            강연을 종료할까요?
+          </h2>
+
+          <p>
+            마지막 발언을 저장한 뒤 방을 닫습니다.
+            종료하면 청중은 새 채팅이나 투표 응답을 보낼 수 없습니다.
+          </p>
+
+          <div>
+            <button
+                autoFocus
+                className="room-secondary"
+                onClick={cancel}
+            >
+              계속 진행
+            </button>
+
+            <button onClick={() => run(finish)}>
+              강연 종료
+            </button>
+          </div>
+        </dialog>}
+      </div>,
+  )
 }
