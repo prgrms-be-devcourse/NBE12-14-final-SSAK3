@@ -15,11 +15,13 @@ const card = page => page.getByRole('region', { name: '지금 설명을 이해�
 const ended = page => page.getByText('이해도 체크가 마감되었어요.')
 
 async function setup(page, { polls = [], mine = null } = {}) {
-  const subscribers = new Map()
+  // 같은 토픽의 구독. 한 연결에 구독이 여러 개 실릴 수 있어 연결과 구독 id 의 쌍으로 모은다.
+  const subscribers = []
+  const sockets = new Set()
   const state = {
     polls, mine, puts: [], putFailure: null,
     push(event) {
-      for (const [socket, id] of subscribers) {
+      for (const { socket, id } of subscribers) {
         socket.send(`MESSAGE\ndestination:${topic}\nsubscription:${id}\nmessage-id:${crypto.randomUUID()}\n\n${JSON.stringify(event)}\0`)
       }
     },
@@ -47,19 +49,24 @@ async function setup(page, { polls = [], mine = null } = {}) {
     throw new Error(`예상하지 않은 API 호출: ${request.method()} ${path}`)
   })
   await page.routeWebSocket('**/ws', socket => {
-    socket.onClose(() => subscribers.delete(socket))
+    sockets.add(socket)
+    socket.onClose(() => {
+      sockets.delete(socket)
+      for (let i = subscribers.length - 1; i >= 0; i--) if (subscribers[i].socket === socket) subscribers.splice(i, 1)
+    })
     socket.onMessage(frame => {
       const message = frame.toString()
       if (message.startsWith('CONNECT\n')) socket.send('CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0')
       if (message.startsWith('SUBSCRIBE\n') && message.includes(`destination:${topic}\n`)) {
         const id = /^id:(.+)$/m.exec(message)[1]
-        subscribers.set(socket, id)
+        subscribers.push({ socket, id })
       }
     })
   })
   await page.goto('/join/WORKSHOP')
-  // 일반 투표와 이해도 체크가 같은 토픽을 각자 구독한다.
-  await expect.poll(() => subscribers.size).toBe(2)
+  // 일반 투표와 이해도 체크는 같은 토픽의 구독 하나를 나눠 쓰고, 연결도 청중 화면 전체가 하나만 쓴다.
+  await expect.poll(() => subscribers.length).toBe(1)
+  expect(sockets.size).toBe(1)
   return state
 }
 
