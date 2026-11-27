@@ -19,6 +19,18 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=3d
+      - --web.enable-remote-write-receiver
+
+  # 완료된 회차의 k6·DB 검증 결과를 Prometheus에 제공한다.
+  report-results:
+    image: python:3.12-alpine
+    restart: unless-stopped
+    command: ["python", "-B", "/report_results.py", "--bind", "0.0.0.0"]
+    read_only: true
+    volumes:
+      - ./report_results.py:/report_results.py:ro
+      - ../../backend/build/reports/report-end:/reports:ro
+      - ../../docs/experiments/report-end-load-2026-11-27.json:/baseline.json:ro
 
   # MySQL 지표(연결 수, 쿼리 수, InnoDB 락 대기). 접속 정보는 mysqld-exporter.my.cnf (예시 파일 참고)
   mysqld-exporter:
@@ -54,6 +66,7 @@ services:
       - ./grafana/dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
       - ./grafana/react-monitoring.json:/var/lib/grafana/dashboards/react-monitoring.json:ro
       - ./grafana/chat-load-test.json:/var/lib/grafana/dashboards/chat-load-test.json:ro
+      - ./grafana/report-load-test.json:/var/lib/grafana/dashboards/report-load-test.json:ro
 
 volumes:
   prometheus-data:

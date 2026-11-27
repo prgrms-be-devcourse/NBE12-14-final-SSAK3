@@ -49,3 +49,34 @@ tasks.named('test') {
     useJUnitPlatform()
     inputs.property('runReportRestartTest', providers.environmentVariable('RUN_REPORT_RESTART_TEST').orElse('false'))
 }
+
+def reportLoadServer = tasks.register('reportLoadServer', JavaExec) {
+    group = 'verification'
+    description = 'Runs the local backend for the report-end k6 scenario.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.react.report.config.ReportLoadServer'
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+}
+
+tasks.register('prepareReportLoadLauncher') {
+    group = 'verification'
+    description = 'Writes the Java command for the managed local report load test.'
+    dependsOn tasks.named('testClasses')
+    def runDirectory = providers.gradleProperty('reportLoadDir')
+    doLast {
+        if (!runDirectory.isPresent()) throw new GradleException('Supply -PreportLoadDir=<run directory>.')
+        def directory = file(runDirectory.get())
+        directory.mkdirs()
+        def server = reportLoadServer.get()
+        def javaPath = server.javaLauncher.get().executablePath.asFile.absolutePath
+        // A manifest keeps long classpaths and non-ASCII Windows paths off the command line.
+        def manifest = new java.util.jar.Manifest()
+        manifest.mainAttributes.putValue('Manifest-Version', '1.0')
+        manifest.mainAttributes.putValue('Main-Class', server.mainClass.get())
+        manifest.mainAttributes.putValue('Class-Path', server.classpath.files.collect { it.toURI().toASCIIString() }.join(' '))
+        new File(directory, 'report-load.jar').withOutputStream { output ->
+            new java.util.jar.JarOutputStream(output, manifest).close()
+        }
+        new File(directory, 'java-executable.txt').setText(javaPath, 'UTF-8')
+    }
+}

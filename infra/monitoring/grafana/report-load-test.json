@@ -1,0 +1,566 @@
+{
+  "uid": "react-report-load",
+  "title": "RE:ACT 회고 보고서 부하 테스트",
+  "description": "여러 강연방을 동시에 종료한 실행을 비교합니다. 저장 결과는 실행별 요약을, k6 그래프는 선택한 시간대에 원격 전송된 표본을 표시합니다.",
+  "tags": [
+    "react",
+    "load-test",
+    "report"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "run_id",
+        "label": "실행",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "react-prometheus"
+        },
+        "definition": "label_values({__name__=~\"react_report_load_rooms|k6_room_end_ms_p95\",run_id!=\"\"}, run_id)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values({__name__=~\"react_report_load_rooms|k6_room_end_ms_p95\",run_id!=\"\"}, run_id)",
+          "label": "run_id",
+          "metric": "{__name__=~\"react_report_load_rooms|k6_room_end_ms_p95\",run_id!=\"\"}",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "저장된 실행 결과",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "bargauge",
+      "title": "보고서 완료 관측 시간 p95",
+      "description": "종료 요청 시작부터 상태 조회에서 COMPLETED를 처음 확인할 때까지의 시간입니다. 조회 간격만큼 관측이 늦어질 수 있습니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sort_desc(react_report_load_completion_p95_seconds{run_id=~\"${run_id:regex}\"})",
+          "legendFormat": "{{run_id}} · {{rooms}}개 방",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "namePlacement": "left",
+        "valueMode": "color",
+        "showUnfilled": true,
+        "minVizHeight": 20,
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "bargauge",
+      "title": "강연 종료 API 응답 시간 p95",
+      "description": "강연자가 종료를 누른 시점부터 종료 API가 응답한 시점까지의 시간입니다.",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sort_desc(1000 * react_report_load_end_p95_seconds{run_id=~\"${run_id:regex}\"})",
+          "legendFormat": "{{run_id}} · {{rooms}}개 방",
+          "format": "time_series",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#138478"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "namePlacement": "left",
+        "valueMode": "color",
+        "showUnfilled": true,
+        "minVizHeight": 20,
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "실행별 검증 결과와 소요 시간",
+      "description": "검증 통과 방은 STT 종료, 보고서 본문, 모의 AI 호출 수를 확인한 방입니다. DB 구간은 초 단위로 측정했습니다. 종료부터 마지막 분석 확정까지와 확정부터 보고서 저장까지의 p95는 각각 집계합니다. 20261127-control-1·2의 분석 배치 크기는 40개, 같은 날짜 r1·r2는 5개입니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (run_id, measure) (label_replace({__name__=~\"react_report_load_rooms|react_report_load_verified_rooms|react_report_load_analysis_p95_seconds|react_report_load_generation_p95_seconds|react_report_load_completion_max_seconds\",run_id=~\"${run_id:regex}\"}, \"measure\", \"$1\", \"__name__\", \"react_report_load_(.*)\"))",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "rowField": "run_id",
+            "columnField": "measure",
+            "valueField": "Value"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "run_id\\measure": 0,
+              "rooms": 1,
+              "verified_rooms": 2,
+              "analysis_p95_seconds": 3,
+              "generation_p95_seconds": 4,
+              "completion_max_seconds": 5
+            },
+            "renameByName": {
+              "run_id\\measure": "실행",
+              "rooms": "대상 방",
+              "verified_rooms": "검증 통과 방",
+              "analysis_p95_seconds": "분석 확정 p95",
+              "generation_p95_seconds": "확정 후 저장 p95",
+              "completion_max_seconds": "완료 관측 최댓값"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          },
+          "noValue": "—"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "대상 방"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "검증 통과 방"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "분석 확정 p95"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "확정 후 저장 p95"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "완료 관측 최댓값"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "실행",
+            "desc": false
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "k6 실시간 측정",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "강연 종료 응답 시간 p95",
+      "description": "선택한 시간대에 k6가 전송한 종료 요청 지연입니다. 각 표시 간격에서 마지막 표본을 보여 줍니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "interval": "1s",
+      "maxDataPoints": 1200,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(k6_room_end_ms_p95{run_id=~\"${run_id:regex}\",scenario=\"end_rooms\",phase=\"measured\"}[$__interval])",
+          "legendFormat": "{{run_id}}",
+          "interval": "1s",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "보고서 완료 관측 시간 p95",
+      "description": "상태 조회로 완료를 처음 확인한 방의 지연입니다. 각 표시 간격에서 마지막 k6 표본을 보여 줍니다.",
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "interval": "1s",
+      "maxDataPoints": 1200,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(k6_report_completed_observed_ms_p95{run_id=~\"${run_id:regex}\",scenario=\"end_rooms\",phase=\"measured\"}[$__interval])",
+          "legendFormat": "{{run_id}}",
+          "interval": "1s",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "결과가 집계된 방 수",
+      "description": "종료 요청의 성공·실패 판정까지 마친 방의 누적 수입니다. 대기 중인 방은 판정이 끝나면 반영됩니다.",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "interval": "1s",
+      "maxDataPoints": 1200,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(k6_report_rooms_measured_total{run_id=~\"${run_id:regex}\",scenario=\"end_rooms\",phase=\"measured\"}[$__interval])",
+          "legendFormat": "{{run_id}}",
+          "interval": "1s",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "관측 완료율",
+      "description": "성공·실패 판정을 마친 방 중 제한 시간 안에 COMPLETED를 확인한 비율입니다. 시간대와 실행을 선택해 해당 표본을 볼 수 있습니다.",
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "react-prometheus"
+      },
+      "interval": "1s",
+      "maxDataPoints": 1200,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(k6_report_completed_rate_rate{run_id=~\"${run_id:regex}\",scenario=\"end_rooms\",phase=\"measured\"}[$__interval])",
+          "legendFormat": "{{run_id}}",
+          "interval": "1s",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ]
+}
