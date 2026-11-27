@@ -45,8 +45,8 @@ async function setup(page, context, { poll }) {
   })
   state.push = event => state.pushers.forEach(push => push(event))
   await page.goto('/join/WORKSHOP')
-  // 투표 패널과 이해도 체크가 각각 연결한다.
-  await expect.poll(() => state.subscriptions).toBeGreaterThanOrEqual(2)
+  // 투표 패널과 이해도 체크가 구독 하나를 나눠 쓴다.
+  await expect.poll(() => state.subscriptions).toBeGreaterThanOrEqual(1)
   return state
 }
 
@@ -86,4 +86,20 @@ test('다른 강연방의 이벤트는 무시한다', async ({ page, context }) 
   await expect(panel(page).getByText('다음 투표')).toBeVisible()
   // 조회는 이 방의 이벤트 한 번뿐이다.
   expect(state.listReads - reads).toBe(1)
+})
+
+test('이벤트가 없으면 5초마다 투표 목록을 조회하지 않고 30초 주기 조회로 상태를 다시 맞춘다', async ({ page, context }) => {
+  const state = await setup(page, context, { poll: generalPoll(55, '가장 쓰는 언어는?') })
+  await expect(panel(page).getByText('가장 쓰는 언어는?')).toBeVisible()
+  const reads = state.listReads
+
+  // 5초 조회가 남아 있었다면 15초 동안 세 번 이상 조회한다.
+  await page.clock.runFor(15000)
+  expect(state.listReads).toBe(reads)
+
+  // 이벤트를 놓쳤어도 소켓의 30초 주기 조회가 서버 상태를 다시 가져온다.
+  state.poll = null
+  await page.clock.runFor(20000)
+  await expect(panel(page).getByText('현재 진행 중인 투표가 없습니다.')).toBeVisible()
+  expect(state.listReads).toBeGreaterThan(reads)
 })

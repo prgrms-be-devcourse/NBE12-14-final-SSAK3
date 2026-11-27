@@ -20,7 +20,11 @@
 - 본문 템플릿(`.github/PULL_REQUEST_TEMPLATE.md`): 작업 내용 / 관련 이슈 / 테스트 방법 / 리뷰어에게
 - 머지 후 작업 브랜치를 삭제한다.
 - 최소 **1명 승인** 후 머지한다(브랜치 보호 규칙으로 강제).
-- CI 통과: PR 과 push 때 `.github/workflows/ci.yml` 이 백엔드 빌드·테스트와 프론트 빌드를 실행한다. 통과한 뒤 머지한다.
+- CI 통과: `develop` 및 `main` 대상 PR 에서 `.github/workflows/ci.yml` 이 백엔드 빌드·테스트, 프론트 테스트·빌드 및 Docker Compose Smoke Test 를 실행한다. 통과한 뒤 머지한다.
+- 작업 브랜치와 `develop`의 일반 push 에서는 CI/CD 를 실행하지 않는다.
+- `main` push 시 `.github/workflows/cd.yml` 이 CI 를 재호출하여 검증하고, 성공하면 GHCR 이미지 게시 및 EC2 자동배포를 수행한다.
+- CD 수동 실행 시 `deploy=false` 는 CI 검증만 수행한다. 운영 배포는 `main` 브랜치에서 `deploy=true` 로 실행한 경우에만 수행한다.
+- 자세한 실행 조건과 배포 절차는 [AWS 운영 배포 가이드](aws/deployment.md)를 따른다.
 
 ## Jira
 

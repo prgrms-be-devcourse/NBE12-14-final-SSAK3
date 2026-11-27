@@ -20,6 +20,34 @@ public interface LectureRoomRepository extends JpaRepository<LectureRoom, Long> 
 
     Optional<LectureRoom> findByJoinCode(String joinCode);
 
+    // 전체 진행 중인 강연방 개수
+    long countByStatus(LectureRoomStatus status);
+
+    // 강연자별 진행 중인 강연방 개수
+    long countByHost_IdAndStatus(Long hostId, LectureRoomStatus status);
+
+    // 서로 다른 강연방의 동시 시작 요청을 직렬화한다.
+    @Query(value = """
+            SELECT id
+            FROM lecture_room_start_lock
+            WHERE id = 1
+            FOR UPDATE
+            """, nativeQuery = true)
+    Integer lockRoomStarts();
+
+    // 최대 강연 시간을 초과한 강연방 조회
+    @Query("""
+            select r.id
+            from LectureRoom r
+            where r.status = :status
+                and r.startedAt <= :cutoff
+            order by r.startedAt, r.id
+            """)
+    List<Long> findExpiredRoomIds(
+            @Param("status") LectureRoomStatus status,
+            @Param("cutoff") LocalDateTime cutoff
+    );
+
     interface RoomSummary {
         Long getId();
         String getTitle();

@@ -36,6 +36,11 @@ public enum ErrorCode {
     ROOM_NOT_ENDED(HttpStatus.CONFLICT, "강연이 끝나면 회고 보고서가 자동으로 생성됩니다."),
     REPORT_INPUT_NOT_READY(HttpStatus.CONFLICT, "회고 보고서 생성에 필요한 데이터가 준비되지 않았습니다."),
 
+    // 서비스 운영 제한: 409
+    LIVE_ROOM_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "동시에 진행할 수 있는 강연방 수를 초과했습니다."),
+    HOST_LIVE_ROOM_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "이미 진행 중인 강연이 있습니다."),
+    ROOM_PARTICIPANT_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "강연방의 최대 청중 인원을 초과했습니다."),
+
     // 요청 제한: 429
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청 횟수가 초과되었습니다."),
 

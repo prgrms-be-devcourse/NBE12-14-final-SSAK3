@@ -8,13 +8,21 @@
 
 - 운영 주소: https://www.re-act.site
 - AWS 리전: `ap-northeast-2` (서울)
-- 서버: EC2 `react-ec2`, Amazon Linux 2023, `t3.small`
+- 서버: EC2 `react-ec2`, Amazon Linux 2023
+- Terraform 기본 인스턴스 타입: `t3.medium`(2 vCPU, 4GiB RAM)
+- Terraform 기본 Root EBS 용량: 20GiB
 - 실행 서비스: Nginx Proxy Manager 2.17.1, Spring Boot Backend, Nginx 기반 Frontend, MySQL 8.4, Redis 7.4
 - DNS: 가비아 A 레코드와 EC2 탄력적 IP 연결
 - HTTPS: Nginx Proxy Manager 및 Let's Encrypt 인증서
 - 배포 경로: GitHub Actions → GHCR 이미지 게시 → AWS Systems Manager(SSM) → EC2 Docker Compose
 - 이미지 버전: Git 커밋의 전체 SHA(40자리)를 Backend·Frontend 이미지 태그로 사용
 - EC2 운영 경로: `/opt/react`
+
+최초 인프라 구성은 `t3.small`을 기준으로 진행했으며, 현재 Terraform의 기본 인스턴스 타입은 `t3.medium`이다. 실제 운영 인스턴스의 타입과 디스크 용량은 AWS 콘솔에서 확인한다.
+
+Backend, Frontend, MySQL, Redis, Nginx Proxy Manager는 동일한 EC2에서 실행한다. MySQL은 별도의 RDS가 아닌 Docker 컨테이너를 사용한다.
+
+Prometheus·Grafana 모니터링 구성은 운영 Docker Compose와 분리되어 있으며, 현재 저장소에는 로컬 부하 테스트 및 개발 환경용 구성이 포함되어 있다. [로컬 모니터링 구성](../../infra/monitoring/)
 
 ### 요청 처리 구조
 
@@ -54,6 +62,9 @@ Frontend, REST API, WebSocket은 동일한 도메인을 사용한다. 별도의 
 | `infra/deploy/deploy.sh` | 이미지 교체, 상태 확인 및 실패 시 롤백 시도 |
 | `infra/terraform/` | AWS 네트워크·보안 그룹·EC2 등 인프라 정의 |
 | `docker-compose.yml` | 로컬 개발 및 CI 검증용 구성(EC2 운영 배포에는 사용하지 않음) |
+| `infra/monitoring/` | 로컬 Prometheus·Grafana·MySQL exporter 구성 |
+| `infra/k6/` | 강연방 입장·WebSocket·채팅·투표·보고서 부하 테스트 |
+| `backend/src/main/resources/application.yml` | 공통 설정 및 서비스 운영 제한 |
 
 ## 2. 배포 검증 기록
 
@@ -88,9 +99,22 @@ Frontend, REST API, WebSocket은 동일한 도메인을 사용한다. 별도의 
 - 브라우저에서 로그인, 강연방 및 청중 채팅 등 주요 기능 동작 확인
 - NPM 관리자 포트(81) 인바운드 규칙 삭제 및 외부 TCP 연결 차단 확인
 
+### 강연방 운영 제한 검증
+
+- 전체 LIVE 강연방 최대 6개 제한 구현
+- 강연자별 동시 LIVE 강연방 최대 1개 제한 구현
+- 강연방별 등록 청중 최대 50명 제한 구현
+- 최대 강연 시간 180분 및 자동 종료 구현
+- 신규 운영 제한 테스트 및 전체 백엔드 회귀 테스트 로컬 실행 성공
+- V18 Flyway 마이그레이션 검증 추가
+
+위 내용은 로컬 백엔드 구현 및 테스트 결과이며, 실제 운영 EC2에 해당 변경사항이 배포되었거나 최대 운영 규모의 성능 검증이 완료되었음을 의미하지 않는다.
+
 ### 별도 검증이 필요한 내용
 
 - 여러 사용자의 동시 강연방 입장·채팅·투표·WebSocket 기능
+- 최대 운영 규모인 6개 LIVE 강연방 × 50명 등록 청중의 실제 동시 사용 성능
+- 최대 강연 시간에 따른 자동 종료 및 장시간 강연 안정성
 - Gemini 및 OpenAI 분석·보고서 내용의 정확성과 예외 상황
 - 실제 사용량에서의 메모리·성능·안정성
 - Let's Encrypt 인증서의 실제 자동 갱신
@@ -160,6 +184,30 @@ REPORT_ALERT_WEBHOOK_URL=
 - 실제 비밀번호·API 키·GHCR 토큰은 Git, 문서, Docker 이미지나 공개 로그에 포함하지 않는다.
 - CI 테스트용 값이나 `.env.example`의 예시 비밀값을 운영에서 재사용하지 않는다.
 - OpenAI 및 Gemini 외부 API 호출에는 별도의 사용량·요금·모델 지원 여부 확인이 필요하다.
+
+### 서비스 운영 제한
+
+Backend의 `application.yml`에는 다음 서비스 운영 제한을 설정한다.
+
+| 환경변수 | Spring 설정 | 기본값 |
+|---|---|---|
+| `MAX_LIVE_ROOMS` | `app.limits.max-live-rooms` | `6` |
+| `MAX_LIVE_ROOMS_PER_HOST` | `app.limits.max-live-rooms-per-host` | `1` |
+| `MAX_PARTICIPANTS_PER_ROOM` | `app.limits.max-participants-per-room` | `50` |
+| `MAX_LECTURE_DURATION` | `app.limits.max-lecture-duration` | `180m` |
+| `ROOM_EXPIRY_CHECK_INTERVAL_MS` | `app.limits.expiry-check-interval-ms` | `1000` |
+
+전체 LIVE 강연방의 최대 등록 청중 수는 최대 LIVE 강연방 수와 강연방별 등록 청중 수의 곱으로 결정한다. 기본 설정에서는 300명(6개 × 50명)이다.
+
+청중 정원은 현재 접속 인원이 아닌 등록 참여자 수를 기준으로 한다. READY 상태의 청중도 해당 강연방의 정원에 포함한다.
+
+최대 강연 시간은 시작 시각을 기준으로 계산하고 서버 스케줄러가 만료된 LIVE 강연방을 자동 종료한다. 스케줄러 실행 간격과 실제 처리 시간에 따라 종료 시점이 늦어질 수 있다.
+
+현재 운영 Compose에는 위 환경변수를 Backend 컨테이너에 전달하는 항목이 별도로 정의되어 있지 않다. 따라서 별도 전달 설정이 없다면 `application.yml`의 기본값이 적용되며, EC2의 `.env`에 값을 추가하는 것만으로는 컨테이너의 운영 제한이 변경되지 않는다.
+
+운영 제한값을 변경할 필요가 있는 경우 `infra/deploy/compose.prod.yaml`의 Backend 환경변수 전달 설정을 먼저 반영한다. 이후 운영 `.env` 변경 및 컨테이너 재생성 절차를 수행한다.
+
+운영 제한은 서버 자원 사용량을 제어하기 위한 정책이다. 해당 인원을 실제로 동시에 처리할 수 있는지는 부하 테스트를 통해 별도로 검증한다. [기능 정의서](../feature-spec.md)
 
 ### OpenAI 보고서 완료 웹훅
 
@@ -270,6 +318,18 @@ NPM 설정 및 인증서는 다음 Docker Volume에 저장한다.
 
 **주의:** 이미지·설정 롤백이 데이터베이스의 이전 상태나 운영 `.env` 값을 복원하지는 않는다. Flyway 마이그레이션과 데이터 변경은 별도 백업·호환성 검토가 필요하다.
 
+### DB 마이그레이션
+
+Backend 기동 시 Flyway가 적용되지 않은 마이그레이션을 순서대로 실행한다.
+
+V18 마이그레이션은 전체 강연방 시작 요청의 동시성 제어를 위한 `lecture_room_start_lock` 테이블과 초기 잠금 행(id=1), `lecture_rooms(status, started_at)` 인덱스를 추가한다.
+
+V18을 포함한 Backend 배포 전에는 운영 MySQL 데이터 백업과 이전 이미지의 스키마 호환성을 확인한다.
+
+배포 후에는 Flyway 마이그레이션 성공 여부와 공통 잠금 행의 존재 여부를 확인한다. 공통 잠금 행은 강연 시작 처리에 필요하므로 운영 중 임의로 삭제하지 않는다.
+
+기존 LIVE 강연방과 등록 청중이 새로운 운영 제한을 이미 초과하고 있는 경우, 신규 제한 적용만으로 기존 데이터가 자동 제거되지는 않는다. 제한 변경 전 현재 운영 상태를 확인한다.
+
 ## 6. EC2 배포 상태 확인
 
 AWS 콘솔의 EC2 **Session Manager**에서 접속한 후 다음을 실행한다.
@@ -290,7 +350,8 @@ sudo cat /opt/react/current-image-tag
 - MySQL·Redis 컨테이너 `healthy`
 - Health Check 결과 `{"status":"UP"}`
 - 브라우저에서 HTTPS 웹 화면 표시(이 결과만으로 로그인·AI 기능 정상 동작을 보장하지 않음)
-- 서버 메모리·디스크 여유 확인. 현재 `t3.small`은 약 2GiB RAM이고 Swap 없이 운영하므로 부하 테스트 시 메모리 확인이 필요하다.
+- 서버 메모리·디스크 여유 확인. Terraform 기본 타입인 `t3.medium`은 4GiB RAM이며, 실제 인스턴스 사양과 Swap 사용 여부는 운영 서버에서 확인한다.
+- 부하 테스트 시 JVM Heap, GC, DB 커넥션 사용량, WebSocket 처리 대기열 및 서버 자원 사용량을 함께 확인한다.
 
 ### 공개 HTTP 및 HTTPS 확인
 
@@ -378,6 +439,35 @@ sudo docker exec react-app-backend-1 printenv \
 
 Health Check가 `UP`이어도 Gemini·OpenAI 키의 유효성과 실제 AI 호출 성공까지 검증된 것은 아니다. 재생성 이후 공개 HTTPS 및 API 응답도 함께 확인한다.
 
+### 서비스 운영 제한 변경 시 주의
+
+운영 제한 설정은 Backend 시작 시 적용된다.
+
+운영 환경에서 기본값 이외의 값을 사용하려면 Compose의 Backend 컨테이너 환경변수 전달 설정을 반영한 뒤 운영 `.env` 값을 변경하고 컨테이너를 재생성한다.
+
+예시:
+
+```dotenv
+MAX_LIVE_ROOMS=6
+MAX_LIVE_ROOMS_PER_HOST=1
+MAX_PARTICIPANTS_PER_ROOM=50
+MAX_LECTURE_DURATION=180m
+ROOM_EXPIRY_CHECK_INTERVAL_MS=1000
+```
+
+위 값은 현재 Backend의 기본값과 동일하다. Compose 전달 설정이 없는 상태에서는 운영 `.env`를 변경하더라도 해당 값이 Backend 컨테이너에 자동 전달되지 않는다.
+
+환경변수 전달 설정을 반영한 경우 다음 명령으로 컨테이너에 전달된 값을 확인할 수 있다.
+
+```bash
+sudo docker exec react-app-backend-1 printenv \
+  | grep -E '^(MAX_LIVE_ROOMS|MAX_LIVE_ROOMS_PER_HOST|MAX_PARTICIPANTS_PER_ROOM|MAX_LECTURE_DURATION|ROOM_EXPIRY_CHECK_INTERVAL_MS)='
+```
+
+환경변수가 표시되지 않는 경우 Backend의 기본값 적용 여부와 Compose 설정을 확인한다.
+
+운영 제한을 늘릴 경우 기존 서버 사양에서 감당 가능한지 부하 테스트를 수행한다. 제한을 줄일 경우 기존 LIVE 강연방 및 등록 청중에 미치는 영향을 확인한다.
+
 ### MySQL 계정·비밀번호 변경 시 주의
 
 `MYSQL_ROOT_PASSWORD`, `MYSQL_USER`, `MYSQL_PASSWORD` 같은 **DB 계정 관련 변수는 위의 Backend 재생성 절차로 변경할 수 없다.**
@@ -400,6 +490,9 @@ MySQL은 이미 초기화된 데이터 볼륨의 계정 정보를 사용하므�
 - `docker compose down -v`는 운영 MySQL·Redis 데이터 및 NPM 설정·인증서 볼륨을 삭제할 수 있으므로 운영 EC2에서 실행하지 않는다.
 - Terraform State, AWS Access Key, GHCR 토큰 및 운영 `.env`는 Git에 커밋하지 않는다.
 - 배포 스크립트의 롤백은 이미지·설정 복구이며 DB 백업과 복원을 대체하지 않는다.
+- 운영 제한 검증과 실제 최대 동시 사용자 처리 성능 검증은 구분한다.
+- 운영 서버에서 부하 테스트를 진행할 경우 실제 사용자 영향과 외부 AI API 호출 비용을 사전에 확인한다.
+- 모니터링 관리 페이지 및 내부 메트릭 수집 엔드포인트는 불필요하게 외부에 공개하지 않는다.
 
 ## 9. 관련 이슈 및 후속 작업
 
@@ -407,6 +500,9 @@ MySQL은 이미 초기화된 데이터 볼륨의 계정 정보를 사용하므�
 - **SCRUM-88:** GitHub Actions CI/CD, GHCR 이미지 게시, AWS SSM 자동배포 구현 및 최초 배포 검증 완료
 - **SCRUM-87:** 도메인 연결, Nginx Proxy Manager 기반 HTTPS/TLS 적용, HTTP → HTTPS 리디렉션, 운영 환경변수 변경 및 서비스 동작 검증 완료
 - **통합 테스트:** 다중 사용자 환경에서 로그인·강연방·채팅·투표·Gemini 분석·OpenAI 보고서 생성 검증
+- **운영 제한:** 최대 LIVE 강연방 수, 강연자별 동시 강연방 수, 등록 청중 정원, 최대 강연 시간 제한 구현 및 로컬 테스트
+- **부하 테스트:** 초기 운영 목표인 6개 LIVE 강연방 × 50명 환경에서 성능 및 안정성 검증
+- **운영 설정:** 필요 시 운영 제한 환경변수의 Compose 전달 설정 추가
 - **운영 검증:** 실제 사용량에서의 성능·안정성, 배포 실패 시 롤백 및 인증서 자동 갱신 검증
 
 운영 서비스 주소는 https://www.re-act.site 이며, 운영 자동배포 트리거는 `main` Push이다.

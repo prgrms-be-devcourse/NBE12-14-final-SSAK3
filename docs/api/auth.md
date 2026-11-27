@@ -1,5 +1,17 @@
 # AUTH — 강연자 인증
 
+### CSRF 토큰 발급
+
+**GET** `/api/v1/auth/csrf` — 인증 불필요
+
+Response — 200 OK
+
+```json
+{ "data": { "headerName": "X-CSRF-TOKEN", "token": "..." } }
+```
+
+응답은 캐시하지 않는다(`Cache-Control: no-store`). 회원가입·로그인·로그아웃 요청에도 발급받은 토큰을 `X-CSRF-TOKEN` 헤더로 보낸다.
+
 
 ### [AUTH-01] 강연자 회원가입
 
@@ -17,7 +29,7 @@ Response — 201 Created
 { "data": { "userId": 1, "email": "host@example.com", "name": "김강연", "createdAt": "2026-11-17T00:00:00Z" } }
 ```
 
-규칙: 이메일 형식 검증, 중복 가입 차단, 비밀번호 정책 검증, 비밀번호 해시 저장, 비밀번호·해시는 응답에 포함하지 않음, 가입 후 자동 로그인은 하지 않는 방식을 제안한다.
+규칙: 이메일 형식 검증, 중복 가입 차단, 비밀번호 정책 검증, 비밀번호 해시 저장, 비밀번호·해시는 응답에 포함하지 않음, 가입 후 자동 로그인하지 않음.
 오류: `400 INVALID_INPUT`, `409 EMAIL_ALREADY_EXISTS` · 엔터티: `users`
 
 ### [AUTH-02] 강연자 로그인
