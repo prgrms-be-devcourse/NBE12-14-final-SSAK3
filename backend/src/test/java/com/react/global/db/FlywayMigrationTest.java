@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// test 프로파일은 Flyway 를 끄므로, 여기서 직접 실행해 V1 이 ERD 대로 만들어지는지 검증한다.
+// test 프로파일은 Flyway 를 끄므로, 여기서 직접 실행해 현재 스키마를 검증한다.
 // 테스트 DB 의 모든 객체를 지우므로 DB 이름이 _test 로 끝날 때만 실행한다.
 @SpringBootTest
 @ActiveProfiles("test")
@@ -36,7 +36,8 @@ class FlywayMigrationTest {
             "ai_analysis_finalizations", "ai_analysis_batches",
             "ai_llm_call_usages",
             "lecture_reports", "report_alert_outbox", "report_generation_attempts", "report_generation_slots",
-            "report_webhook_inbox");
+            "report_webhook_inbox",
+            "lecture_room_start_lock");
 
     @Autowired
     private DataSource dataSource;
@@ -66,13 +67,21 @@ class FlywayMigrationTest {
     }
 
     @Test
-    void Flyway_V1부터_V17까지의_현재_테이블이_모두_생성된다() {
+    void Flyway_V1부터_V18까지의_현재_테이블이_모두_생성된다() {
         List<String> tables = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables "
                         + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'",
                 String.class);
 
         assertThat(tables).containsExactlyInAnyOrderElementsOf(EXPECTED_TABLES);
+    }
+
+    @Test
+    void 강연방_시작_동시성_제어를_위한_잠금_행이_생성된다() {
+        assertThat(jdbc.queryForList(
+                "SELECT id FROM lecture_room_start_lock",
+                Integer.class
+        )).containsExactly(1);
     }
 
     @Test
