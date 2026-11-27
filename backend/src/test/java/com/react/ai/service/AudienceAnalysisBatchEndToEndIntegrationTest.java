@@ -146,6 +146,27 @@ class AudienceAnalysisBatchEndToEndIntegrationTest {
     }
 
     @Test
+    void 저장된_manifest_불일치는_Gemini_호출_없이_부모를_FAILED로_종결한다() {
+        insertDistinctMessages(101);
+        var acquired = analyses.acquire(room.id(), START, START.plusSeconds(30));
+        assertThat(analyses.markProcessing(acquired.analysis().id())).isTrue();
+        var input = preprocessor.preprocess(messages.findAudienceMessages(room.id(), START, START.plusSeconds(30)));
+        batches.initializeForProcessing(acquired.analysis().id(), splitter.split(input, 100, 32_000));
+        long representativeId = batches.findByAnalysis(acquired.analysis().id()).getFirst().inputManifest().messages()
+                .getFirst().representativeMessageId();
+        jdbc.sql("UPDATE chat_messages SET content = '변조된 질문' WHERE id = ?").param(representativeId).update();
+        FakeLlm llm = new FakeLlm();
+
+        var result = service(llm).process(room.id(), START, START.plusSeconds(30));
+
+        assertThat(result.status().name()).isEqualTo("FAILED");
+        assertThat(llm.calls()).isZero();
+        assertThat(jdbc.sql("SELECT error_message FROM ai_analyses WHERE id = ?").param(acquired.analysis().id())
+                .query(String.class).single()).isEqualTo("INPUT_MANIFEST_MISMATCH");
+        assertThat(count("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?", acquired.analysis().id())).isZero();
+    }
+
+    @Test
     void 첫_배치_완료_뒤_중단되면_재개할_때_나머지만_호출한다() {
         insertDistinctMessages(101);
         FakeLlm llm = new FakeLlm();
