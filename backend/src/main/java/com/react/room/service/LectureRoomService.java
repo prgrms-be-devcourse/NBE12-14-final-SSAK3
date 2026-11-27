@@ -62,6 +62,8 @@ public class LectureRoomService {
     private final SttSessionService sttSessionService;
     private final ApplicationEventPublisher eventPublisher;
     private final String joinBaseUrl;
+    private final int maxLiveRooms;
+    private final int maxLiveRoomsPerHost;
 
     public LectureRoomService(
             LectureRoomRepository lectureRoomRepository,
@@ -72,7 +74,11 @@ public class LectureRoomService {
             SttSessionService sttSessionService,
             ApplicationEventPublisher eventPublisher,
             @Value("${ROOM_JOIN_BASE_URL:http://localhost:5173}")
-            String joinBaseUrl
+            String joinBaseUrl,
+            @Value("${app.limits.max-live-rooms:6}")
+            int maxLiveRooms,
+            @Value("${app.limits.max-live-rooms-per-host:1}")
+            int maxLiveRoomsPerHost
     ) {
         this.lectureRoomRepository = lectureRoomRepository;
         this.historyRepository = historyRepository;
@@ -82,6 +88,8 @@ public class LectureRoomService {
         this.sttSessionService = sttSessionService;
         this.eventPublisher = eventPublisher;
         this.joinBaseUrl = joinBaseUrl;
+        this.maxLiveRooms = maxLiveRooms;
+        this.maxLiveRoomsPerHost = maxLiveRoomsPerHost;
     }
 
     // 강연방 생성
@@ -262,7 +270,7 @@ public class LectureRoomService {
     }
 
     // SCRUM-130: 강연 시작
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public StartRoomResponse start(
             Long roomId,
             Authentication authentication
@@ -271,6 +279,20 @@ public class LectureRoomService {
                 roomId,
                 authentication
         );
+
+        if (room.getStatus() != LectureRoomStatus.READY) {
+            throw new BusinessException(ErrorCode.INVALID_ROOM_STATUS);
+        }
+
+        // 서로 다른 강연방의 시작 요청도 같은 공통 행을 잠근다.
+        // 제한 확인부터 강연 시작 커밋까지 직렬화한다.
+        Integer lockId = lectureRoomRepository.lockRoomStarts();
+
+        if (lockId == null) {
+            throw new IllegalStateException("강연 시작 잠금 행이 존재하지 않습니다.");
+        }
+
+        validateLiveRoomLimit(room.getHost().getId());
 
         // READY -> LIVE
         room.start();
@@ -294,6 +316,33 @@ public class LectureRoomService {
         );
     }
 
+    // 전체 및 강연자별 동시 강연방 제한
+    private void validateLiveRoomLimit(Long hostId) {
+
+        long hostLiveRoomCount =
+                lectureRoomRepository.countByHost_IdAndStatus(
+                        hostId,
+                        LectureRoomStatus.LIVE
+                );
+
+        if (hostLiveRoomCount >= maxLiveRoomsPerHost) {
+            throw new BusinessException(
+                    ErrorCode.HOST_LIVE_ROOM_LIMIT_EXCEEDED
+            );
+        }
+
+        long liveRoomCount =
+                lectureRoomRepository.countByStatus(
+                        LectureRoomStatus.LIVE
+                );
+
+        if (liveRoomCount >= maxLiveRooms) {
+            throw new BusinessException(
+                    ErrorCode.LIVE_ROOM_LIMIT_EXCEEDED
+            );
+        }
+    }
+
     // SCRUM-130: 강연 종료
     @Transactional
     public EndRoomResponse end(
@@ -304,6 +353,45 @@ public class LectureRoomService {
                 roomId,
                 authentication
         );
+
+        return endRoom(room);
+    }
+
+    // 최대 강연 시간을 초과한 강연방 조회
+    public List<Long> findExpiredRoomIds(LocalDateTime cutoff) {
+
+        return lectureRoomRepository.findExpiredRoomIds(
+                LectureRoomStatus.LIVE,
+                cutoff
+        );
+    }
+
+    // 스케줄러에 의한 자동 강연 종료
+    @Transactional
+    public boolean endExpiredRoom(
+            Long roomId,
+            LocalDateTime cutoff
+    ) {
+        LectureRoom room = lectureRoomRepository.findForUpdate(roomId)
+                .orElse(null);
+
+        // 수동 종료와 동시에 실행되더라도 중복 종료하지 않는다.
+        if (room == null || room.getStatus() != LectureRoomStatus.LIVE) {
+            return false;
+        }
+
+        if (room.getStartedAt() == null
+                || room.getStartedAt().isAfter(cutoff)) {
+            return false;
+        }
+
+        endRoom(room);
+
+        return true;
+    }
+
+    // 수동 종료와 자동 종료의 공통 처리
+    private EndRoomResponse endRoom(LectureRoom room) {
 
         // LIVE -> ENDED
         // 다른 상태에서는 INVALID_ROOM_STATUS 예외 발생

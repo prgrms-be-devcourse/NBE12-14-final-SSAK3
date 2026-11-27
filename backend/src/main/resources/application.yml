@@ -48,6 +48,15 @@ management:
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+
+  # 서비스 운영 제한
+  limits:
+    max-live-rooms: ${MAX_LIVE_ROOMS:6}
+    max-live-rooms-per-host: ${MAX_LIVE_ROOMS_PER_HOST:1}
+    max-participants-per-room: ${MAX_PARTICIPANTS_PER_ROOM:50}
+    max-lecture-duration: ${MAX_LECTURE_DURATION:180m}
+    expiry-check-interval-ms: ${ROOM_EXPIRY_CHECK_INTERVAL_MS:1000}
+
   ai:
     report:
       api-key: ${OPENAI_API_KEY:}

@@ -17,6 +17,9 @@ public interface LectureParticipantRepository
             String participantTokenHash
     );
 
+    // 강연방별 등록 청중 수 조회
+    long countByLectureRoom_Id(Long roomId);
+
     @Modifying
     @Query("delete from LectureParticipant p where p.lectureRoom.id = :roomId")
     void deleteAllInRoom(@Param("roomId") Long roomId);
