@@ -56,7 +56,14 @@ public class ChatBroadcastBatcher {
 
     /** 저장이 커밋된 뒤에 부른다. 실제 전송은 다음 flush 에서 한다. */
     public void enqueue(long roomId, ChatBatchEvent.Message message) {
-        pending.computeIfAbsent(roomId, id -> new ConcurrentLinkedQueue<>()).add(message);
+        // 큐 조회와 메시지 추가를 원자적으로 처리해 큐 제거와의 충돌을 방지한다.
+        pending.compute(roomId, (id, queue) -> {
+            if (queue == null) {
+                queue = new ConcurrentLinkedQueue<>();
+            }
+            queue.add(message);
+            return queue;
+        });
     }
 
     void flush() {
@@ -71,8 +78,13 @@ public class ChatBroadcastBatcher {
                 drained.add(next);
             }
             if (drained.isEmpty()) {
-                // 비어 있는 방은 정리한다. 그 사이 새로 들어온 메시지는 다음 enqueue 가 새 큐에 담는다.
-                pending.remove(roomId, queue);
+                // 큐 제거 직전에 다시 확인하고, 그 사이 메시지가 추가됐다면 큐를 유지한다.
+                pending.computeIfPresent(roomId, (id, currentQueue) -> {
+                    if (currentQueue == queue && currentQueue.isEmpty()) {
+                        return null;
+                    }
+                    return currentQueue;
+                });
                 continue;
             }
             drained.sort(Comparator.comparingLong(ChatBatchEvent.Message::messageId));
