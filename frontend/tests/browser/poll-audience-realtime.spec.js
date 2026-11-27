@@ -45,8 +45,8 @@ async function setup(page, context, { poll }) {
   })
   state.push = event => state.pushers.forEach(push => push(event))
   await page.goto('/join/WORKSHOP')
-  // 투표 패널과 이해도 체크가 각각 연결한다.
-  await expect.poll(() => state.subscriptions).toBeGreaterThanOrEqual(2)
+  // 투표 패널과 이해도 체크가 구독 하나를 나눠 쓴다.
+  await expect.poll(() => state.subscriptions).toBeGreaterThanOrEqual(1)
   return state
 }
 
