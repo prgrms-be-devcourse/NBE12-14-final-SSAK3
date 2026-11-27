@@ -25,7 +25,6 @@ import '@fontsource/pretendard/400.css'
 import '@fontsource/pretendard/600.css'
 import '@fontsource/pretendard/700.css'
 import './room.css'
-import './live/workspace-controls.css'
 
 const statusNames = {
   READY: '준비 중',

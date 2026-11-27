@@ -51,12 +51,10 @@
 .host-shell .hh-home .room-live-list .room-card {
     margin: 0;
     padding: 22px 26px 10px;
-
-    border: 1px solid var(--react-line);
     border-radius: 12px;
-
-    background: #ffffff;
     box-shadow: none;
+    border: 1px solid var(--hh-card-border, var(--react-line));
+    background: var(--hh-card-background, #ffffff);
 }
 
 .host-shell .hh-home .room-live-list h2 {
@@ -91,15 +89,23 @@
 
 .host-shell .hh-home .room-live-list ul {
     margin: 0;
+    list-style: none;
+    padding: 0;
 }
 
 .host-shell .hh-home .room-live-list li {
     gap: 12px 20px;
     padding: 18px 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .hh-room-row-info {
     min-width: 0;
+    flex: 1 1 220px;
+    overflow-wrap: anywhere;
 }
 
 .hh-room-row-title {
@@ -120,6 +126,7 @@
     margin-top: 6px;
     color: var(--react-muted);
     font-size: 13px;
+    display: block;
 }
 
 /* 강연 상태 */
@@ -161,8 +168,8 @@
 /* 진행 중인 강연 강조 */
 
 .host-shell .hh-home .hh-live-card {
-    border-color: #c7e3dc;
-    background: #f7fcfa;
+    --hh-card-border: #c7e3dc;
+    --hh-card-background: #f7fcfa;
 }
 
 .host-shell .hh-home .hh-live-list li a {
@@ -680,4 +687,30 @@
     .host-shell a.hh-history-button {
         transition: none;
     }
+}
+.room-row-actions { display: inline-flex; align-items: center; gap: 4px; }
+.room-row-menu { position: relative; }
+.host-shell .room-more-trigger { display: grid; place-items: center; width: 42px; height: 44px; padding: 0; background: transparent; color: var(--host-ink); font-size: 22px; line-height: 1; }
+.host-shell .room-more-trigger:hover, .host-shell .room-more-trigger[aria-expanded="true"] {
+    background: var(--react-primary-soft); }
+.room-row-popup { position: absolute; right: 0; top: 100%; z-index: 2; padding: 4px; border: 1px solid var(--host-line); border-radius: 10px; background: white; box-shadow: 0 5px 18px rgb(23 39 33 / 13%); }
+.host-shell .room-row-popup button { white-space: nowrap; background: white; color: #a12b32; }
+.host-shell .room-row-popup button:hover { background: #fff0f1; }
+.host-shell .room-delete-confirm { background: #a12b32; }
+.room-delete-details time { display: block; color: var(--host-muted); font-size: 14px; }
+.room-delete-notice { color: var(--host-ink); margin: 0 0 16px; }
+.room-ready-more { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 16px; padding: 12px 0; border-top: 1px solid var(--host-line); }
+.room-ready-more p { margin: 0; }
+.host-shell .hh-home .room-live-list li + li {
+    border-top: 1px solid var(--react-line);
+}
+.host-shell .hh-home .room-live-list > p {
+    padding: 15px 20px;
+    border: 1px solid var(--react-line);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--react-muted);
+}
+.host-shell .hh-home .hh-live-list li a svg {
+    color: inherit;
 }

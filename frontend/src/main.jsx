@@ -22,7 +22,6 @@ import {
 } from './audience/AudienceEntryPage.jsx'
 
 import './ui/theme.css'
-import './ui/page-refinements.css'
 
 createRoot(document.getElementById('root')).render(
     <React.StrictMode>

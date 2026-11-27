@@ -1,6 +1,6 @@
 .host-history {
-  max-width: 960px;
   margin: 0 auto;
+  max-width: 1160px;
 }
 
 .history-heading {
@@ -96,4 +96,32 @@
   .history-rows li { align-items: flex-start; flex-direction: column; padding: 17px 0; }
   .history-row-actions { display: flex; flex-wrap: wrap; }
   .history-report-status { padding: 0 8px; }
+}
+
+.host-shell .history-heading h1 {
+    color: var(--react-ink);
+    font-size: clamp(26px, 2.3vw, 34px);
+}
+
+.host-shell .history-rows {
+    border-color: var(--react-line);
+    border-radius: var(--react-card-radius);
+    box-shadow: none;
+}
+
+.host-shell .history-row-actions .history-report-link {
+    color: var(--react-primary-hover);
+    background: var(--react-primary-soft);
+    border-color: var(--react-primary-soft);
+}
+
+.host-shell .history-row-actions a:hover {
+    color: var(--react-primary);
+    border-color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.host-shell .history-empty {
+    background: var(--react-white);
+    border-color: var(--react-line);
 }

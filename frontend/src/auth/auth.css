@@ -1,21 +1,22 @@
 .auth-app {
-  --ink: #172721;
-  --muted: #59675e;
-  --forest: #184d3b;
-  --lime: #d7f477;
-  --line: #dbe2d9;
   min-height: 100svh;
-  background: #f7f7f2;
   color: var(--ink);
   font: 400 16px/1.55 Pretendard, sans-serif;
   word-break: keep-all;
+  --ink: var(--react-ink);
+  --muted: var(--react-muted);
+  --forest: var(--react-primary);
+  --lime: var(--react-primary-soft);
+  --line: var(--react-line);
+  --paper: var(--react-surface);
+  background: var(--react-surface);
 }
 .auth-app *, .auth-app *::before, .auth-app *::after { box-sizing: border-box; }
 .auth-app a { color: inherit; text-decoration: none; }
 .auth-app button, .auth-app input { font: inherit; }
 .auth-app :is(a, button, input):focus-visible {
-  outline: 3px solid #45876d;
   outline-offset: 3px;
+  outline: 3px solid #65b8af;
 }
 .studio-header { background: #fff; border-bottom: 1px solid var(--line); }
 .studio-header-inner, .studio-main, .studio-footer {
@@ -53,7 +54,7 @@
   min-width: 0;
   min-height: 535px;
   background: #01190c;
-  color: white;
+  color: #ffffff;
 }
 .studio-cover::before {
   content: "";
@@ -70,9 +71,9 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  color: #d7f477;
   font: 700 10px/1.5 Arial, sans-serif;
   letter-spacing: .18em;
+  color: #b8e5d7;
 }
 .studio-cover h2 {
   margin: 30px 0 16px;
@@ -81,7 +82,7 @@
   letter-spacing: -.065em;
   line-height: 1.12;
 }
-.studio-cover h2 em { color: var(--lime); font-style: normal; }
+.studio-cover h2 em { font-style: normal; color: #b8e5d7; }
 .studio-cover p { margin: 0; color: #e0e8df; font-size: 15px; line-height: 1.65; letter-spacing: -.025em; }
 .studio-access { display: grid; place-items: center; padding: 40px clamp(25px, 4.4vw, 64px); min-width: 0; }
 .studio-access-inner { width: 100%; max-width: 372px; margin: auto; }
@@ -129,10 +130,11 @@
 .auth-password-hint { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
 .auth-app .auth-submit {
   display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px;
-  margin-top: 4px; padding: 10px 18px; border: none; border-radius: 8px;
-  background: var(--forest); color: #fff; font-weight: 700; cursor: pointer;
+  margin-top: 4px; padding: 10px 18px; border: none; border-radius: 8px; color: #fff; font-weight: 700; cursor: pointer;
+    background: var(--react-primary);
 }
-.auth-app .auth-submit:hover:not(:disabled) { background: #103d2e; }
+.auth-app .auth-submit:hover:not(:disabled) {
+    background: var(--react-primary-hover); }
 .auth-app .auth-submit:disabled { opacity: .65; }
 .auth-switch { display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--muted); font-size: 13px; margin: 0; }
 .auth-app .auth-text-button { background: transparent; color: var(--forest); border: 0; padding: 5px 2px; text-decoration: underline; text-underline-offset: 3px; font-size: 13px; font-weight: 700; }
@@ -192,4 +194,69 @@
   .studio-feature h3 { font-size: 15px; }
   .studio-feature p { margin-top: 1px; }
   .studio-footer { padding-block: 20px; }
+}
+
+.auth-app .studio-header {
+    background: var(--react-white);
+    border-color: var(--react-line);
+}
+
+.auth-app .studio-header-inner {
+    height: 70px;
+}
+
+.auth-app .studio-spread {
+    border-color: var(--react-line);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgb(21 33 47 / 4%);
+}
+
+.auth-app .studio-cover h2 {
+    font-size: clamp(36px, 3.8vw, 56px);
+    letter-spacing: -.055em;
+}
+
+.auth-app .studio-mode {
+    background: var(--react-surface);
+    border-color: var(--react-line);
+}
+
+.auth-app .studio-mode a[aria-current] {
+    background: var(--react-white);
+    color: var(--react-primary);
+}
+
+.auth-app .auth-input {
+    border-color: var(--react-input-line);
+    color: var(--react-muted);
+}
+
+.auth-app .auth-input:has(input:focus) {
+    border-color: var(--react-primary);
+    box-shadow: 0 0 0 3px rgb(0 135 128 / 12%);
+}
+
+.auth-app .auth-input:has([aria-invalid=true]) {
+    border-color: var(--react-danger);
+}
+
+.auth-app .studio-preview:hover,
+.auth-app .auth-reveal:hover {
+    background: var(--react-primary-soft);
+}
+
+.auth-app .studio-feature-icon {
+    color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+@media (max-width: 760px) {
+
+    .auth-app .studio-header-inner {
+        height: 60px;
+    }
+
+    .auth-app .studio-cover {
+        min-height: auto;
+    }
 }

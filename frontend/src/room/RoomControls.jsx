@@ -5,7 +5,6 @@ import React, {
   useSyncExternalStore,
 } from 'react'
 
-import { createPortal } from 'react-dom'
 import { request } from '../stt/api.js'
 import { terminal } from './state.js'
 
@@ -28,7 +27,6 @@ export function RoomControls({
                                onAccessError,
                                onEnding,
                                offline,
-                               liveTarget,
                              }) {
   const base = `/rooms/${room.roomId}`
   const key = `react:host-end:${userId}:${room.roomId}`
@@ -114,7 +112,7 @@ export function RoomControls({
     if (confirming && dialog.current && !dialog.current.open) {
       dialog.current.showModal()
     }
-  }, [confirming, liveTarget])
+  }, [confirming])
 
   function cancel() {
     dialog.current?.close()
@@ -234,13 +232,6 @@ export function RoomControls({
     }
   }, [phase, view?.readyToCloseRoom, room.status])
 
-  function placeActions(content) {
-    // 상태와 요청 처리는 기존 RoomControls에서 유지하고,
-    // LIVE 상태의 화면 출력 위치만 사이드바로 이동한다.
-    return room.status === 'LIVE' && liveTarget
-        ? createPortal(content, liveTarget)
-        : content
-  }
 
   if (room.status === 'ENDED') return null
 
@@ -248,7 +239,7 @@ export function RoomControls({
       phase === 'check-end' ||
       phase === 'check-start'
 
-  if (checking) return placeActions(
+  if (checking) return (
       <div className="room-warning" role="status">
         방 상태를 확인하고 있습니다.
         연결이 끊겼다면 다시 확인해 주세요.
@@ -260,7 +251,7 @@ export function RoomControls({
         >
           상태 다시 확인
         </button>
-      </div>,
+      </div>
   )
 
   if (room.status === 'READY') {
@@ -286,7 +277,7 @@ export function RoomControls({
 
   if (room.status !== 'LIVE') return null
 
-  return placeActions(
+  return (
       <div className="room-lifecycle">
         {phase === 'retry-end'
             ? <>
@@ -371,6 +362,6 @@ export function RoomControls({
             </button>
           </div>
         </dialog>}
-      </div>,
+      </div>
   )
 }

@@ -1,10 +1,4 @@
 .participation {
-  --ink: #172721;
-  --forest: #184d3b;
-  --lime: #d7f477;
-  --paper: #f7f7f2;
-  --line: #dbe2d9;
-  --muted: #57665e;
   min-height: 100dvh;
   padding-bottom: max(40px, env(safe-area-inset-bottom));
   background: var(--paper);
@@ -12,6 +6,12 @@
   font: 16px/1.55 Pretendard, sans-serif;
   word-break: keep-all;
   overflow-wrap: anywhere;
+  --ink: var(--react-ink);
+  --forest: var(--react-primary);
+  --lime: var(--react-primary-soft);
+  --paper: var(--react-surface);
+  --line: var(--react-line);
+  --muted: var(--react-muted);
 }
 .participation-bar { border-bottom: 1px solid var(--line); background: #fff; }
 .participation-bar-inner {
@@ -33,9 +33,10 @@
   width: min(calc(100% - 32px), 520px);
   margin: clamp(28px, 9vh, 96px) auto 0;
   border: 1px solid var(--line);
-  border-radius: 22px;
   background: #fff;
-  box-shadow: 0 12px 42px -30px #173c2e66;
+    border-color: var(--react-line);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgb(21 33 47 / 4%);
 }
 .participation-cover {
   position: relative;
@@ -60,14 +61,14 @@
   max-width: 100%;
   margin: 0;
   padding: 5px 10px;
-  border: 1px solid #7c9c7a;
   border-radius: 20px;
-  background: #234c39;
-  color: #e1f5a8;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.3;
+    border: 0;
+    color: var(--react-primary-hover);
+    background: var(--react-primary-soft);
 }
 .participation-room-heading { margin: 0; font-size: inherit; }
 .participation-title {
@@ -172,7 +173,9 @@
   background: transparent;
   box-shadow: none;
 }
-.participation-live .participation-cover { border-radius: 18px; }
+.participation-live .participation-cover {
+    border: 1px solid var(--react-line);
+    border-radius: var(--react-card-radius); }
 .participation-live .participation-notice { margin: 12px 0 0; }
 .participation-jumps { display: none; }
 .participation-tools {
@@ -191,7 +194,8 @@
   color: var(--ink);
 }
 .participation .participation-poll, .participation .understanding { padding: clamp(18px, 3vw, 26px); }
-.participation .understanding { border-top: 4px solid var(--lime); }
+.participation .understanding {
+    border-top: 3px solid var(--react-primary); }
 .participation-tools h2 { color: var(--ink); font-size: 19px; letter-spacing: -.04em; }
 .participation .participation-poll h2 { margin: 0 0 14px; }
 .participation .participation-poll p, .participation .understanding-hint { color: var(--muted); }
@@ -208,7 +212,8 @@
 .participation .chat-panel-heading, .participation .chat-composer { border-color: var(--line); }
 .participation .chat-actions button { min-height: 44px; padding-inline: 18px; }
 .participation .chat-actions .chat-discard:enabled { background: var(--paper); color: var(--ink); }
-.participation .chat-composer textarea { color: var(--ink); border-color: #909f93; }
+.participation .chat-composer textarea { color: var(--ink);
+    border-color: var(--react-input-line); }
 .participation .chat-empty { color: var(--muted); text-align: center; }
 .participation .chat-log:has(.chat-empty) { display: grid; align-items: center; }
 @media (max-width: 760px) {
@@ -234,6 +239,15 @@
     font-size: 14px;
     font-weight: 600;
   }
+
+    .participation.participation-live main {
+        width: calc(100% - 28px);
+        margin-top: 18px;
+    }
+
+    .participation .participation-tools {
+        gap: 14px;
+    }
 }
 .participation-code-link {
   display: inline-flex;
@@ -245,4 +259,92 @@
   color: #184d3b;
   font-weight: 600;
   text-underline-offset: 4px;
+}
+
+.participation .participation-cover {
+    color: var(--react-ink);
+    background: var(--react-white);
+    border-bottom: 1px solid var(--react-line);
+}
+
+.participation .participation-cover::before {
+    display: none;
+}
+
+.participation .participation-title {
+    color: var(--react-ink);
+    font-size: clamp(25px, 3vw, 32px);
+    letter-spacing: -.035em;
+}
+
+.participation .participation-identity {
+    color: var(--react-muted);
+}
+
+.participation .participation-state-icon {
+    color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.participation .participation-join input {
+    border-color: var(--react-input-line);
+}
+
+.participation .participation-action:enabled {
+    background: var(--react-primary);
+}
+
+.participation .participation-action:hover:enabled {
+    background: var(--react-primary-hover);
+}
+
+.participation .participation-action:disabled {
+    background: #e9eef1;
+    color: var(--react-muted);
+}
+
+.participation .participation-code-link {
+    color: var(--react-primary);
+}
+
+.participation.participation-live main {
+    width: min(calc(100% - 48px), 1160px);
+    margin-top: 28px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.participation :is(
+    .participation-poll,
+    .understanding,
+    .chat-panel
+) {
+    border-color: var(--react-line);
+    border-radius: var(--react-card-radius);
+    box-shadow: none;
+}
+
+.participation
+.participation-poll-option:has(input:checked) {
+    border-color: var(--react-primary);
+    background: var(--react-primary-soft);
+}
+
+.participation
+.participation-poll form > button:enabled,
+.participation
+.chat-actions button:enabled:not(.chat-discard) {
+    background: var(--react-primary);
+}
+
+.participation .chat-host,
+.participation .chat-log .chat-own p {
+    color: var(--react-primary-hover);
+    background: var(--react-primary-soft);
+}
+
+.participation :is(button, a, input, textarea, summary):focus-visible {
+    outline: 3px solid #65b8af;
+    outline-offset: 3px;
 }

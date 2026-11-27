@@ -80,8 +80,6 @@ export function RoomShell({
                             inviteOpen,
                             onToggleInvite,
                             navigationDisabled = false,
-                            liveRoom = false,
-                            liveActionsRef,
                             children,
                           }) {
   const drawer = useRef(null)
@@ -157,14 +155,10 @@ export function RoomShell({
       </span>
     </header>
 
-    <aside className={`host-rail host-rail-v2${liveRoom ? ' host-rail-live' : ''}`}>
+    <aside className="host-rail">
       <HostMenu {...menuProps} />
 
       <div className="host-rail-bottom">
-        {liveRoom && <div
-            ref={liveActionsRef}
-            className="host-rail-room-actions"
-        />}
 
         <HostAccount {...accountProps} />
       </div>
