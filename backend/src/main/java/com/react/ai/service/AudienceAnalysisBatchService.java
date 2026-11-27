@@ -11,6 +11,7 @@ import com.react.ai.dto.AudienceAnalysisLlmResponse;
 import com.react.ai.exception.GeminiAudienceAnalysisErrorCode;
 import com.react.ai.exception.GeminiAudienceAnalysisException;
 import com.react.ai.exception.InvalidAiAnalysisResultException;
+import com.react.ai.exception.InvalidStoredAiBatchDataException;
 import com.react.ai.repository.AiAnalysisBatchAttemptRepository;
 import com.react.ai.repository.AiAnalysisBatchRepository;
 import com.react.ai.repository.AiAnalysisRepository;
@@ -193,8 +194,8 @@ public class AudienceAnalysisBatchService {
         if (e instanceof InvalidAiAnalysisResultException) {
             return "INVALID_LLM_RESPONSE";
         }
-        if ("AI_BATCH_INPUT_MANIFEST_MISMATCH".equals(e.getMessage())) {
-            return "INPUT_MANIFEST_MISMATCH";
+        if (e instanceof InvalidStoredAiBatchDataException storedData) {
+            return storedData.errorCode();
         }
         return "AI_ANALYSIS_PROCESSING_FAILED";
     }

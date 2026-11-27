@@ -7,6 +7,7 @@ import com.react.ai.domain.AiAnalysisStatus;
 import com.react.ai.dto.AiAnalysisResult;
 import com.react.ai.dto.AudienceAnalysisBatch;
 import com.react.ai.dto.AudienceAnalysisBatchManifest;
+import com.react.ai.exception.InvalidStoredAiBatchDataException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -175,7 +176,7 @@ public class AiAnalysisBatchRepository {
         try {
             return mapper.readValue(json, type);
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("저장된 AI 배치 데이터를 읽을 수 없습니다.", e);
+            throw InvalidStoredAiBatchDataException.unreadableJson(e);
         }
     }
 

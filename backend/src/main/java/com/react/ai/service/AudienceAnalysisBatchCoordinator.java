@@ -10,9 +10,12 @@ import com.react.ai.dto.AiTopicResult;
 import com.react.ai.dto.PreprocessedAudienceMessages;
 import com.react.ai.exception.GeminiAudienceAnalysisException;
 import com.react.ai.exception.InvalidAiAnalysisResultException;
+import com.react.ai.exception.InvalidStoredAiBatchDataException;
 import com.react.ai.repository.AiAnalysisBatchRepository;
 import com.react.ai.repository.AiAnalysisRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +29,7 @@ import java.util.function.BooleanSupplier;
 @Component
 @RequiredArgsConstructor
 public class AudienceAnalysisBatchCoordinator {
+    private static final Logger log = LoggerFactory.getLogger(AudienceAnalysisBatchCoordinator.class);
     private final AiAnalysisRepository analyses;
     private final AiAnalysisBatchRepository batches;
     private final AudienceAnalysisBatchSplitter splitter;
@@ -72,6 +76,7 @@ public class AudienceAnalysisBatchCoordinator {
         } catch (GeminiAudienceAnalysisException e) {
             return fail(analysisId, created, e.errorCode().name());
         } catch (RuntimeException e) {
+            warnRetry(analysisId, "INITIALIZE", e);
             // manifest 저장·조회 인프라 오류는 부모를 종결하지 않는다. 다음 스케줄러가 다시 시도한다.
             return current(analysisId);
         }
@@ -83,7 +88,10 @@ public class AudienceAnalysisBatchCoordinator {
         AudienceAnalysisBatchService.RunResult run;
         try {
             run = batchService.process(analysisId, scheduler.finalizationLeaseDuration(), mayContinue);
+        } catch (InvalidStoredAiBatchDataException e) {
+            return failTerminalStoredData(analysisId, created, "BATCH_RUN", e);
         } catch (RuntimeException e) {
+            warnRetry(analysisId, "BATCH_RUN", e);
             // 다른 작업자의 DB 조회·연결 오류는 현재 claim을 보유한 작업자의 부모 상태를 바꾸면 안 된다.
             return current(analysisId);
         }
@@ -95,7 +103,10 @@ public class AudienceAnalysisBatchCoordinator {
                 var failed = batches.findByAnalysis(analysisId).stream()
                         .filter(batch -> batch.status() == AiAnalysisBatchStatus.FAILED).findFirst().orElseThrow();
                 return fail(analysisId, created, failed.errorCode());
+            } catch (InvalidStoredAiBatchDataException e) {
+                return failTerminalStoredData(analysisId, created, "FAILED_BATCH_LOOKUP", e);
             } catch (RuntimeException e) {
+                warnRetry(analysisId, "FAILED_BATCH_LOOKUP", e);
                 return current(analysisId);
             }
         }
@@ -104,21 +115,22 @@ public class AudienceAnalysisBatchCoordinator {
         }
         try {
             return complete(roomId, analysisId, created);
+        } catch (InvalidStoredAiBatchDataException e) {
+            return failTerminalStoredData(analysisId, created, "FINALIZE", e);
         } catch (RuntimeException e) {
-            if (isTerminalInputFailure(e)) {
-                String errorCode = e instanceof InvalidAiAnalysisResultException
-                        ? "INVALID_LLM_RESPONSE" : "INPUT_MANIFEST_MISMATCH";
-                return fail(analysisId, created, errorCode);
+            if (e instanceof InvalidAiAnalysisResultException) {
+                return fail(analysisId, created, "INVALID_LLM_RESPONSE");
             }
+            warnRetry(analysisId, "FINALIZE", e);
             // 최종 저장 전의 DB 오류는 모든 배치 결과를 보존한 채 다음 실행에서 재확정한다.
             return current(analysisId);
         }
     }
 
-    private boolean isTerminalInputFailure(RuntimeException e) {
-        return e instanceof InvalidAiAnalysisResultException
-                || e instanceof IllegalStateException
-                && "AI_BATCH_INPUT_MANIFEST_MISMATCH".equals(e.getMessage());
+    private AiAnalysisProcessResult failTerminalStoredData(long analysisId, boolean created, String stage,
+                                                            InvalidStoredAiBatchDataException exception) {
+        warnRetry(analysisId, stage, exception);
+        return fail(analysisId, created, exception.errorCode());
     }
 
     private AiAnalysisProcessResult fail(long analysisId, boolean created, String errorCode) {
@@ -128,8 +140,14 @@ public class AudienceAnalysisBatchCoordinator {
             }
             return new AiAnalysisProcessResult(analysisId, AiAnalysisStatus.FAILED, created, 0);
         } catch (RuntimeException e) {
+            warnRetry(analysisId, "MARK_PARENT_FAILED", e);
             return current(analysisId);
         }
+    }
+
+    private void warnRetry(long analysisId, String stage, RuntimeException exception) {
+        log.warn("AI 배치 분석 처리 예외: analysisId={}, stage={}, exceptionType={}",
+                analysisId, stage, exception.getClass().getSimpleName());
     }
 
     private AiAnalysisProcessResult processing(long analysisId, boolean created) {

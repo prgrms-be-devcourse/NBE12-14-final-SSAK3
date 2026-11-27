@@ -4,6 +4,7 @@ import com.react.ai.dto.AudienceAnalysisBatch;
 import com.react.ai.dto.AudienceAnalysisBatchManifest;
 import com.react.ai.dto.AudienceMessage;
 import com.react.ai.dto.PreprocessedAudienceMessages;
+import com.react.ai.exception.InvalidStoredAiBatchDataException;
 import com.react.ai.repository.AiAnalysisBatchRepository;
 import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.repository.AudienceMessageRepository;
@@ -57,7 +58,7 @@ public class AudienceAnalysisBatchInputRestorer {
         return batch;
     }
 
-    private IllegalStateException mismatch() {
-        return new IllegalStateException("AI_BATCH_INPUT_MANIFEST_MISMATCH");
+    private InvalidStoredAiBatchDataException mismatch() {
+        return InvalidStoredAiBatchDataException.manifestMismatch();
     }
 }
