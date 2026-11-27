@@ -5,6 +5,12 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
+  - job_name: re-act-report-results
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+          - report-results:9108
+
   # 로컬 Spring Boot 애플리케이션 지표 수집
   - job_name: re-act-backend
     scrape_interval: 5s
