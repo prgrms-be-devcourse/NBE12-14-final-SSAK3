@@ -77,7 +77,6 @@ export function PollVotePanel({ roomId, onAccessError }) {
         reload.current = refresh
         void refresh()
 
-        const timer = window.setInterval(refresh, 5000)
         const visible = () => {
             if (!document.hidden) void refresh()
         }
@@ -87,14 +86,14 @@ export function PollVotePanel({ roomId, onAccessError }) {
 
         return () => {
             active = false
-            window.clearInterval(timer)
             document.removeEventListener('visibilitychange', visible)
             window.removeEventListener('online', visible)
         }
     }, [base, revision])
 
-    // 투표가 열리거나 마감되면 서버가 알려 주므로, 5초 조회를 기다리지 않고 바로 목록을 다시 받는다.
-    // 단순 브로커는 놓친 이벤트를 다시 보내지 않아서 5초 조회와 재연결 때의 조회는 그대로 둔다.
+    // 투표가 열리거나 마감되면(제한 시간 만료 포함) 서버가 알려 주므로, 그 이벤트를 받을 때 목록을 다시 받는다.
+    // 단순 브로커는 놓친 이벤트를 다시 보내지 않아서 재연결·탭 복귀·온라인 복귀 때의 조회와
+    // 소켓의 30초 주기 조회(refresh)를 보험으로 둔다. 청중마다 5초씩 조회하던 것을 이벤트 기반으로 바꿨다.
     useEffect(() => {
         const socket = openRoomSocket({
             role: 'PARTICIPANT',
