@@ -1,5 +1,8 @@
 package com.react.ai.service;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.react.ai.config.AiAnalysisSchedulerProperties;
 import com.react.ai.config.GeminiAudienceAnalysisProperties;
 import com.react.ai.domain.AiAnalysisBatchStatus;
@@ -11,9 +14,11 @@ import com.react.ai.dto.AudienceAnalysisBatch;
 import com.react.ai.dto.AudienceAnalysisBatchManifest;
 import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.dto.PreprocessedAudienceMessages;
+import com.react.ai.exception.InvalidStoredAiBatchDataException;
 import com.react.ai.repository.AiAnalysisBatchRepository;
 import com.react.ai.repository.AiAnalysisRepository;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessResourceFailureException;
 
 import java.time.Duration;
@@ -49,6 +54,58 @@ class AudienceAnalysisBatchCoordinatorTest {
 
         assertThat(result.status()).isEqualTo(AiAnalysisStatus.PROCESSING);
         verify(analyses, never()).markFailed(anyLong(), any());
+    }
+
+    @Test
+    void 저장된_배치_JSON이_손상되면_부모를_조건부_FAILED로_종결한다() {
+        var coordinator = coordinator();
+        when(batchService.process(eq(10L), eq(Duration.ofSeconds(90)), any()))
+                .thenThrow(InvalidStoredAiBatchDataException.unreadableJson(new IllegalStateException()));
+        when(analyses.markFailed(10L, InvalidStoredAiBatchDataException.STORED_BATCH_DATA_INVALID))
+                .thenReturn(true);
+
+        var result = coordinator.resume(1L, 10L, false, () -> true);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        verify(analyses).markFailed(10L, InvalidStoredAiBatchDataException.STORED_BATCH_DATA_INVALID);
+    }
+
+    @Test
+    void manifest_불일치는_부모를_조건부_FAILED로_종결한다() {
+        var coordinator = coordinator();
+        when(batchService.process(eq(10L), eq(Duration.ofSeconds(90)), any()))
+                .thenThrow(InvalidStoredAiBatchDataException.manifestMismatch());
+        when(analyses.markFailed(10L, InvalidStoredAiBatchDataException.INPUT_MANIFEST_MISMATCH))
+                .thenReturn(true);
+
+        var result = coordinator.resume(1L, 10L, false, () -> true);
+
+        assertThat(result.status()).isEqualTo(AiAnalysisStatus.FAILED);
+        verify(analyses).markFailed(10L, InvalidStoredAiBatchDataException.INPUT_MANIFEST_MISMATCH);
+    }
+
+    @Test
+    void 재시도_로그는_예외_메시지나_민감_본문을_포함하지_않는다() {
+        var coordinator = coordinator();
+        String sensitiveMessage = "apiKey=secret-value chat=청중 원문";
+        when(batchService.process(eq(10L), eq(Duration.ofSeconds(90)), any()))
+                .thenThrow(new DataAccessResourceFailureException(sensitiveMessage));
+        Logger logger = (Logger) LoggerFactory.getLogger(AudienceAnalysisBatchCoordinator.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            coordinator.resume(1L, 10L, false, () -> true);
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(event.getFormattedMessage()).contains("analysisId=10", "stage=BATCH_RUN",
+                    "exceptionType=DataAccessResourceFailureException");
+            assertThat(event.getFormattedMessage()).doesNotContain(sensitiveMessage, "secret-value", "청중 원문");
+        });
     }
 
     @Test

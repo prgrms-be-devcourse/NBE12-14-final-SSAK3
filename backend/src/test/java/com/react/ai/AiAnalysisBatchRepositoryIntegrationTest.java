@@ -8,6 +8,7 @@ import com.react.ai.dto.AiTopicResult;
 import com.react.ai.dto.AudienceAnalysisInputMessage;
 import com.react.ai.dto.AudienceAnalysisBatch;
 import com.react.ai.dto.PreprocessedAudienceMessages;
+import com.react.ai.exception.InvalidStoredAiBatchDataException;
 import com.react.ai.repository.AiAnalysisBatchRepository;
 import com.react.ai.repository.AiAnalysisRepository;
 import com.react.ai.service.AudienceAnalysisBatchSplitter;
@@ -91,6 +92,34 @@ class AiAnalysisBatchRepositoryIntegrationTest {
                 .param(stored.getFirst().id()).query(String.class).single()).doesNotContain("질문1");
         assertThat(jdbc.sql("SELECT COUNT(*) FROM ai_topic_groups WHERE analysis_id = ?")
                 .param(analysisId).query(Integer.class).single()).isZero();
+    }
+
+    @Test
+    void 저장된_input_manifest_JSON을_읽을_수_없으면_전용_복구불가_예외를_발생시킨다() {
+        batches.createPending(analysisId, splitter.split(input(1), 100, 32_000));
+        jdbc.sql("UPDATE ai_analysis_batches SET input_manifest = JSON_OBJECT('messages', 'broken') WHERE analysis_id = ?")
+                .param(analysisId).update();
+
+        assertThatThrownBy(() -> batches.findByAnalysis(analysisId))
+                .isInstanceOf(InvalidStoredAiBatchDataException.class)
+                .extracting(exception -> ((InvalidStoredAiBatchDataException) exception).errorCode())
+                .isEqualTo(InvalidStoredAiBatchDataException.STORED_BATCH_DATA_INVALID);
+    }
+
+    @Test
+    void 저장된_result_JSON을_읽을_수_없으면_전용_복구불가_예외를_발생시킨다() {
+        batches.createPending(analysisId, splitter.split(input(1), 100, 32_000));
+        var stored = batches.findByAnalysis(analysisId).getFirst();
+        UUID token = UUID.randomUUID();
+        assertThat(batches.claim(stored.id(), token, Duration.ofSeconds(30))).isTrue();
+        assertThat(batches.saveValidatedResult(stored.id(), token, new AiAnalysisResult(List.of()), "test-model")).isTrue();
+        jdbc.sql("UPDATE ai_analysis_batches SET result_json = JSON_OBJECT('topics', 'broken') WHERE id = ?")
+                .param(stored.id()).update();
+
+        assertThatThrownBy(() -> batches.findByAnalysis(analysisId))
+                .isInstanceOf(InvalidStoredAiBatchDataException.class)
+                .extracting(exception -> ((InvalidStoredAiBatchDataException) exception).errorCode())
+                .isEqualTo(InvalidStoredAiBatchDataException.STORED_BATCH_DATA_INVALID);
     }
 
     @Test
